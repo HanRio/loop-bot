@@ -108,7 +108,7 @@ if (typeof document !== "undefined") (function () {
 
   let data;
   try { data = decodeData(location.hash); } catch (e) {
-    $("fatal").textContent = "목록을 불러오지 못했어요. 버튼을 다시 눌러주세요";
+    $("fatal").textContent = "목록이 오래됐어요. 봇에 /start를 보내주세요";
     $("fatal").hidden = false;
     return;
   }

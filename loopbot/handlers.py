@@ -68,9 +68,9 @@ def _active_tracks(store: Store, user_id: int) -> tuple[Playlist, list[Track]]:
     return playlist, [by_id[i] for i in playlist.track_ids]
 
 
-def _keyboard(context: ContextTypes.DEFAULT_TYPE, user_id: int) -> ReplyKeyboardMarkup:
-    cfg: Config = context.bot_data["cfg"]
-    store: Store = context.bot_data["store"]
+def _keyboard(bot_data: dict, user_id: int) -> ReplyKeyboardMarkup:
+    cfg: Config = bot_data["cfg"]
+    store: Store = bot_data["store"]
     active = store.active_playlist(user_id)  # before playlists(): creates '기본' for a new user
     url = build_webapp_url(cfg.webapp_url, store.library(user_id), store.playlists(user_id), active.id)
     button = KeyboardButton("🎵 플레이리스트", web_app=WebAppInfo(url))
@@ -81,7 +81,7 @@ async def _reply(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str) 
     """Reply with the up-to-date playlist keyboard attached."""
     msg = update.effective_message
     try:
-        await msg.reply_text(text, reply_markup=_keyboard(context, update.effective_user.id))
+        await msg.reply_text(text, reply_markup=_keyboard(context.bot_data, update.effective_user.id))
     except BadRequest:
         logging.exception("reply with keyboard rejected; resending without it")
         await msg.reply_text(text)
@@ -240,6 +240,7 @@ async def on_unauthorized(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 
 ERROR_TEXT = "잠시 문제가 생겼어요. 잠시 뒤 다시 시도해주세요"
+KEYBOARD_REFRESHED_TEXT = "🎵 플레이리스트 버튼을 새로 고쳤어요"
 
 
 async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -253,12 +254,24 @@ async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
         logging.exception("error notice failed")
 
 
+async def _refresh_keyboards(app: Application) -> None:
+    # Old persistent keyboards carry a stale-format URL; resend so every chat gets the current one.
+    for user_id in sorted(app.bot_data["cfg"].allowed_user_ids):
+        try:
+            await app.bot.send_message(
+                user_id, KEYBOARD_REFRESHED_TEXT, reply_markup=_keyboard(app.bot_data, user_id)
+            )
+        except Exception:
+            logging.exception("keyboard refresh failed for user %s", user_id)
+
+
 def build_app(cfg: Config, store: Store) -> Application:
     app = (
         Application.builder()
         .token(cfg.bot_token)
         .concurrent_updates(True)
         .media_write_timeout(120)
+        .post_init(_refresh_keyboards)
         .build()
     )
     app.bot_data.update(cfg=cfg, store=store, lock=asyncio.Lock())

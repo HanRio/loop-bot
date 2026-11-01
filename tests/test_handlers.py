@@ -86,7 +86,7 @@ def test_reply_falls_back_without_keyboard_on_bad_request(monkeypatch):
 
     update = SimpleNamespace(effective_message=SimpleNamespace(reply_text=reply_text),
                              effective_user=SimpleNamespace(id=1))
-    asyncio.run(handlers._reply(update, None, "hi"))
+    asyncio.run(handlers._reply(update, SimpleNamespace(bot_data={}), "hi"))
     assert calls == [{"reply_markup": "KB"}, {}]
 
 
@@ -131,6 +131,31 @@ def test_on_error_swallows_failed_reply_and_handles_no_message(caplog):
     asyncio.run(handlers.on_error(SimpleNamespace(effective_message=None), _error_context(RuntimeError("boom"))))
 
 
+def test_refresh_keyboards_sends_to_each_user_and_survives_failures(monkeypatch, caplog):
+    import asyncio
+    from types import SimpleNamespace
+
+    from telegram.error import Forbidden
+
+    from loopbot import handlers
+
+    monkeypatch.setattr(handlers, "_keyboard", lambda bot_data, uid: f"KB{uid}")
+    sent = []
+
+    async def send_message(chat_id, text, reply_markup=None):
+        if chat_id == 1:
+            raise Forbidden("blocked")
+        sent.append((chat_id, text, reply_markup))
+
+    app = SimpleNamespace(
+        bot_data={"cfg": SimpleNamespace(allowed_user_ids=frozenset({1, 2}))},
+        bot=SimpleNamespace(send_message=send_message),
+    )
+    asyncio.run(handlers._refresh_keyboards(app))
+    assert sent == [(2, "🎵 플레이리스트 버튼을 새로 고쳤어요", "KB2")]
+    assert "blocked" in caplog.text
+
+
 def _app():
     from types import SimpleNamespace
 
@@ -144,3 +169,9 @@ def test_build_app_registers_error_handler():
     from loopbot import handlers
 
     assert handlers.on_error in _app().error_handlers
+
+
+def test_build_app_refreshes_keyboards_on_startup():
+    from loopbot import handlers
+
+    assert _app().post_init is handlers._refresh_keyboards
