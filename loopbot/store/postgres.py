@@ -23,7 +23,14 @@ class PostgresStore:
 
     def _connect(self) -> psycopg.Connection:
         # Session-level search_path: needs the pooler's session mode (port 5432), not transaction mode.
-        conn = psycopg.connect(self._dsn, autocommit=True, prepare_threshold=None)
+        conn = psycopg.connect(
+            self._dsn,
+            autocommit=True,
+            prepare_threshold=None,
+            connect_timeout=10,
+            keepalives=1,
+            keepalives_idle=30,
+        )
         conn.execute(sql.SQL("SET search_path TO {}").format(sql.Identifier(self._schema)))
         return conn
 
