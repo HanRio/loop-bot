@@ -1,4 +1,5 @@
 import sqlite3
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -56,6 +57,27 @@ class TrackRepo:
                 f"SELECT {TRACK_COLUMNS} FROM tracks WHERE id = ?", (cur.lastrowid,)
             ).fetchone()
         return _to_track(row)
+
+    def apply_order(
+        self, user_id: int, order: Sequence[int], removed: Sequence[int]
+    ) -> list[Track]:
+        with self._conn:
+            removed_ids = set(removed)
+            self._conn.executemany(
+                "DELETE FROM tracks WHERE user_id = ? AND id = ?",
+                [(user_id, track_id) for track_id in removed_ids],
+            )
+            remaining = [t for t in self.list(user_id) if t.id not in removed_ids]
+            remaining_ids = {t.id for t in remaining}
+            ordered_ids = dict.fromkeys(i for i in order if i in remaining_ids)
+            final_ids = list(ordered_ids) + [
+                t.id for t in remaining if t.id not in ordered_ids
+            ]
+            self._conn.executemany(
+                "UPDATE tracks SET position = ? WHERE user_id = ? AND id = ?",
+                [(pos, user_id, track_id) for pos, track_id in enumerate(final_ids)],
+            )
+        return self.list(user_id)
 
     def list(self, user_id: int) -> list[Track]:
         rows = self._conn.execute(
