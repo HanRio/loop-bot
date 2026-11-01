@@ -25,6 +25,8 @@ class Audio:
 
 
 def check_limits(info: Mapping[str, Any]) -> None:
+    if info.get("_type") == "playlist" or "entries" in info:
+        raise FetchError("재생목록은 받을 수 없어요")
     duration = info.get("duration")
     if duration is not None and duration > MAX_DURATION:
         raise FetchError("너무 길어요 (최대 60분)")
