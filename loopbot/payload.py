@@ -1,19 +1,23 @@
 import base64
 import json
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
-from loopbot.db import Track
+from loopbot.store import Playlist, Track
 
 MAX_LINKS = 10
 TITLE_MAX = 40
 MAX_URL_LEN = 4096
 _TITLE_STEPS = (TITLE_MAX, 20, 8, 0)
 INT64_MAX = 2**63 - 1
+NAME_MAX = 20
+DEFAULT_NEW_NAME = "새 플레이리스트"
 
 _YOUTUBE_HOSTS = frozenset({"youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"})
 _SCHEMES = frozenset({"http", "https"})
+_URL_TOKEN = re.compile(r"https?://.+?(?=https?://|[\s,]|$)")
 
 _MSG_MALFORMED = "목록이 바뀌었어요. 버튼을 다시 눌러주세요"
 _MSG_TOO_MANY = f"링크는 한 번에 {MAX_LINKS}개까지 넣을 수 있어요"
@@ -26,8 +30,11 @@ class PayloadError(ValueError):
 
 @dataclass(frozen=True)
 class WebAppAction:
-    order: tuple[int, ...]
-    removed: tuple[int, ...]
+    playlist: int | None
+    name: str
+    tracks: tuple[int, ...]
+    delete_tracks: tuple[int, ...]
+    delete_playlist: bool
     add: tuple[str, ...]
     play: bool
 
@@ -42,13 +49,15 @@ def is_youtube_url(text: str) -> bool:
 
 
 def extract_youtube_urls(text: str) -> list[str]:
-    return list(dict.fromkeys(tok for tok in text.split() if is_youtube_url(tok)))
+    return list(dict.fromkeys(tok for tok in _URL_TOKEN.findall(text) if is_youtube_url(tok)))
 
 
-def build_webapp_url(base: str, tracks: Sequence[Track]) -> str:
+def build_webapp_url(base: str, library: Sequence[Track], playlists: Sequence[Playlist], active_id: int) -> str:
+    pls = [{"i": p.id, "n": p.name[:NAME_MAX], "t": list(p.track_ids)} for p in playlists]
     for limit in _TITLE_STEPS:
-        items = [{"i": t.id, "t": t.title[:limit]} for t in tracks]
-        raw = json.dumps(items, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+        lib = [{"i": t.id, "t": t.title[:limit]} for t in library]
+        data = {"v": 2, "lib": lib, "pls": pls, "a": active_id}
+        raw = json.dumps(data, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
         encoded = base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
         url = f"{base}#d={encoded}"
         if len(url) <= MAX_URL_LEN:
@@ -70,9 +79,13 @@ def _load_object(raw: str) -> dict:
     return data
 
 
+def _is_id(value: object) -> bool:
+    return _is_int(value) and 0 <= value <= INT64_MAX
+
+
 def _int_list(data: dict, key: str) -> tuple[int, ...]:
     values = data.get(key, [])
-    if not isinstance(values, list) or not all(_is_int(v) and 0 <= v <= INT64_MAX for v in values):
+    if not isinstance(values, list) or not all(_is_id(v) for v in values):
         raise PayloadError(_MSG_MALFORMED)
     return tuple(values)
 
@@ -84,19 +97,39 @@ def _str_list(data: dict, key: str) -> tuple[str, ...]:
     return tuple(values)
 
 
+def _bool(data: dict, key: str) -> bool:
+    value = data.get(key, False)
+    if not isinstance(value, bool):
+        raise PayloadError(_MSG_MALFORMED)
+    return value
+
+
+def _name(data: dict) -> str:
+    name = data.get("name", "")
+    if not isinstance(name, str):
+        raise PayloadError(_MSG_MALFORMED)
+    return name.strip()[:NAME_MAX] or DEFAULT_NEW_NAME
+
+
 def parse_action(raw: str) -> WebAppAction:
     data = _load_object(raw)
     version = data.get("v")
-    if not _is_int(version) or version != 1:
+    if not _is_int(version) or version != 2:
         raise PayloadError(_MSG_MALFORMED)
-    order = _int_list(data, "order")
-    removed = _int_list(data, "removed")
+    playlist = data.get("playlist")
+    if playlist is not None and not _is_id(playlist):
+        raise PayloadError(_MSG_MALFORMED)
     add = _str_list(data, "add")
-    play = data.get("play", False)
-    if not isinstance(play, bool):
-        raise PayloadError(_MSG_MALFORMED)
     if len(add) > MAX_LINKS:
         raise PayloadError(_MSG_TOO_MANY)
     if not all(is_youtube_url(u) for u in add):
         raise PayloadError(_MSG_NOT_YOUTUBE)
-    return WebAppAction(order=order, removed=removed, add=add, play=play)
+    return WebAppAction(
+        playlist=playlist,
+        name=_name(data),
+        tracks=_int_list(data, "tracks"),
+        delete_tracks=_int_list(data, "delete_tracks"),
+        delete_playlist=_bool(data, "delete_playlist"),
+        add=add,
+        play=_bool(data, "play"),
+    )

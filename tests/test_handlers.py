@@ -45,8 +45,8 @@ def _run_on_audio(msg):
 
     added, replies = [], []
 
-    class Repo:
-        def add(self, *a):
+    class Store:
+        def add_track(self, *a):
             added.append(a)
 
     async def reply_text(text, **kw):
@@ -54,7 +54,7 @@ def _run_on_audio(msg):
 
     msg.reply_text = reply_text
     update = SimpleNamespace(effective_message=msg, effective_user=SimpleNamespace(id=1))
-    context = SimpleNamespace(bot_data={"repo": Repo()})
+    context = SimpleNamespace(bot_data={"store": Store()})
     asyncio.run(handlers.on_audio(update, context))
     return added, replies
 
