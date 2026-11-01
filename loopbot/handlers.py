@@ -5,7 +5,7 @@ from datetime import timedelta
 from pathlib import Path
 
 from telegram import KeyboardButton, ReplyKeyboardMarkup, Update, WebAppInfo
-from telegram.error import BadRequest, RetryAfter, TelegramError
+from telegram.error import BadRequest, RetryAfter, TelegramError, TimedOut
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
 from loopbot.config import Config
@@ -14,6 +14,8 @@ from loopbot.payload import MAX_LINKS, PayloadError, build_webapp_url, extract_y
 from loopbot.youtube import FetchError, fetch_audio
 
 PLAY_GAP_SECONDS = 0.5
+# Telegram answers an upload only after processing it, which takes several seconds; PTB's 5 s default is too short.
+UPLOAD_READ_TIMEOUT = 120
 EMPTY_TEXT = "아직 곡이 없어요. 링크나 음원을 보내주세요"
 NO_TITLE = "제목 없음"
 NOT_AUDIO_TEXT = "음원 파일로 보내주세요 (mp3·m4a)"
@@ -98,7 +100,11 @@ async def add_url(update: Update, context: ContextTypes.DEFAULT_TYPE, url: str) 
                     async def upload():
                         f.seek(0)  # a RetryAfter retry must re-read from the start
                         return await msg.reply_audio(
-                            f, title=audio.title, performer=audio.performer, duration=audio.duration
+                            f,
+                            title=audio.title,
+                            performer=audio.performer,
+                            duration=audio.duration,
+                            read_timeout=UPLOAD_READ_TIMEOUT,
                         )
 
                     sent = await _send_with_retry(upload)
@@ -106,6 +112,10 @@ async def add_url(update: Update, context: ContextTypes.DEFAULT_TYPE, url: str) 
         context.bot_data["repo"].add(user_id, title, sent.audio.file_id, audio.duration, url)
     except FetchError as e:
         await msg.reply_text(f"❌ 받지 못했어요: {url} ({e})")
+        return
+    except TimedOut:
+        logging.exception("upload timed out: %s", url)
+        await msg.reply_text(f"❌ 받지 못했어요: {url} (텔레그램 응답이 늦어요. 잠시 뒤 다시 보내주세요)")
         return
     except Exception:
         logging.exception("download failed: %s", url)
