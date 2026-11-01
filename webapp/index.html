@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>플레이리스트</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.6/Sortable.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 12px 16px 24px;
+    background: var(--tg-theme-bg-color, #fff);
+    color: var(--tg-theme-text-color, #000);
+    font: 16px/1.4 -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li {
+    display: flex; align-items: center; gap: 8px; min-height: 44px;
+    border-bottom: 1px solid var(--tg-theme-secondary-bg-color, #eee);
+    background: var(--tg-theme-bg-color, #fff);
+  }
+  li.hidden { display: none; }
+  .handle, .del {
+    flex: none; width: 44px; height: 44px; border: 0; background: none;
+    color: var(--tg-theme-hint-color, #888); font-size: 20px; text-align: center; line-height: 44px;
+  }
+  .handle { cursor: grab; user-select: none; touch-action: none; }
+  .title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ghost { opacity: .4; }
+  #msg { color: var(--tg-theme-hint-color, #888); padding: 12px 0; }
+  #warn { color: #d33; min-height: 1.4em; margin: 8px 0; }
+  textarea {
+    width: 100%; min-height: 96px; margin-top: 12px; padding: 10px; font: inherit; resize: vertical;
+    background: var(--tg-theme-secondary-bg-color, #f2f2f2); color: inherit;
+    border: 0; border-radius: 8px;
+  }
+  .buttons { display: flex; gap: 8px; }
+  .buttons button {
+    flex: 1; min-height: 44px; border: 0; border-radius: 8px; font: inherit; font-weight: 600;
+    background: var(--tg-theme-secondary-bg-color, #f2f2f2); color: var(--tg-theme-text-color, #000);
+  }
+  .buttons button.primary {
+    background: var(--tg-theme-button-color, #2481cc); color: var(--tg-theme-button-text-color, #fff);
+  }
+</style>
+</head>
+<body>
+<p id="msg" hidden></p>
+<ul id="list"></ul>
+<textarea id="add" placeholder="유튜브 링크를 한 줄에 하나씩 붙여넣어요"></textarea>
+<div id="warn" role="alert"></div>
+<div class="buttons">
+  <button id="save">저장</button>
+  <button id="play" class="primary">▶ 재생</button>
+</div>
+<script>
+const MAX_LINKS = 10, MAX_BYTES = 4096;
+const tg = window.Telegram && window.Telegram.WebApp;
+const $ = (id) => document.getElementById(id);
+const list = $("list"), removed = [];
+
+try { tg && (tg.ready(), tg.expand()); } catch (e) {}
+
+function decodeItems(hash) {
+  const m = /^#d=([A-Za-z0-9_-]*)$/.exec(hash);
+  if (!m) throw new Error("no data");
+  let b64 = m[1].replace(/-/g, "+").replace(/_/g, "/");
+  while (b64.length % 4) b64 += "=";
+  const bin = atob(b64);
+  const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+  const items = JSON.parse(new TextDecoder().decode(bytes));
+  if (!Array.isArray(items) || !items.every((x) => x && Number.isInteger(x.i) && typeof x.t === "string")) {
+    throw new Error("bad data");
+  }
+  return items;
+}
+
+function showMsg(text) { $("msg").textContent = text; $("msg").hidden = !text; }
+
+function addRow(item) {
+  const li = document.createElement("li");
+  li.dataset.id = item.i;
+  const handle = document.createElement("span");
+  handle.className = "handle"; handle.textContent = "≡";
+  const title = document.createElement("span");
+  title.className = "title"; title.textContent = item.t;
+  const del = document.createElement("button");
+  del.className = "del"; del.textContent = "✕"; del.setAttribute("aria-label", "삭제");
+  del.addEventListener("click", () => {
+    li.classList.add("hidden");
+    removed.push(item.i);
+    if (!list.querySelector("li:not(.hidden)")) showMsg("아직 곡이 없어요. 링크나 음원을 보내주세요");
+  });
+  li.append(handle, title, del);
+  list.append(li);
+}
+
+try {
+  const items = decodeItems(location.hash);
+  items.forEach(addRow);
+  if (!items.length) showMsg("아직 곡이 없어요. 링크나 음원을 보내주세요");
+} catch (e) {
+  showMsg("목록을 불러오지 못했어요. 버튼을 다시 눌러주세요");
+}
+
+if (window.Sortable) Sortable.create(list, { handle: ".handle", animation: 150, ghostClass: "ghost" });
+
+function submit(play) {
+  const warn = (t) => { $("warn").textContent = t; };
+  warn("");
+  const add = $("add").value.split("\n").map((s) => s.trim()).filter(Boolean);
+  if (add.length > MAX_LINKS) return warn(`링크는 한 번에 ${MAX_LINKS}개까지 넣을 수 있어요`);
+  const order = [...list.querySelectorAll("li:not(.hidden)")].map((li) => Number(li.dataset.id));
+  const json = JSON.stringify({ v: 1, order, removed, add, play });
+  if (new TextEncoder().encode(json).length > MAX_BYTES) {
+    return warn("한 번에 보낼 내용이 너무 많아요. 링크나 삭제할 곡을 줄여주세요");
+  }
+  try {
+    if (tg && tg.sendData) tg.sendData(json);
+  } catch (e) {
+    warn("전송하지 못했어요. 다시 시도해주세요");
+  }
+}
+$("save").addEventListener("click", () => submit(false));
+$("play").addEventListener("click", () => submit(true));
+</script>
+</body>
+</html>
