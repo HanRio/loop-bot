@@ -14,116 +14,197 @@
     color: var(--tg-theme-text-color, #000);
     font: 16px/1.4 -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
   }
+  h2 { margin: 20px 0 4px; font-size: 14px; font-weight: 600; color: var(--tg-theme-section-header-text-color, var(--tg-theme-hint-color, #888)); }
   ul { list-style: none; margin: 0; padding: 0; }
   li {
-    display: flex; align-items: center; gap: 8px; min-height: 44px;
+    display: flex; align-items: center; gap: 4px; min-height: 44px;
     border-bottom: 1px solid var(--tg-theme-secondary-bg-color, #eee);
     background: var(--tg-theme-bg-color, #fff);
   }
-  li.hidden { display: none; }
-  .handle, .del {
-    flex: none; width: 44px; height: 44px; border: 0; background: none;
+  .icon {
+    flex: none; width: 44px; height: 44px; border: 0; background: none; padding: 0;
     color: var(--tg-theme-hint-color, #888); font-size: 20px; text-align: center; line-height: 44px;
   }
   .handle { cursor: grab; user-select: none; touch-action: none; }
   .title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ghost { opacity: .4; }
-  #msg { color: var(--tg-theme-hint-color, #888); padding: 12px 0; }
+  .empty { color: var(--tg-theme-hint-color, #888); padding: 12px 0; margin: 0; }
   #warn { color: #d33; min-height: 1.4em; margin: 8px 0; }
-  textarea {
-    width: 100%; min-height: 96px; margin-top: 12px; padding: 10px; font: inherit; resize: vertical;
+  select, input, textarea {
+    width: 100%; min-height: 44px; padding: 10px; font: inherit; margin-top: 8px;
     background: var(--tg-theme-secondary-bg-color, #f2f2f2); color: inherit;
     border: 0; border-radius: 8px;
   }
-  .buttons { display: flex; gap: 8px; }
+  textarea { min-height: 96px; resize: vertical; }
+  .buttons { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
   .buttons button {
     flex: 1; min-height: 44px; border: 0; border-radius: 8px; font: inherit; font-weight: 600;
     background: var(--tg-theme-secondary-bg-color, #f2f2f2); color: var(--tg-theme-text-color, #000);
   }
-  .buttons button.primary {
-    background: var(--tg-theme-button-color, #2481cc); color: var(--tg-theme-button-text-color, #fff);
-  }
+  .buttons button.primary { background: var(--tg-theme-button-color, #2481cc); color: var(--tg-theme-button-text-color, #fff); }
+  .buttons button.danger { color: #d33; flex-basis: 100%; }
+  button:disabled { opacity: .5; }
 </style>
 </head>
 <body>
-<p id="msg" hidden></p>
-<ul id="list"></ul>
-<textarea id="add" placeholder="유튜브 링크를 한 줄에 하나씩 붙여넣어요"></textarea>
-<div id="warn" role="alert"></div>
-<div class="buttons">
-  <button id="save">저장</button>
-  <button id="play" class="primary">▶ 재생</button>
-</div>
+<p id="fatal" class="empty" hidden></p>
+<main id="app" hidden>
+  <select id="picker" aria-label="플레이리스트 고르기"></select>
+  <input id="name" maxlength="20" placeholder="플레이리스트 이름" aria-label="플레이리스트 이름">
+  <h2>재생 순서</h2>
+  <ul id="queue"></ul>
+  <p id="queue-empty" class="empty" hidden>아직 곡이 없어요. 아래 라이브러리에서 넣어보세요</p>
+  <h2>라이브러리</h2>
+  <ul id="library"></ul>
+  <p id="library-empty" class="empty" hidden></p>
+  <h2>링크로 추가</h2>
+  <textarea id="add" placeholder="유튜브 링크를 한 줄에 하나씩 붙여넣어요" aria-label="유튜브 링크"></textarea>
+  <div id="warn" role="alert"></div>
+  <div class="buttons">
+    <button id="save">저장</button>
+    <button id="play" class="primary">▶ 재생</button>
+    <button id="remove" class="danger" hidden>목록 삭제</button>
+  </div>
+</main>
 <script>
-const MAX_LINKS = 10, MAX_BYTES = 4096;
-const tg = window.Telegram && window.Telegram.WebApp;
-const $ = (id) => document.getElementById(id);
-const list = $("list"), removed = [];
+// --- pure logic (extracted by node for testing) ---
+const MAX_LINKS = 10, MAX_BYTES = 4096, MAX_NAME = 20;
+const isId = (x) => Number.isSafeInteger(x) && x >= 0;
 
-try { tg && (tg.ready(), tg.expand()); } catch (e) {}
-
-function decodeItems(hash) {
+function decodeData(hash) {
   const d = new URLSearchParams(hash.slice(1)).get("d");
-  if (d === null || !/^[A-Za-z0-9_-]*$/.test(d)) throw new Error("no data");
+  if (!d || !/^[A-Za-z0-9_-]+$/.test(d)) throw new Error("no data");
   let b64 = d.replace(/-/g, "+").replace(/_/g, "/");
   while (b64.length % 4) b64 += "=";
-  const bin = atob(b64);
-  const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
-  const items = JSON.parse(new TextDecoder().decode(bytes));
-  if (!Array.isArray(items) || !items.every((x) => x && Number.isInteger(x.i) && typeof x.t === "string")) {
-    throw new Error("bad data");
-  }
-  return items;
+  const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  const o = JSON.parse(new TextDecoder().decode(bytes));
+  const ok = o && o.v === 2 && Array.isArray(o.lib) && Array.isArray(o.pls) && (o.a === null || isId(o.a)) &&
+    o.lib.every((x) => x && isId(x.i) && typeof x.t === "string") &&
+    o.pls.every((p) => p && isId(p.i) && typeof p.n === "string" && Array.isArray(p.t) && p.t.every(isId));
+  if (!ok) throw new Error("bad data");
+  return o;
 }
 
-function showMsg(text) { $("msg").textContent = text; $("msg").hidden = !text; }
-
-function addRow(item) {
-  const li = document.createElement("li");
-  li.dataset.id = item.i;
-  const handle = document.createElement("span");
-  handle.className = "handle"; handle.textContent = "≡";
-  const title = document.createElement("span");
-  title.className = "title"; title.textContent = item.t;
-  const del = document.createElement("button");
-  del.className = "del"; del.textContent = "✕"; del.setAttribute("aria-label", "삭제");
-  del.addEventListener("click", () => {
-    li.classList.add("hidden");
-    removed.push(item.i);
-    if (!list.querySelector("li:not(.hidden)")) showMsg("아직 곡이 없어요. 링크나 음원을 보내주세요");
+// state: {playlist: id|null, name, tracks: [ids], deleted: [ids], remove: bool}
+function buildPayload(state, linksText, play) {
+  const add = linksText.split("\n").map((s) => s.trim()).filter(Boolean);
+  if (add.length > MAX_LINKS) return { warn: `링크는 한 번에 ${MAX_LINKS}개까지 넣을 수 있어요` };
+  const name = [...state.name.trim()].slice(0, MAX_NAME).join("");
+  const json = JSON.stringify({
+    v: 2, playlist: state.playlist, name, tracks: state.tracks, delete_tracks: state.deleted,
+    delete_playlist: state.remove, add: state.remove ? [] : add, play: state.remove ? false : play,
   });
-  li.append(handle, title, del);
-  list.append(li);
-}
-
-try {
-  const items = decodeItems(location.hash);
-  items.forEach(addRow);
-  if (!items.length) showMsg("아직 곡이 없어요. 링크나 음원을 보내주세요");
-} catch (e) {
-  showMsg("목록을 불러오지 못했어요. 버튼을 다시 눌러주세요");
-}
-
-if (window.Sortable) Sortable.create(list, { handle: ".handle", animation: 150, ghostClass: "ghost" });
-
-function submit(play) {
-  const warn = (t) => { $("warn").textContent = t; };
-  warn("");
-  const add = $("add").value.split("\n").map((s) => s.trim()).filter(Boolean);
-  if (add.length > MAX_LINKS) return warn(`링크는 한 번에 ${MAX_LINKS}개까지 넣을 수 있어요`);
-  const order = [...list.querySelectorAll("li:not(.hidden)")].map((li) => Number(li.dataset.id));
-  const json = JSON.stringify({ v: 1, order, removed, add, play });
   if (new TextEncoder().encode(json).length > MAX_BYTES) {
-    return warn("한 번에 보낼 내용이 너무 많아요. 링크나 삭제할 곡을 줄여주세요");
+    return { warn: "한 번에 보낼 내용이 너무 많아요. 링크나 삭제할 곡을 줄여주세요" };
   }
-  try {
-    if (tg && tg.sendData) tg.sendData(json);
-  } catch (e) {
-    warn("전송하지 못했어요. 다시 시도해주세요");
-  }
+  return { json };
 }
-$("save").addEventListener("click", () => submit(false));
-$("play").addEventListener("click", () => submit(true));
+// --- end pure logic ---
+
+if (typeof document !== "undefined") (function () {
+  const tg = window.Telegram && window.Telegram.WebApp;
+  const $ = (id) => document.getElementById(id);
+  try { tg && (tg.ready(), tg.expand()); } catch (e) {}
+
+  let data;
+  try { data = decodeData(location.hash); } catch (e) {
+    $("fatal").textContent = "목록을 불러오지 못했어요. 버튼을 다시 눌러주세요";
+    $("fatal").hidden = false;
+    return;
+  }
+  $("app").hidden = false;
+
+  const titles = new Map(data.lib.map((x) => [x.i, x.t]));
+  const NEW = "new";
+  let cur = null;     // {playlist, name, tracks, deleted}
+  let sent = false;
+
+  function load(key) {
+    const p = key === NEW ? null : data.pls.find((x) => String(x.i) === key);
+    cur = { playlist: p ? p.i : null, name: p ? p.n : "", tracks: p ? p.t.filter((i) => titles.has(i)) : [], deleted: [], remove: false };
+    $("name").value = cur.name;
+    $("add").value = "";
+    $("warn").textContent = "";
+    $("remove").hidden = !p;
+    render();
+  }
+
+  function row(id, ctl) {
+    const li = document.createElement("li");
+    li.dataset.id = id;
+    const title = document.createElement("span");
+    title.className = "title"; title.textContent = titles.get(id);
+    li.append(...ctl(title));
+    return li;
+  }
+  function btn(text, label, cls, fn) {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = cls; b.textContent = text; b.setAttribute("aria-label", label);
+    b.addEventListener("click", fn);
+    return b;
+  }
+
+  function render() {
+    const inQueue = new Set(cur.tracks), gone = new Set(cur.deleted);
+    const queue = $("queue"), lib = $("library");
+    queue.replaceChildren(...cur.tracks.map((id) => row(id, (t) => {
+      const h = document.createElement("span");
+      h.className = "icon handle"; h.textContent = "≡";
+      return [h, t, btn("✕", "목록에서 빼기", "icon", () => { cur.tracks = cur.tracks.filter((x) => x !== id); render(); })];
+    })));
+    const rest = data.lib.filter((x) => !inQueue.has(x.i) && !gone.has(x.i));
+    lib.replaceChildren(...rest.map((x) => row(x.i, (t) => [
+      t,
+      btn("＋", "목록에 넣기", "icon", () => { cur.tracks = [...cur.tracks, x.i]; render(); }),
+      btn("🗑", "라이브러리에서 지우기", "icon", () => {
+        if (!confirm("라이브러리에서 지울까요? 모든 플레이리스트에서 빠져요")) return;
+        cur.deleted = [...cur.deleted, x.i]; render();
+      }),
+    ])));
+    $("queue-empty").hidden = cur.tracks.length > 0;
+    const libEmpty = $("library-empty");
+    libEmpty.hidden = rest.length > 0;
+    libEmpty.textContent = data.lib.length - gone.size === 0
+      ? "라이브러리가 비었어요. 링크나 음원을 보내주세요"
+      : "라이브러리의 곡이 모두 이 목록에 있어요";
+  }
+
+  const picker = $("picker");
+  for (const p of data.pls) picker.append(new Option(p.n, String(p.i)));
+  picker.append(new Option("+ 새 플레이리스트", NEW));
+  const start = data.pls.some((p) => p.i === data.a) ? String(data.a) : data.pls.length ? String(data.pls[0].i) : NEW;
+  picker.value = start;
+  picker.addEventListener("change", () => load(picker.value));
+  $("name").addEventListener("input", () => { cur.name = $("name").value; });
+
+  if (window.Sortable) {
+    Sortable.create($("queue"), {
+      handle: ".handle", animation: 150, ghostClass: "ghost",
+      onEnd: () => { cur.tracks = [...$("queue").children].map((li) => Number(li.dataset.id)); },
+    });
+  }
+
+  function submit(play, remove) {
+    $("warn").textContent = "";
+    const r = buildPayload({ ...cur, remove }, $("add").value, play);
+    if (r.warn) { $("warn").textContent = r.warn; return; }
+    if (!tg || !tg.sendData) { $("warn").textContent = "텔레그램 안에서 열어야 보낼 수 있어요"; return; }
+    try {
+      tg.sendData(r.json);
+      sent = true;
+      for (const id of ["save", "play", "remove"]) $(id).disabled = true;
+    } catch (e) {
+      $("warn").textContent = "전송하지 못했어요. 다시 시도해주세요";
+    }
+  }
+  $("save").addEventListener("click", () => submit(false, false));
+  $("play").addEventListener("click", () => submit(true, false));
+  $("remove").addEventListener("click", () => {
+    if (confirm("이 플레이리스트를 지울까요?")) submit(false, true);
+  });
+
+  load(start);
+})();
 </script>
 </body>
 </html>
