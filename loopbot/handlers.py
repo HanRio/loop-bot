@@ -239,6 +239,20 @@ async def on_unauthorized(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await update.effective_message.reply_text("사용 권한이 없어요")
 
 
+ERROR_TEXT = "잠시 문제가 생겼어요. 잠시 뒤 다시 시도해주세요"
+
+
+async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    logging.error("unhandled error", exc_info=context.error)
+    msg = getattr(update, "effective_message", None)
+    if msg is None:
+        return
+    try:
+        await msg.reply_text(ERROR_TEXT)
+    except Exception:
+        logging.exception("error notice failed")
+
+
 def build_app(cfg: Config, store: Store) -> Application:
     app = (
         Application.builder()
@@ -258,4 +272,5 @@ def build_app(cfg: Config, store: Store) -> Application:
     app.add_handler(MessageHandler(allowed & filters.UpdateType.MESSAGE & is_audio, on_audio))
     app.add_handler(MessageHandler(allowed & filters.UpdateType.MESSAGE & filters.TEXT & ~filters.COMMAND, on_text))
     app.add_handler(MessageHandler(filters.ALL & ~allowed, on_unauthorized))
+    app.add_error_handler(on_error)
     return app

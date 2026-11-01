@@ -88,3 +88,59 @@ def test_reply_falls_back_without_keyboard_on_bad_request(monkeypatch):
                              effective_user=SimpleNamespace(id=1))
     asyncio.run(handlers._reply(update, None, "hi"))
     assert calls == [{"reply_markup": "KB"}, {}]
+
+
+def _error_context(exc):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(error=exc)
+
+
+def test_on_error_replies_and_logs(caplog):
+    import asyncio
+    from types import SimpleNamespace
+
+    from loopbot import handlers
+
+    replies = []
+
+    async def reply_text(text, **kw):
+        replies.append(text)
+
+    update = SimpleNamespace(effective_message=SimpleNamespace(reply_text=reply_text))
+    asyncio.run(handlers.on_error(update, _error_context(RuntimeError("db down"))))
+    assert replies == ["잠시 문제가 생겼어요. 잠시 뒤 다시 시도해주세요"]
+    assert "db down" in caplog.text
+
+
+def test_on_error_swallows_failed_reply_and_handles_no_message(caplog):
+    import asyncio
+    from types import SimpleNamespace
+
+    from telegram.error import NetworkError
+
+    from loopbot import handlers
+
+    async def reply_text(text, **kw):
+        raise NetworkError("offline")
+
+    update = SimpleNamespace(effective_message=SimpleNamespace(reply_text=reply_text))
+    asyncio.run(handlers.on_error(update, _error_context(RuntimeError("boom"))))
+    assert "offline" in caplog.text
+    asyncio.run(handlers.on_error(None, _error_context(RuntimeError("boom"))))
+    asyncio.run(handlers.on_error(SimpleNamespace(effective_message=None), _error_context(RuntimeError("boom"))))
+
+
+def _app():
+    from types import SimpleNamespace
+
+    from loopbot.handlers import build_app
+
+    cfg = SimpleNamespace(bot_token="123:abc", allowed_user_ids=frozenset({1}))
+    return build_app(cfg, store=None)
+
+
+def test_build_app_registers_error_handler():
+    from loopbot import handlers
+
+    assert handlers.on_error in _app().error_handlers
