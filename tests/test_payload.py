@@ -75,6 +75,11 @@ def test_parse_action_rejects_too_many_links():
     with pytest.raises(PayloadError, match="10개"):
         parse_action(_raw(add=[f"https://youtu.be/{i}" for i in range(11)]))
 
-def test_parse_action_rejects_non_youtube_link():
-    with pytest.raises(PayloadError, match="유튜브"):
-        parse_action(_raw(add=["https://evil.com"]))
+def test_parse_action_drops_non_youtube_lines_and_splits_glued_links():
+    add = ["https://evil.com", "https://youtu.be/a,https://youtu.be/b", "memo", "https://youtu.be/a"]
+    assert parse_action(_raw(add=add)).add == ("https://youtu.be/a", "https://youtu.be/b")
+
+def test_parse_action_caps_links_after_extraction():
+    with pytest.raises(PayloadError, match="10개"):
+        parse_action(_raw(add=[",".join(f"https://youtu.be/{i}" for i in range(11))]))
+    assert parse_action(_raw(add=["https://evil.com"] * 20)).add == ()

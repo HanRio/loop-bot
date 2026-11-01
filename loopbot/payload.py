@@ -21,7 +21,6 @@ _URL_TOKEN = re.compile(r"https?://.+?(?=https?://|[\s,]|$)")
 
 _MSG_MALFORMED = "목록이 바뀌었어요. 버튼을 다시 눌러주세요"
 _MSG_TOO_MANY = f"링크는 한 번에 {MAX_LINKS}개까지 넣을 수 있어요"
-_MSG_NOT_YOUTUBE = "유튜브 링크나 음원 파일만 받을 수 있어요"
 
 
 class PayloadError(ValueError):
@@ -119,11 +118,9 @@ def parse_action(raw: str) -> WebAppAction:
     playlist = data.get("playlist")
     if playlist is not None and not _is_id(playlist):
         raise PayloadError(_MSG_MALFORMED)
-    add = _str_list(data, "add")
+    add = tuple(extract_youtube_urls("\n".join(_str_list(data, "add"))))
     if len(add) > MAX_LINKS:
         raise PayloadError(_MSG_TOO_MANY)
-    if not all(is_youtube_url(u) for u in add):
-        raise PayloadError(_MSG_NOT_YOUTUBE)
     return WebAppAction(
         playlist=playlist,
         name=_name(data),
