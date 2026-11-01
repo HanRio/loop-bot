@@ -50,6 +50,7 @@ def fetch_audio(url: str, workdir: Path, cookies: str | None) -> Audio:
         "outtmpl": str(workdir / "%(id)s.%(ext)s"),
         "noplaylist": True,
         "quiet": True,
+        "noprogress": True,
     }
     if cookies:
         opts["cookiefile"] = cookies
