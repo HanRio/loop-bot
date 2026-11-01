@@ -17,7 +17,7 @@ def _sqlite(tmp_path):
 def _postgres(tmp_path):
     from loopbot.store.postgres import PostgresStore
 
-    store = PostgresStore(os.environ[PG_ENV])
+    store = PostgresStore(os.environ[PG_ENV], schema="loopbot_test")
     if hasattr(store, "reset"):
         store.reset()
     return store
@@ -206,3 +206,29 @@ def test_open_store_defaults_to_sqlite(tmp_path):
     store = open_store(cfg)
     assert isinstance(store, SqliteStore)
     store.close()
+
+
+needs_pg = pytest.mark.skipif(not os.environ.get(PG_ENV), reason=f"{PG_ENV} not set")
+
+
+@needs_pg
+def test_postgres_reconnects_once_after_connection_drop(tmp_path):
+    store = _postgres(tmp_path)
+    try:
+        [a] = _add(store, 1, "A")
+        store._conn.close()
+        assert [t.id for t in store.library(1)] == [a]
+        store._conn.close()
+        [b] = _add(store, 1, "B")
+        assert [t.id for t in store.library(1)] == [a, b]
+        assert store.active_playlist(1).track_ids == (a, b)
+    finally:
+        store.close()
+
+
+def test_postgres_rejects_bad_schema_name():
+    from loopbot.store.postgres import PostgresStore
+
+    for bad in ("Loopbot", "x; drop table tracks", "1abc", "", "a-b"):
+        with pytest.raises(ValueError):
+            PostgresStore("postgresql://unused", schema=bad)
