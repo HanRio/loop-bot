@@ -83,3 +83,9 @@ def test_parse_action_caps_links_after_extraction():
     with pytest.raises(PayloadError, match="10개"):
         parse_action(_raw(add=[",".join(f"https://youtu.be/{i}" for i in range(11))]))
     assert parse_action(_raw(add=["https://evil.com"] * 20)).add == ()
+
+def test_build_webapp_url_warns_when_still_too_long(caplog):
+    lib = [_track(i, "x") for i in range(1, 1001)]
+    url = build_webapp_url("https://x.io/app/", lib, [Playlist(1, 1, "기본", ())], 1)
+    assert len(url) > MAX_URL_LEN
+    assert str(len(url)) in caplog.text and "1000" in caplog.text

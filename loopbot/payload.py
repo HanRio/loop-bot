@@ -1,5 +1,6 @@
 import base64
 import json
+import logging
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -61,6 +62,8 @@ def build_webapp_url(base: str, library: Sequence[Track], playlists: Sequence[Pl
         url = f"{base}#d={encoded}"
         if len(url) <= MAX_URL_LEN:
             break
+    if len(url) > MAX_URL_LEN:
+        logging.warning("webapp url is %d chars (limit %d) even without titles; %d tracks", len(url), MAX_URL_LEN, len(library))
     return url
 
 
