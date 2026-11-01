@@ -49,9 +49,11 @@
   - `저장` 버튼 / `▶ 재생` 버튼 → 아래 payload를 `sendData`로 보내고 닫힘
 - payload:
   ```json
-  {"v": 1, "order": [3, 1, 2], "add": ["https://youtu.be/..."], "play": true}
+  {"v":1,"order":[3,1,2],"removed":[5],"add":["https://..."],"play":true}
   ```
-  - `order`에 없는 기존 id는 삭제로 처리.
+  - `removed`의 id 중 내 곡은 삭제한다.
+  - 남은 곡은 `order`에 있는 순서대로 먼저 두고, `order`에 없는 곡(미니앱을 연 뒤 추가된 곡)은 기존 상대 순서를 유지해 맨 뒤에 둔다.
+  - 내 것이 아니거나 이미 없는 id는 조용히 무시한다.
   - 처리 순서: 순서/삭제 반영 → `add` 다운로드 큐에 추가 → `play`면 재생.
   - `play`와 `add`가 같이 오면 기존 목록을 먼저 재생하고, 새 곡은 다운로드되는 대로 "✅ 추가됨"으로 온다.
 
@@ -85,7 +87,7 @@ CREATE INDEX idx_tracks_user ON tracks(user_id, position);
 ## 입력 검증·제약
 
 - **접근 제한**: `.env`의 `ALLOWED_USER_IDS`(쉼표 구분)에 없는 사용자는 "사용 권한이 없어요" 응답 후 무시.
-- **payload 검증**: JSON 파싱 실패, `v != 1`, `order`가 정수 배열이 아님, `order`에 내 것이 아닌 id 포함, 중복 id → 전부 거부하고 "목록이 바뀌었어요. 버튼을 다시 눌러주세요" 안내(갱신된 키보드 첨부).
+- **payload 검증**: JSON 파싱 실패, `v != 1`, `order`·`removed`가 정수 배열이 아님, 링크 11개 이상, 유튜브 링크가 아닌 링크 → 전부 거부하고 "목록이 바뀌었어요. 버튼을 다시 눌러주세요" 안내(갱신된 키보드 첨부).
 - **링크 검증**: 호스트가 `youtube.com`, `www.youtube.com`, `m.youtube.com`, `music.youtube.com`, `youtu.be` 중 하나인 http(s) URL만. 한 번에 최대 10개.
 - **길이·용량**: yt-dlp 메타데이터로 길이 60분 초과면 다운로드 전 거부. 결과 파일이 49MB 초과면 거부(봇 업로드 한도 50MB).
 - **유튜브 차단 대비**: `.env`의 `YTDLP_COOKIES`에 cookies.txt 경로가 있으면 yt-dlp에 전달.
