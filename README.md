@@ -48,7 +48,20 @@ python -m loopbot
 
 기본은 SQLite(`DB_PATH`)예요. 예전 버전의 DB는 처음 실행할 때 한 번 옮겨지고, 그동안의 곡은 `기본` 플레이리스트에 같은 순서로 들어가요.
 
-`DATABASE_URL`을 넣으면 Supabase(Postgres)에 저장해요. 봇을 다른 컴퓨터로 옮겨도 라이브러리와 플레이리스트가 그대로 남아요. 다운로드는 여전히 봇이 도는 컴퓨터에서 해요.
+`DATABASE_URL`을 넣으면 Supabase(Postgres)에 저장해요. 봇을 다른 컴퓨터로 옮겨도 라이브러리와 플레이리스트가 그대로 남아요. 다운로드는 여전히 봇이 도는 컴퓨터에서 해요. Supabase에서는 yt-dlp를 돌릴 수 없어서 봇 자체를 대신할 수는 없어요.
+
+### Supabase 구성
+
+- 무료 요금제의 활성 프로젝트 한도 때문에 개인 도구용 `haru` 프로젝트 안에 넣었어요.
+- 다른 앱과는 이렇게 분리돼요:
+  - 전용 스키마 `loopbot` (테스트용 `loopbot_test`)
+  - 전용 로그인 역할 `loopbot_app`. 이 두 스키마에만 권한이 있어요.
+  - 모든 테이블에 RLS를 켜고, 정책은 `loopbot_app`에만 줬어요.
+  - API(PostgREST)에 노출되지 않는 스키마라 anon 키로는 보이지 않아요.
+- 스키마는 [`supabase/migrations/001_loopbot_schema.sql`](supabase/migrations/001_loopbot_schema.sql)이에요.
+- 접속 주소는 세션 모드 풀러(포트 5432)를 써요. 형식은 `postgresql://loopbot_app.<프로젝트 ref>:<비밀번호>@aws-0-ap-northeast-1.pooler.supabase.com:5432/postgres`예요. 트랜잭션 모드(6543)에서는 동작하지 않아요.
+- SQLite 데이터를 옮길 때는 `python -m scripts.sqlite_to_postgres data/loopbot.db DATABASE_URL loopbot`을 실행해요. 대상에 이미 곡이 있으면 실행을 거부해요.
+- 실제 DB로 테스트하려면 `.env`에 `LOOPBOT_TEST_DATABASE_URL`을 넣고 `set -a; . ./.env; set +a; pytest`를 실행해요. 테스트는 `loopbot_test` 스키마만 써요.
 
 ## 제한
 
