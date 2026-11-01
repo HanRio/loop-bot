@@ -71,7 +71,12 @@ async def play(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         try:
             await _send_with_retry(lambda: context.bot.send_audio(chat_id, audio=track.file_id))
         except TelegramError:
-            await context.bot.send_message(chat_id, f"❌ 재생 실패: {track.title}")
+            try:
+                await _send_with_retry(
+                    lambda: context.bot.send_message(chat_id, f"❌ 재생 실패: {track.title}")
+                )
+            except TelegramError:
+                logging.exception("failed to send playback failure notice: %s", track.title)
 
 
 async def add_url(update: Update, context: ContextTypes.DEFAULT_TYPE, url: str) -> None:
@@ -84,11 +89,13 @@ async def add_url(update: Update, context: ContextTypes.DEFAULT_TYPE, url: str) 
             with tempfile.TemporaryDirectory() as tmp:
                 audio = await asyncio.to_thread(fetch_audio, url, Path(tmp), cfg.ytdlp_cookies)
                 with open(audio.path, "rb") as f:
-                    sent = await _send_with_retry(
-                        lambda: msg.reply_audio(
+                    async def upload():
+                        f.seek(0)  # a RetryAfter retry must re-read from the start
+                        return await msg.reply_audio(
                             f, title=audio.title, performer=audio.performer, duration=audio.duration
                         )
-                    )
+
+                    sent = await _send_with_retry(upload)
         title = title_for_audio(audio.title, audio.performer, None)
         context.bot_data["repo"].add(user_id, title, sent.audio.file_id, audio.duration, url)
     except FetchError as e:
@@ -119,7 +126,7 @@ async def on_audio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         getattr(media, "title", None), getattr(media, "performer", None), media.file_name
     )
     duration = getattr(media, "duration", None)
-    context.bot_data["repo"].add(update.effective_user.id, title, media.file_id, duration, "upload")
+    context.bot_data["repo"].add(update.effective_user.id, title, media.file_id, duration, None)
     await _reply(update, context, f"✅ 추가됨: {title}")
 
 
@@ -157,7 +164,7 @@ def build_app(cfg: Config, repo: TrackRepo) -> Application:
     app.add_handler(CommandHandler("list", list_tracks, filters=allowed))
     app.add_handler(CommandHandler("play", play, filters=allowed))
     app.add_handler(MessageHandler(allowed & filters.StatusUpdate.WEB_APP_DATA, on_web_app_data))
-    app.add_handler(MessageHandler(allowed & is_audio, on_audio))
-    app.add_handler(MessageHandler(allowed & filters.TEXT & ~filters.COMMAND, on_text))
+    app.add_handler(MessageHandler(allowed & filters.UpdateType.MESSAGE & is_audio, on_audio))
+    app.add_handler(MessageHandler(allowed & filters.UpdateType.MESSAGE & filters.TEXT & ~filters.COMMAND, on_text))
     app.add_handler(MessageHandler(filters.ALL & ~allowed, on_unauthorized))
     return app
