@@ -8,6 +8,8 @@ def test_load_config_parses_ids_and_defaults():
     assert cfg.allowed_user_ids == frozenset({1, 2})
     assert cfg.db_path == "data/loopbot.db"
     assert cfg.ytdlp_cookies is None
+    assert cfg.database_url is None
+    assert load_config({**BASE, "DATABASE_URL": "postgresql://u@h/db"}).database_url == "postgresql://u@h/db"
 
 def test_load_config_reports_all_missing():
     with pytest.raises(ValueError, match="BOT_TOKEN.*WEBAPP_URL"):

@@ -12,6 +12,7 @@ class Config:
     webapp_url: str
     ytdlp_cookies: str | None
     db_path: str
+    database_url: str | None
 
 
 def load_config(env: Mapping[str, str]) -> Config:
@@ -27,4 +28,5 @@ def load_config(env: Mapping[str, str]) -> Config:
         webapp_url=env["WEBAPP_URL"],
         ytdlp_cookies=env.get("YTDLP_COOKIES") or None,
         db_path=env.get("DB_PATH") or DEFAULT_DB_PATH,
+        database_url=env.get("DATABASE_URL") or None,
     )
