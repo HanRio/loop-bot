@@ -5,7 +5,7 @@ from datetime import timedelta
 from pathlib import Path
 
 from telegram import KeyboardButton, ReplyKeyboardMarkup, Update, WebAppInfo
-from telegram.error import RetryAfter, TelegramError
+from telegram.error import BadRequest, RetryAfter, TelegramError
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
 from loopbot.config import Config
@@ -16,6 +16,7 @@ from loopbot.youtube import FetchError, fetch_audio
 PLAY_GAP_SECONDS = 0.5
 EMPTY_TEXT = "아직 곡이 없어요. 링크나 음원을 보내주세요"
 NO_TITLE = "제목 없음"
+NOT_AUDIO_TEXT = "음원 파일로 보내주세요 (mp3·m4a)"
 
 
 def title_for_audio(title: str | None, performer: str | None, file_name: str | None) -> str:
@@ -37,7 +38,12 @@ def _keyboard(context: ContextTypes.DEFAULT_TYPE, user_id: int) -> ReplyKeyboard
 
 async def _reply(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str) -> None:
     """Reply with the up-to-date playlist keyboard attached."""
-    await update.effective_message.reply_text(text, reply_markup=_keyboard(context, update.effective_user.id))
+    msg = update.effective_message
+    try:
+        await msg.reply_text(text, reply_markup=_keyboard(context, update.effective_user.id))
+    except BadRequest:
+        logging.exception("reply with keyboard rejected; resending without it")
+        await msg.reply_text(text)
 
 
 async def _send_with_retry(send):
@@ -121,7 +127,10 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def on_audio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     msg = update.effective_message
-    media = msg.audio or msg.document
+    media = msg.audio
+    if media is None:
+        await msg.reply_text(NOT_AUDIO_TEXT)
+        return
     title = title_for_audio(
         getattr(media, "title", None), getattr(media, "performer", None), media.file_name
     )
@@ -160,9 +169,10 @@ def build_app(cfg: Config, repo: TrackRepo) -> Application:
     app.bot_data.update(cfg=cfg, repo=repo, lock=asyncio.Lock())
     allowed = filters.User(user_id=cfg.allowed_user_ids)
     is_audio = filters.AUDIO | filters.Document.Category("audio/")
-    app.add_handler(CommandHandler("start", start, filters=allowed))
-    app.add_handler(CommandHandler("list", list_tracks, filters=allowed))
-    app.add_handler(CommandHandler("play", play, filters=allowed))
+    commands = allowed & filters.UpdateType.MESSAGE
+    app.add_handler(CommandHandler("start", start, filters=commands))
+    app.add_handler(CommandHandler("list", list_tracks, filters=commands))
+    app.add_handler(CommandHandler("play", play, filters=commands))
     app.add_handler(MessageHandler(allowed & filters.StatusUpdate.WEB_APP_DATA, on_web_app_data))
     app.add_handler(MessageHandler(allowed & filters.UpdateType.MESSAGE & is_audio, on_audio))
     app.add_handler(MessageHandler(allowed & filters.UpdateType.MESSAGE & filters.TEXT & ~filters.COMMAND, on_text))

@@ -8,6 +8,8 @@ from loopbot.db import Track
 
 MAX_LINKS = 10
 TITLE_MAX = 40
+MAX_URL_LEN = 4096
+_TITLE_STEPS = (TITLE_MAX, 20, 8, 0)
 INT64_MAX = 2**63 - 1
 
 _YOUTUBE_HOSTS = frozenset({"youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"})
@@ -44,10 +46,14 @@ def extract_youtube_urls(text: str) -> list[str]:
 
 
 def build_webapp_url(base: str, tracks: Sequence[Track]) -> str:
-    items = [{"i": t.id, "t": t.title[:TITLE_MAX]} for t in tracks]
-    raw = json.dumps(items, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
-    encoded = base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
-    return f"{base}#d={encoded}"
+    for limit in _TITLE_STEPS:
+        items = [{"i": t.id, "t": t.title[:limit]} for t in tracks]
+        raw = json.dumps(items, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+        encoded = base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+        url = f"{base}#d={encoded}"
+        if len(url) <= MAX_URL_LEN:
+            break
+    return url
 
 
 def _is_int(value: object) -> bool:

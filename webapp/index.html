@@ -63,9 +63,9 @@ const list = $("list"), removed = [];
 try { tg && (tg.ready(), tg.expand()); } catch (e) {}
 
 function decodeItems(hash) {
-  const m = /^#d=([A-Za-z0-9_-]*)$/.exec(hash);
-  if (!m) throw new Error("no data");
-  let b64 = m[1].replace(/-/g, "+").replace(/_/g, "/");
+  const d = new URLSearchParams(hash.slice(1)).get("d");
+  if (d === null || !/^[A-Za-z0-9_-]*$/.test(d)) throw new Error("no data");
+  let b64 = d.replace(/-/g, "+").replace(/_/g, "/");
   while (b64.length % 4) b64 += "=";
   const bin = atob(b64);
   const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));

@@ -51,3 +51,14 @@ def test_parse_action_rejects_too_many_links():
 def test_parse_action_rejects_non_youtube_link():
     with pytest.raises(PayloadError, match="유튜브"):
         parse_action('{"v":1,"add":["https://evil.com"]}')
+
+def _decode(url):
+    enc = url.split("#d=", 1)[1]
+    return json.loads(base64.urlsafe_b64decode(enc + "=" * (-len(enc) % 4)).decode())
+
+def test_build_webapp_url_shrinks_titles_for_long_lists():
+    from loopbot.payload import MAX_URL_LEN
+    tracks = [Track(i, 1, i, "가" * 40, "f", None, None) for i in range(1, 101)]
+    url = build_webapp_url("https://x.io/app/", tracks)
+    assert len(url) <= MAX_URL_LEN
+    assert [x["i"] for x in _decode(url)] == list(range(1, 101))
