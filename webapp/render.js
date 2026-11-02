@@ -1,6 +1,7 @@
 // 화면 그리기만 한다. 상태 계산과 저장은 app.js가 한다. 글자는 모두 textContent로 넣는다.
+import { COPY } from './copy.js';
 
-export const $ = (id) => document.getElementById(id);
+export const $ =(id) => document.getElementById(id);
 const REPEAT_LABEL = { all: '전체 반복', one: '한 곡 반복', off: '반복 끔' };
 
 function el(tag, className, text) {
@@ -107,16 +108,17 @@ export function renderLibrary(library, inQueue, handlers) {
   $('library-empty').hidden = library.length > 0;
 }
 
-export function renderBar({ title, position, duration, playing, repeat }) {
+export function renderBar({ title, position, duration, playing, repeat, loading }) {
   $('now').textContent = title;
   const seek = $('seek');
   seek.max = String(duration);
   seek.value = String(position);
   seek.style.setProperty('--progress', `${duration > 0 ? (position / duration) * 100 : 0}%`);
-  $('time').textContent = `${formatTime(position)} / ${formatTime(duration)}`;
+  $('time').textContent = loading ? COPY.downloading : `${formatTime(position)} / ${formatTime(duration)}`;
   const toggle = $('toggle');
   toggle.setAttribute('aria-label', playing ? '일시정지' : '재생');
   toggle.setAttribute('aria-pressed', String(playing));
+  toggle.setAttribute('aria-busy', String(loading));
   const repeatButton = $('repeat');
   repeatButton.dataset.mode = repeat;
   repeatButton.setAttribute('aria-label', REPEAT_LABEL[repeat]);

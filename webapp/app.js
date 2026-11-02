@@ -116,7 +116,7 @@ const viewedShared = () => !viewedPlaylist() && Boolean(viewedAny());
 // 공유 목록은 가사집으로, 내 목록은 목록으로 연다.
 const modeFor = (id) => (isOwnId(id) ? 'list' : 'lyrics');
 const queueIds = () => [...$('queue').children].map((li) => Number(li.dataset.id));
-const barState = () => ({ title: playback.currentTitle, position: player?.position() ?? 0, duration: player?.duration() ?? 0, playing: player?.isPlaying() ?? false, repeat: playback.repeat });
+const barState = () => ({ title: playback.currentTitle, position: player?.position() ?? 0, duration: player?.duration() ?? 0, playing: player?.isPlaying() ?? false, loading: player?.isLoading?.() ?? false, repeat: playback.repeat });
 
 function lyricsState() {
   return {

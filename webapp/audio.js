@@ -1,6 +1,8 @@
 // 재생 한 곳. <audio> 하나를 계속 쓰고 src만 바꾼다. 화면이 꺼진 상태에서도 다음 곡으로 넘어가야 하기 때문이다.
 
 export const CACHE_NAME = 'loopbot-tracks';
+// 금방 끝나는 받기(캐시된 곡)는 표시하지 않아 깜빡이지 않게 한다.
+const LOADING_DELAY_MS = 200;
 const cacheKey = (id) => `track-${id}`;
 
 async function openCache() {
@@ -32,6 +34,16 @@ export function createPlayer({
   // 곡을 누를 때마다 번호를 올린다. 받는 중에 다른 곡이 눌렸으면 옛 요청은 버린다.
   let token = 0;
   let blobUrl = null;
+  let loading = false;
+  let loadingTimer = null;
+
+  function setLoading(value) {
+    clearTimeout(loadingTimer);
+    if (loading !== value) {
+      loading = value;
+      onChange();
+    }
+  }
 
   async function fetchBlob(id) {
     const cache = await openCache();
@@ -105,14 +117,20 @@ export function createPlayer({
   // true면 재생을 시작했거나 탭을 기다리는 중이다. false면 버렸거나 실패했다(실패는 onError로 알린다).
   async function play(track) {
     const mine = ++token;
+    clearTimeout(loadingTimer);
+    loadingTimer = setTimeout(() => setLoading(true), LOADING_DELAY_MS);
     let blob;
     try {
       blob = await getBlob(track.id);
     } catch (err) {
-      if (mine === token) onError(err);
+      if (mine === token) {
+        setLoading(false);
+        onError(err);
+      }
       return false;
     }
     if (mine !== token) return false;
+    setLoading(false);
 
     const previous = blobUrl;
     blobUrl = URL.createObjectURL(blob);
@@ -157,6 +175,7 @@ export function createPlayer({
     // 받는 중인 곡이 있으면 버린다. 멈춘 뒤에 늦게 도착한 곡이 재생되지 않게 한다.
     cancel() {
       token += 1;
+      setLoading(false);
     },
     toggle() {
       if (audio.paused) return resume();
@@ -169,5 +188,6 @@ export function createPlayer({
     position: () => audio.currentTime,
     duration: () => (Number.isFinite(audio.duration) ? audio.duration : 0),
     isPlaying: () => !audio.paused,
+    isLoading: () => loading,
   };
 }

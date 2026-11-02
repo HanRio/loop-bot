@@ -15,6 +15,7 @@ export const COPY = {
   emptyLyrics: '곡을 넣으면 가사집이 보여요',
   note: '느낀점',
   saving: '저장 중',
+  downloading: '받는 중…',
   saved: '저장됨',
   copy: '복사',
   copied: '복사됨',

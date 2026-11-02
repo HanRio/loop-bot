@@ -306,6 +306,7 @@ export function createLyrics({ api, getState, onPlay, onError, onMediaChange, on
   async function loadSheet(card) {
     if (card.loaded || card.loading) return;
     card.loading = true;
+    card.sheet.classList.add('is-loading');
     card.retry.hidden = true;
     setError(card, '');
     try {
@@ -323,6 +324,7 @@ export function createLyrics({ api, getState, onPlay, onError, onMediaChange, on
       }
     } finally {
       card.loading = false;
+      card.sheet.classList.remove('is-loading');
     }
   }
 

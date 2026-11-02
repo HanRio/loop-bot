@@ -5,6 +5,7 @@ import { ApiError } from './api.js';
 
 const params = new URLSearchParams(location.search);
 const FAIL = params.get('fail');
+const SLOW = Number(params.get('slow')) || 0;
 const MEMBER = params.get('role') === 'member';
 const TOO_BIG_ID = 2;
 const AUDIO_URL = './fake-audio.mp3';
@@ -117,6 +118,7 @@ export function createApi() {
       return { id, shared };
     },
     async file(id) {
+      if (SLOW) await new Promise((resolve) => setTimeout(resolve, SLOW));
       if (FAIL === 'expired') throw new ApiError('expired', 401);
       if (FAIL === 'too_big' && id === TOO_BIG_ID) throw new ApiError('too_big', 413);
       const res = await fetch(AUDIO_URL);
@@ -124,6 +126,7 @@ export function createApi() {
       return res.blob();
     },
     async sheet() {
+      if (SLOW) await new Promise((resolve) => setTimeout(resolve, SLOW));
       const res = await fetch(SHEET_URL);
       if (!res.ok) throw new ApiError('upstream', res.status);
       return res.blob();
