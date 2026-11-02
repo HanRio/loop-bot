@@ -101,9 +101,14 @@ async function trackFile(userId: number, id: number, deps: Deps): Promise<Respon
 
   const download = await deps.fetch(`${TELEGRAM_API}/file/bot${deps.botToken}/${info.result!.file_path}`);
   if (!download.ok || !download.body) throw new Error(`download failed: ${download.status}`);
-  return new Response(download.body, {
-    headers: { ...CORS_HEADERS, "content-type": download.headers.get("content-type") ?? "application/octet-stream" },
-  });
+  const headers: Record<string, string> = {
+    ...CORS_HEADERS,
+    "content-type": "audio/mp4",
+    "cache-control": "private, max-age=31536000",
+  };
+  const length = download.headers.get("content-length");
+  if (length !== null) headers["content-length"] = length;
+  return new Response(download.body, { headers });
 }
 
 async function route(req: Request, deps: Deps, userId: number): Promise<Response> {

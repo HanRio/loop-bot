@@ -266,15 +266,77 @@ dbTest("GET /tracks/:id/file streams the Telegram bytes", async (ctx) => {
     if (url.includes("/getFile")) {
       return Response.json({ ok: true, result: { file_path: "music/song.mp3" } });
     }
-    return new Response("AUDIO", { headers: { "content-type": "audio/mpeg" } });
+    return new Response("AUDIO", { headers: { "content-type": "audio/mpeg", "content-length": "5" } });
   }) as typeof fetch;
 
   const res = await call(ctx, "GET", `/tracks/${t}/file`, { deps: depsWith(ctx.db, { fetch: fetchStub }) });
 
   assertEquals(res.status, 200);
   assertEquals(await res.text(), "AUDIO");
-  assertEquals(res.headers.get("content-type"), "audio/mpeg");
+  assertEquals(res.headers.get("content-type"), "audio/mp4");
+  assertEquals(res.headers.get("cache-control"), "private, max-age=31536000");
+  assertEquals(res.headers.get("content-length"), "5");
+  assertEquals(res.headers.get("access-control-allow-origin"), "https://hanrio.github.io");
   assertEquals(requested.length, 2);
+});
+
+dbTest("GET /tracks/:id/file answers 502 upstream when getFile fails for another reason", async (ctx) => {
+  const t = await insertTrack(ctx, ALLOWED_USER, "bad");
+  const requested: string[] = [];
+  const fetchStub = (async (input: string | URL | Request) => {
+    requested.push(String(input));
+    return Response.json({ ok: false, error_code: 400, description: "Bad Request: wrong file_id" });
+  }) as typeof fetch;
+  const originalError = console.error;
+  console.error = () => {};
+  try {
+    const res = await call(ctx, "GET", `/tracks/${t}/file`, { deps: depsWith(ctx.db, { fetch: fetchStub }) });
+
+    assertEquals(res.status, 502);
+    assertEquals(await res.json(), { error: "upstream" });
+  } finally {
+    console.error = originalError;
+  }
+  assertEquals(requested.length, 1);
+});
+
+dbTest("GET /tracks/:id/file answers 404 for another user's track without calling Telegram", async (ctx) => {
+  const theirs = await insertTrack(ctx, OTHER_USER, "theirs");
+  const requested: string[] = [];
+  const fetchStub = (async (input: string | URL | Request) => {
+    requested.push(String(input));
+    return Response.json({ ok: true, result: { file_path: "music/x.mp3" } });
+  }) as typeof fetch;
+
+  const res = await call(ctx, "GET", `/tracks/${theirs}/file`, { deps: depsWith(ctx.db, { fetch: fetchStub }) });
+
+  assertEquals(res.status, 404);
+  assertEquals(await res.json(), { error: "not_found" });
+  assertEquals(requested.length, 0);
+});
+
+dbTest("GET /tracks/:id/file error responses never contain the bot token", async (ctx) => {
+  const t = await insertTrack(ctx, ALLOWED_USER, "err");
+  const failures: typeof fetch[] = [
+    (async () => Response.json({ ok: false, description: "Bad Request: file is too big" })) as typeof fetch,
+    (async () => Response.json({ ok: false, description: "Bad Request: wrong file_id" })) as typeof fetch,
+    (async () => new Response("gone", { status: 404 })) as typeof fetch,
+    (async (input: string | URL | Request) => {
+      throw new Error(`error sending request for url (${String(input)})`);
+    }) as typeof fetch,
+  ];
+  const originalError = console.error;
+  console.error = () => {};
+  try {
+    for (const fetchStub of failures) {
+      const res = await call(ctx, "GET", `/tracks/${t}/file`, { deps: depsWith(ctx.db, { fetch: fetchStub }) });
+
+      assertEquals(res.status >= 400, true);
+      assertEquals((await res.text()).includes(BOT_TOKEN), false);
+    }
+  } finally {
+    console.error = originalError;
+  }
 });
 
 dbTest("GET /tracks/:id/file answers 413 too_big when Telegram rejects the size", async (ctx) => {
