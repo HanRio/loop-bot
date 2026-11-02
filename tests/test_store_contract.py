@@ -104,3 +104,45 @@ def test_open_store_builds_postgres_store_from_database_url(monkeypatch):
                        "DATABASE_URL": "postgresql://u@h/db"})
     assert open_store(cfg) == "STORE"
     assert made == ["postgresql://u@h/db"]
+
+
+def _make_playlist(store, user_id, name):
+    def work(cur):
+        cur.execute("INSERT INTO playlists (user_id, name) VALUES (%s, %s) RETURNING id", (user_id, name))
+        return cur.fetchone()[0]
+
+    return store._run(work)
+
+
+def _share(store, playlist_id):
+    store._run(lambda cur: cur.execute("UPDATE playlists SET shared = true WHERE id = %s", (playlist_id,)))
+
+
+def test_playable_playlists_lists_own_then_shared_and_hides_unshared(store):
+    mine = _make_playlist(store, 1, "mine")
+    mine_shared = _make_playlist(store, 1, "mine shared")
+    _share(store, mine_shared)
+    other_hidden = _make_playlist(store, 2, "hidden")
+    other_shared = _make_playlist(store, 2, "other shared")
+    _share(store, other_shared)
+    assert [p.id for p in store.playable_playlists(1)] == [mine, mine_shared, other_shared]
+    assert [p.id for p in store.playable_playlists(2)] == [other_hidden, other_shared, mine_shared]
+    assert other_hidden not in [p.id for p in store.playable_playlists(1)]
+
+
+def test_playlist_tracks_returns_shared_tracks_in_order_for_another_user(store):
+    _add(store, 1, "A", "B", "C")
+    pid = store.active_playlist(1).id
+    _share(store, pid)
+    playlist, tracks = store.playlist_tracks(2, pid)
+    assert playlist.user_id == 1
+    assert [t.title for t in tracks] == ["A", "B", "C"]
+    assert [t.user_id for t in tracks] == [1, 1, 1]
+
+
+def test_playlist_tracks_is_none_for_unshared_or_missing_playlist(store):
+    _add(store, 1, "A")
+    pid = store.active_playlist(1).id
+    assert store.playlist_tracks(2, pid) is None
+    assert store.playlist_tracks(1, pid) is not None
+    assert store.playlist_tracks(1, 999999) is None

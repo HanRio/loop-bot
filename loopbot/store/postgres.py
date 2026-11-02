@@ -118,6 +118,33 @@ class PostgresStore:
     def active_playlist(self, user_id: int) -> Playlist:
         return self._run(lambda cur: self._playlist(cur, self._active_id(cur, user_id)))
 
+    def playable_playlists(self, user_id: int) -> list[Playlist]:
+        def work(cur: Cursor) -> list[Playlist]:
+            cur.execute(
+                "SELECT id FROM playlists WHERE user_id = %s OR shared = true ORDER BY (user_id <> %s), id",
+                (user_id, user_id),
+            )
+            return [self._playlist(cur, playlist_id) for (playlist_id,) in cur.fetchall()]
+
+        return self._run(work)
+
+    def playlist_tracks(self, user_id: int, playlist_id: int) -> tuple[Playlist, list[Track]] | None:
+        def work(cur: Cursor) -> tuple[Playlist, list[Track]] | None:
+            cur.execute("SELECT user_id, shared FROM playlists WHERE id = %s", (playlist_id,))
+            row = cur.fetchone()
+            if row is None or (row[0] != user_id and not row[1]):
+                return None
+            cur.execute(
+                "SELECT t.id, t.user_id, t.title, t.file_id, t.duration, t.source "
+                "FROM playlist_tracks pt JOIN tracks t ON t.id = pt.track_id "
+                "WHERE pt.playlist_id = %s ORDER BY pt.position",
+                (playlist_id,),
+            )
+            tracks = [Track(*r) for r in cur.fetchall()]
+            return self._playlist(cur, playlist_id), tracks
+
+        return self._run(work)
+
     def play_messages(self, user_id: int) -> list[int]:
         def work(cur: Cursor) -> list[int]:
             cur.execute("SELECT play_message_ids FROM user_state WHERE user_id = %s", (user_id,))

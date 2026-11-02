@@ -1,16 +1,18 @@
 import asyncio
 import logging
 import tempfile
+from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
 
 from telegram import (
-    Bot, Chat, InlineKeyboardButton, InlineKeyboardMarkup, MenuButtonWebApp, Message, Update, WebAppInfo,
+    Bot, CallbackQuery, Chat, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaAudio, MenuButtonWebApp, Message,
+    Update, WebAppInfo,
 )
 from telegram.error import BadRequest, RetryAfter, TelegramError, TimedOut
-from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
+from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
 
 from loopbot.config import Config
 from loopbot.payload import MAX_LINKS, extract_youtube_urls
@@ -19,6 +21,18 @@ from loopbot.youtube import FetchError, fetch_audio
 
 PLAY_GAP_SECONDS = 0.5
 DELETE_CHUNK = 100  # Telegram's deleteMessages limit per call
+ALBUM_SIZE = 10  # Telegram's sendMediaGroup limit
+PICKER_MAX = 90  # Telegram caps an inline keyboard at about 100 buttons
+CHAT_PLAY_TEXT = "▶️ 이 창에서 플레이"
+CB_PICK = "cp:pick"
+CB_CLOSE = "cp:close"
+CB_STOP = "cp:stop"
+CB_PLAY = "cp:play:"
+PICK_TEXT = "어떤 플레이리스트를 이 창에서 재생할까요?"
+NO_PLAYLIST_TEXT = "재생할 곡이 있는 플레이리스트가 없어요"
+GONE_TEXT = "이 플레이리스트는 이제 재생할 수 없어요"
+STOPPED_TEXT = "종료했어요"
+FORBIDDEN_TEXT = "사용 권한이 없어요"
 # Telegram answers an upload only after processing it, which takes several seconds; PTB's 5 s default is too short.
 UPLOAD_READ_TIMEOUT = 120
 EMPTY_TEXT = "아직 곡이 없어요. 링크나 음원을 보내주세요"
@@ -79,7 +93,10 @@ def _active_tracks(store: Store, user_id: int) -> tuple[Playlist, list[Track]]:
 def _markup(context: ContextTypes.DEFAULT_TYPE, chat: Chat) -> InlineKeyboardMarkup:
     if chat.type == Chat.PRIVATE:
         cfg: Config = context.bot_data["cfg"]
-        return InlineKeyboardMarkup([[InlineKeyboardButton("🎵 플레이어 열기", web_app=WebAppInfo(cfg.webapp_url))]])
+        return InlineKeyboardMarkup([
+            [InlineKeyboardButton("🎵 플레이어 열기", web_app=WebAppInfo(cfg.webapp_url))],
+            [InlineKeyboardButton(CHAT_PLAY_TEXT, callback_data=CB_PICK)],
+        ])
     # Web app buttons work only in private chats, so a group gets a link that opens the private chat.
     url = f"https://t.me/{context.bot.username}?start=playlist"
     return InlineKeyboardMarkup([[InlineKeyboardButton("🎵 플레이리스트 열기 (개인 채팅)", url=url)]])
@@ -139,6 +156,8 @@ START_TEXT = (
     "노래 듣기\n"
     "1. 곡을 누르면 재생돼요. 화면을 꺼도 다음 곡으로 이어져요.\n"
     "2. 내 곡을 넣으려면 이 채팅에 유튜브 링크나 음원 파일을 보내요.\n\n"
+    "채팅으로 듣기\n"
+    "▶️ 이 창에서 플레이를 누르고 목록을 고르면 곡이 이 창에 묶여서 올라와요. 곡을 누르면 텔레그램 기본 플레이어로 들을 수 있어요. 다 들으면 종료를 눌러 주세요. 올라온 곡이 지워져서 다른 곡과 섞이지 않아요.\n\n"
     "긴 곡은 플레이어에서 재생되지 않을 수 있어요. 그럴 때는 채팅에서 /play로 들어요.\n"
     "버튼은 왼쪽 아래 🎵 플레이어에도 있어요."
 )
@@ -163,31 +182,148 @@ async def list_tracks(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     await update.effective_message.reply_text(f"🎵 {playlist.name}\n{body}")
 
 
-async def play(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    store: Store = context.bot_data["store"]
-    user_id = update.effective_user.id
-    _, tracks = _active_tracks(store, user_id)
-    if not tracks:
-        await update.effective_message.reply_text(EMPTY_TEXT)
-        return
-    chat_id = update.effective_chat.id
-    # Keyed by chat: message ids are per chat, and in a private chat the chat id is the user id.
-    await _delete_messages(context.bot, chat_id, store.play_messages(chat_id))
+def _control_text(name: str, count: int) -> str:
+    return f"🎵 {name} · {count}곡\n위 곡을 누르면 재생돼요. 다 들으면 종료를 눌러 주세요."
+
+
+def _play_lock(context: ContextTypes.DEFAULT_TYPE, chat_id: int) -> asyncio.Lock:
+    return context.bot_data.setdefault("play_locks", defaultdict(asyncio.Lock))[chat_id]
+
+
+async def _send_single(bot: Bot, chat_id: int, track: Track) -> int | None:
+    try:
+        sent = await _send_with_retry(lambda: bot.send_audio(chat_id, audio=track.file_id))
+        return sent.message_id
+    except TelegramError:
+        try:
+            await _send_with_retry(lambda: bot.send_message(chat_id, f"❌ 재생 실패: {track.title}"))
+        except TelegramError:
+            logging.exception("failed to send playback failure notice: %s", track.title)
+        return None
+
+
+async def _send_album(bot: Bot, chat_id: int, tracks: Sequence[Track]) -> list[int]:
+    if len(tracks) > 1:
+        try:
+            sent = await _send_with_retry(
+                lambda: bot.send_media_group(
+                    chat_id, [InputMediaAudio(t.file_id) for t in tracks], read_timeout=UPLOAD_READ_TIMEOUT
+                )
+            )
+            return [m.message_id for m in sent]
+        except TimedOut:
+            # The album may have arrived, so resending could double it. Its ids are unknown either way.
+            logging.exception("album send timed out")
+            return []
+        except TelegramError:
+            logging.warning("album send failed; sending tracks one by one", exc_info=True)
     sent_ids: list[int] = []
     for i, track in enumerate(tracks):
         if i:
             await asyncio.sleep(PLAY_GAP_SECONDS)
+        message_id = await _send_single(bot, chat_id, track)
+        if message_id is not None:
+            sent_ids.append(message_id)
+    return sent_ids
+
+
+async def _send_control(bot: Bot, chat_id: int, name: str, count: int) -> list[int]:
+    markup = InlineKeyboardMarkup([[InlineKeyboardButton("⏹ 종료", callback_data=CB_STOP)]])
+    try:
+        sent = await _send_with_retry(
+            lambda: bot.send_message(chat_id, _control_text(name, count), reply_markup=markup)
+        )
+        return [sent.message_id]
+    except TelegramError:
+        logging.exception("control message failed")
+        return []
+
+
+async def _play_in_chat(context: ContextTypes.DEFAULT_TYPE, chat_id: int, name: str, tracks: Sequence[Track]) -> None:
+    store: Store = context.bot_data["store"]
+    async with _play_lock(context, chat_id):
+        # Keyed by chat: message ids are per chat, and in a private chat the chat id is the user id.
+        await _delete_messages(context.bot, chat_id, store.play_messages(chat_id))
+        sent_ids: list[int] = []
         try:
-            sent = await _send_with_retry(lambda: context.bot.send_audio(chat_id, audio=track.file_id))
-            sent_ids.append(sent.message_id)
-        except TelegramError:
-            try:
-                await _send_with_retry(
-                    lambda: context.bot.send_message(chat_id, f"❌ 재생 실패: {track.title}")
-                )
-            except TelegramError:
-                logging.exception("failed to send playback failure notice: %s", track.title)
-    store.set_play_messages(chat_id, sent_ids)
+            for start in range(0, len(tracks), ALBUM_SIZE):
+                if start:
+                    await asyncio.sleep(PLAY_GAP_SECONDS)
+                sent_ids += await _send_album(context.bot, chat_id, tracks[start:start + ALBUM_SIZE])
+            sent_ids += await _send_control(context.bot, chat_id, name, len(tracks))
+        finally:
+            store.set_play_messages(chat_id, sent_ids)
+
+
+async def play(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    playlist, tracks = _active_tracks(context.bot_data["store"], update.effective_user.id)
+    if not tracks:
+        await update.effective_message.reply_text(EMPTY_TEXT)
+        return
+    await _play_in_chat(context, update.effective_chat.id, playlist.name, tracks)
+
+
+async def _show_picker(query: CallbackQuery, context: ContextTypes.DEFAULT_TYPE) -> None:
+    store: Store = context.bot_data["store"]
+    playlists = [p for p in store.playable_playlists(query.from_user.id) if p.track_ids]
+    if not playlists:
+        await query.answer(NO_PLAYLIST_TEXT, show_alert=True)
+        return
+    await query.answer()
+    rows = [[InlineKeyboardButton(f"{p.name} ({len(p.track_ids)}곡)", callback_data=f"{CB_PLAY}{p.id}")]
+            for p in playlists[:PICKER_MAX]]
+    rows.append([InlineKeyboardButton("닫기", callback_data=CB_CLOSE)])
+    # A button on an old message arrives with only chat and message_id, so everything goes through the bot.
+    await context.bot.send_message(query.message.chat.id, PICK_TEXT, reply_markup=InlineKeyboardMarkup(rows))
+
+
+async def _play_picked(query: CallbackQuery, context: ContextTypes.DEFAULT_TYPE) -> None:
+    store: Store = context.bot_data["store"]
+    try:
+        playlist_id = int(query.data[len(CB_PLAY):])
+    except ValueError:
+        await query.answer(GONE_TEXT, show_alert=True)
+        return
+    found = store.playlist_tracks(query.from_user.id, playlist_id)
+    if found is None or not found[1]:
+        await query.answer(GONE_TEXT, show_alert=True)
+        return
+    playlist, tracks = found
+    await query.answer()
+    await _delete_messages(context.bot, query.message.chat.id, [query.message.message_id])
+    await _play_in_chat(context, query.message.chat.id, playlist.name, tracks)
+
+
+async def _stop_play(query: CallbackQuery, context: ContextTypes.DEFAULT_TYPE) -> None:
+    store: Store = context.bot_data["store"]
+    chat_id = query.message.chat.id
+    await query.answer(STOPPED_TEXT)
+    async with _play_lock(context, chat_id):
+        ids = list(dict.fromkeys([*store.play_messages(chat_id), query.message.message_id]))
+        await _delete_messages(context.bot, chat_id, ids)
+        store.set_play_messages(chat_id, [])
+
+
+async def on_chat_play(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    cfg: Config = context.bot_data["cfg"]
+    if not cfg.is_allowed(query.from_user.id, query.from_user.username):
+        await query.answer(FORBIDDEN_TEXT, show_alert=True)
+        return
+    if query.message is None:
+        await query.answer()
+        return
+    if query.data == CB_PICK:
+        await _show_picker(query, context)
+    elif query.data == CB_CLOSE:
+        await query.answer()
+        await _delete_messages(context.bot, query.message.chat.id, [query.message.message_id])
+    elif query.data.startswith(CB_PLAY):
+        await _play_picked(query, context)
+    elif query.data == CB_STOP:
+        await _stop_play(query, context)
+    else:
+        await query.answer()
 
 
 async def _fetch_one(msg: Message, context: ContextTypes.DEFAULT_TYPE, user_id: int, url: str) -> Outcome:
@@ -269,7 +405,7 @@ async def on_audio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def on_unauthorized(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if update.effective_message:
-        await update.effective_message.reply_text("사용 권한이 없어요")
+        await update.effective_message.reply_text(FORBIDDEN_TEXT)
 
 
 ERROR_TEXT = "잠시 문제가 생겼어요. 잠시 뒤 다시 시도해주세요"
@@ -336,5 +472,6 @@ def build_app(cfg: Config, store: Store) -> Application:
     app.add_handler(MessageHandler(allowed & filters.UpdateType.MESSAGE & is_audio, on_audio))
     app.add_handler(MessageHandler(allowed & filters.UpdateType.MESSAGE & filters.TEXT & ~filters.COMMAND, on_text))
     app.add_handler(MessageHandler(filters.ALL & ~allowed, on_unauthorized))
+    app.add_handler(CallbackQueryHandler(on_chat_play, pattern=r"^cp:"))
     app.add_error_handler(on_error)
     return app

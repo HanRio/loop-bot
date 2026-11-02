@@ -102,9 +102,11 @@ def test_private_markup_is_inline_web_app_button_to_player():
     context = SimpleNamespace(bot_data={"cfg": SimpleNamespace(webapp_url="https://x.io/app/")})
     markup = handlers._markup(context, _PRIVATE)
     assert isinstance(markup, InlineKeyboardMarkup)
-    [[button]] = markup.inline_keyboard
+    [[button], [chat_play]] = markup.inline_keyboard
     assert button.text == "🎵 플레이어 열기"
     assert button.web_app.url == "https://x.io/app/"
+    assert chat_play.text == "▶️ 이 창에서 플레이"
+    assert chat_play.callback_data == "cp:pick"
 
 
 def _error_context(exc):
@@ -193,9 +195,10 @@ def test_set_menu_button_failure_logs_and_continues_with_next_user(caplog):
 
 
 class _FakeStore:
-    def __init__(self, titles, prev=()):
+    def __init__(self, titles, prev=(), playlists=()):
         self.tracks = [SimpleNamespace(id=i, title=t, file_id=f"f{t}") for i, t in enumerate(titles, 1)]
         self.prev = list(prev)
+        self.playlists = list(playlists)
         self.saved = None
 
     def active_playlist(self, user_id):
@@ -203,6 +206,15 @@ class _FakeStore:
 
     def library(self, user_id):
         return self.tracks
+
+    def playable_playlists(self, user_id):
+        return self.playlists
+
+    def playlist_tracks(self, user_id, playlist_id):
+        for playlist in self.playlists:
+            if playlist.id == playlist_id:
+                return playlist, [t for t in self.tracks if t.id in playlist.track_ids]
+        return None
 
     def play_messages(self, user_id):
         return list(self.prev)
@@ -212,10 +224,19 @@ class _FakeStore:
 
 
 class _FakeBot:
-    def __init__(self, delete_error=None):
+    def __init__(self, delete_error=None, album_error=None, text_error=None):
         self.delete_error = delete_error
+        self.album_error = album_error
+        self.text_error = text_error
         self.deleted = []
         self.sent = []
+        self.texts = []
+        self.albums = []
+        self.message_count = 0
+
+    def _message(self):
+        self.message_count += 1
+        return SimpleNamespace(message_id=100 + self.message_count)
 
     async def delete_messages(self, chat_id, message_ids):
         if self.delete_error:
@@ -224,7 +245,19 @@ class _FakeBot:
 
     async def send_audio(self, chat_id, audio):
         self.sent.append(audio)
-        return SimpleNamespace(message_id=100 + len(self.sent))
+        return self._message()
+
+    async def send_media_group(self, chat_id, media, **kw):
+        if self.album_error:
+            raise self.album_error
+        self.albums.append([m.media for m in media])
+        return [self._message() for _ in media]
+
+    async def send_message(self, chat_id, text, reply_markup=None):
+        if self.text_error:
+            raise self.text_error
+        self.texts.append((text, reply_markup))
+        return self._message()
 
 
 def _play_update():
@@ -251,7 +284,7 @@ def test_play_deletes_previous_play_messages_and_saves_new_ones(monkeypatch):
     bot = _FakeBot()
     _run_play(monkeypatch, store, bot)
     assert bot.deleted == [(5, [7, 8])]
-    assert store.saved == [101, 102]
+    assert store.saved == [101, 102, 103]
 
 
 def test_play_deletes_more_than_one_chunk_of_previous_messages(monkeypatch):
@@ -259,7 +292,7 @@ def test_play_deletes_more_than_one_chunk_of_previous_messages(monkeypatch):
     bot = _FakeBot()
     _run_play(monkeypatch, store, bot)
     assert bot.deleted == [(5, list(range(1, 101))), (5, [101])]
-    assert store.saved == [101]
+    assert store.saved == [101, 102]
 
 
 def test_play_continues_when_delete_fails(monkeypatch):
@@ -268,7 +301,34 @@ def test_play_continues_when_delete_fails(monkeypatch):
     store = _FakeStore(["A", "B"], prev=[7])
     bot = _FakeBot(delete_error=TelegramError("message can't be deleted"))
     _run_play(monkeypatch, store, bot)
+    assert bot.albums == [["fA", "fB"]]
+    assert store.saved == [101, 102, 103]
+
+
+def test_play_sends_tracks_as_albums_of_ten_and_saves_ids_with_control(monkeypatch):
+    store = _FakeStore([f"T{i}" for i in range(25)])
+    bot = _FakeBot()
+    _run_play(monkeypatch, store, bot)
+    assert [len(album) for album in bot.albums] == [10, 10, 5]
+    assert store.saved == list(range(101, 127))
+
+
+def test_play_album_failure_falls_back_to_single_sends(monkeypatch):
+    from telegram.error import TelegramError
+
+    store = _FakeStore(["A", "B"])
+    bot = _FakeBot(album_error=TelegramError("bad file"))
+    _run_play(monkeypatch, store, bot)
     assert bot.sent == ["fA", "fB"]
+    assert store.saved == [101, 102, 103]
+
+
+def test_play_saves_sent_ids_when_control_message_fails(monkeypatch):
+    from telegram.error import TelegramError
+
+    store = _FakeStore(["A", "B"])
+    bot = _FakeBot(text_error=TelegramError("control refused"))
+    _run_play(monkeypatch, store, bot)
     assert store.saved == [101, 102]
 
 
@@ -541,3 +601,168 @@ def test_startup_sets_description_and_survives_its_failure():
 
     assert calls == [handlers.BOT_DESCRIPTION, 1]
     assert len(handlers.BOT_DESCRIPTION) <= 512
+
+
+def _FakeMessage(message_id=50, chat_id=5):
+    # Same shape as InaccessibleMessage: a button on an old message has no reply_text or delete.
+    return SimpleNamespace(message_id=message_id, chat=SimpleNamespace(id=chat_id))
+
+
+class _FakeQuery:
+    def __init__(self, user_id, data, message):
+        self.from_user = SimpleNamespace(id=user_id, username=None)
+        self.data = data
+        self.message = message
+        self.answers = []
+
+    async def answer(self, text=None, show_alert=False):
+        self.answers.append((text, show_alert))
+
+
+def _playlist(playlist_id, user_id, name, track_ids):
+    return SimpleNamespace(id=playlist_id, user_id=user_id, name=name, track_ids=tuple(track_ids))
+
+
+def _run_chat(data, store, bot, user_id=1, message=None):
+    import asyncio
+
+    from loopbot import handlers
+    from loopbot.config import load_config
+
+    cfg = load_config({**BASE_CONFIG, "ALLOWED_USER_IDS": "1"})
+    context = SimpleNamespace(bot_data={"cfg": cfg, "store": store}, bot=bot)
+    query = _FakeQuery(user_id, data, message or _FakeMessage())
+    asyncio.run(handlers.on_chat_play(SimpleNamespace(callback_query=query), context))
+    return query
+
+
+def test_chat_play_pick_lists_playable_playlists_with_songs():
+    from loopbot import handlers
+
+    playlists = [_playlist(2, 1, "드라이브", [1, 2]), _playlist(3, 2, "빈 목록", [])]
+    store = _FakeStore(["A", "B"], playlists=playlists)
+    bot = _FakeBot()
+    query = _run_chat(handlers.CB_PICK, store, bot)
+    assert query.answers == [(None, False)]
+    [(text, markup)] = bot.texts
+    assert text == handlers.PICK_TEXT
+    assert [[(b.text, b.callback_data) for b in row] for row in markup.inline_keyboard] == [
+        [("드라이브 (2곡)", "cp:play:2")],
+        [("닫기", handlers.CB_CLOSE)],
+    ]
+
+
+def test_chat_play_rejects_user_not_allowed():
+    from loopbot import handlers
+
+    bot = _FakeBot()
+    query = _run_chat(handlers.CB_PICK, None, bot, user_id=99)
+    assert query.answers == [(handlers.FORBIDDEN_TEXT, True)]
+    assert bot.texts == [] and bot.deleted == []
+    assert bot.sent == [] and bot.albums == [] and bot.deleted == []
+
+
+def test_chat_play_stops_and_deletes_tracked_messages_and_control():
+    from loopbot import handlers
+
+    store = _FakeStore(["A"], prev=[7, 8])
+    bot = _FakeBot()
+    query = _run_chat(handlers.CB_STOP, store, bot, message=_FakeMessage(message_id=9))
+    assert bot.deleted == [(5, [7, 8, 9])]
+    assert store.saved == []
+    assert query.answers == [(handlers.STOPPED_TEXT, False)]
+
+
+def test_chat_play_alerts_when_playlist_is_not_playable():
+    from loopbot import handlers
+
+    store = _FakeStore(["A"], playlists=[])
+    bot = _FakeBot()
+    query = _run_chat(f"{handlers.CB_PLAY}9", store, bot)
+    assert query.answers == [(handlers.GONE_TEXT, True)]
+    assert bot.sent == [] and bot.albums == []
+    assert bot.deleted == []
+
+
+def test_chat_play_picked_list_deletes_picker_and_sends_album_with_stop(monkeypatch):
+    from loopbot import handlers
+
+    monkeypatch.setattr(handlers, "PLAY_GAP_SECONDS", 0)
+    store = _FakeStore(["A", "B"], playlists=[_playlist(2, 1, "드라이브", [1, 2])], prev=[7])
+    bot = _FakeBot()
+    query = _run_chat(f"{handlers.CB_PLAY}2", store, bot, message=_FakeMessage(message_id=50))
+    assert query.answers == [(None, False)]
+    assert bot.deleted == [(5, [50]), (5, [7])]
+    assert bot.albums == [["fA", "fB"]]
+    [(text, markup)] = bot.texts
+    assert "드라이브" in text
+    assert markup.inline_keyboard[0][0].callback_data == handlers.CB_STOP
+    assert len(store.saved) == 3
+
+
+def test_chat_play_album_timeout_does_not_resend(monkeypatch):
+    from telegram.error import TimedOut
+
+    from loopbot import handlers
+
+    monkeypatch.setattr(handlers, "PLAY_GAP_SECONDS", 0)
+    store = _FakeStore(["A", "B"], playlists=[_playlist(2, 1, "드라이브", [1, 2])])
+    bot = _FakeBot()
+    bot.album_error = TimedOut()
+    _run_chat(f"{handlers.CB_PLAY}2", store, bot)
+    assert bot.sent == []
+
+
+def test_chat_play_close_deletes_picker():
+    from loopbot import handlers
+
+    bot = _FakeBot()
+    query = _run_chat(handlers.CB_CLOSE, None, bot, message=_FakeMessage(message_id=50))
+    assert query.answers == [(None, False)]
+    assert bot.deleted == [(5, [50])]
+
+
+def test_chat_play_ignores_bad_callback_data():
+    from loopbot import handlers
+
+    query = _run_chat("cp:play:abc", _FakeStore(["A"]), _FakeBot())
+    assert query.answers == [(handlers.GONE_TEXT, True)]
+
+
+def test_concurrent_chat_play_tracks_every_message(monkeypatch):
+    import asyncio
+
+    from loopbot import handlers
+
+    monkeypatch.setattr(handlers, "PLAY_GAP_SECONDS", 0)
+
+    class Store(_FakeStore):
+        def play_messages(self, user_id):
+            return list(self.saved or [])
+
+    class SlowBot(_FakeBot):
+        async def send_media_group(self, chat_id, media, **kw):
+            await asyncio.sleep(0)
+            return await super().send_media_group(chat_id, media, **kw)
+
+    store, bot = Store(["A", "B"]), SlowBot()
+    context = SimpleNamespace(bot_data={"store": store}, bot=bot)
+
+    async def main():
+        await asyncio.gather(
+            handlers._play_in_chat(context, 5, "기본", store.tracks),
+            handlers._play_in_chat(context, 5, "기본", store.tracks),
+        )
+
+    asyncio.run(main())
+    assert bot.deleted == [(5, [101, 102, 103])]
+    assert store.saved == [104, 105, 106]
+
+
+def test_build_app_registers_chat_play_callback_handler():
+    from telegram.ext import CallbackQueryHandler
+
+    from loopbot import handlers
+
+    registered = [h for group in _app().handlers.values() for h in group]
+    assert any(isinstance(h, CallbackQueryHandler) and h.callback is handlers.on_chat_play for h in registered)
