@@ -24,8 +24,8 @@ const FILE_TIMEOUT_MS = 120000;
 
 export function createApi(baseUrl, initData, fileBase = null) {
   async function request(method, path, body, extra = {}) {
-    const headers = { 'X-Telegram-Init-Data': initData };
-    const init = { method, headers, ...extra };
+    const headers = { 'X-Telegram-Init-Data': initData, ...extra.headers };
+    const init = { method, ...extra, headers };
     if (body !== undefined) {
       headers['Content-Type'] = 'application/json';
       init.body = JSON.stringify(body);
@@ -37,6 +37,24 @@ export function createApi(baseUrl, initData, fileBase = null) {
 
   const json = async (method, path, body) => (await request(method, path, body)).json();
 
+  // 곡과 사진 받기. 파일 서버(Oracle)를 먼저 쓰고, 5xx나 네트워크 오류면 함수로 받는다.
+  // AbortSignal.timeout이 없는 오래된 웹뷰에서는 시간 상한 없이 받는다. 권한·없는 곡 응답은 그대로 오류다.
+  async function fetchFile(path) {
+    if (fileBase) {
+      try {
+        const res = await fetch(`${fileBase}${path}`, {
+          headers: { 'X-Telegram-Init-Data': initData },
+          signal: AbortSignal.timeout?.(FILE_TIMEOUT_MS),
+        });
+        if (res.ok) return await res.blob();
+        if (res.status < 500) throw new ApiError(await errorCode(res), res.status);
+      } catch (err) {
+        if (err instanceof ApiError) throw err;
+      }
+    }
+    return (await request('GET', path, undefined, { signal: AbortSignal.timeout?.(FILE_TIMEOUT_MS) })).blob();
+  }
+
   return {
     state: () => json('GET', '/state'),
     createPlaylist: (name, ids) => json('POST', '/playlists', { name, track_ids: ids }),
@@ -46,22 +64,19 @@ export function createApi(baseUrl, initData, fileBase = null) {
     deleteTrack: async (id) => {
       await request('DELETE', `/tracks/${id}`);
     },
-    // AbortSignal.timeout이 없는 오래된 웹뷰에서는 시간 상한 없이 받는다.
-    // 파일은 Oracle에서 받는다. 서버가 응답하지 않을 때만 Supabase 함수로 받는다. 권한·없는 곡 응답은 그대로 오류다.
-    file: async (id) => {
-      if (fileBase) {
-        try {
-          const res = await fetch(`${fileBase}/tracks/${id}/file`, {
-            headers: { 'X-Telegram-Init-Data': initData },
-            signal: AbortSignal.timeout?.(FILE_TIMEOUT_MS),
-          });
-          if (res.ok) return await res.blob();
-          if (res.status < 500) throw new ApiError(await errorCode(res), res.status);
-        } catch (err) {
-          if (err instanceof ApiError) throw err;
-        }
-      }
-      return (await request('GET', `/tracks/${id}/file`, undefined, { signal: AbortSignal.timeout?.(FILE_TIMEOUT_MS) })).blob();
+    renameTrack: (id, title) => json('PUT', `/tracks/${id}`, { title }),
+    setShared: (id, shared) => json('PUT', `/playlists/${id}/shared`, { shared }),
+    file: (id) => fetchFile(`/tracks/${id}/file`),
+    sheet: (id) => fetchFile(`/tracks/${id}/sheet`),
+    // 사진은 JPEG 바이트 그대로 보낸다. 응답은 {version}.
+    uploadSheet: (id, blob) =>
+      request('PUT', `/tracks/${id}/sheet`, undefined, { body: blob, headers: { 'Content-Type': 'image/jpeg' } }).then((res) => res.json()),
+    deleteSheet: async (id) => {
+      await request('DELETE', `/tracks/${id}/sheet`);
+    },
+    saveVideo: (id, url) => json('PUT', `/tracks/${id}/video`, { url }),
+    saveNote: async (id, body) => {
+      await request('PUT', `/tracks/${id}/note`, { body });
     },
   };
 }

@@ -1,12 +1,14 @@
-// 화면 상태와 재생 흐름. 그리기는 render.js, 네트워크는 api.js, 저장은 store.js, 재생은 audio.js가 맡는다.
+// 화면 상태와 재생 흐름. 그리기는 render.js, 네트워크는 api.js, 저장은 store.js, 재생은 audio.js, 가사집은 lyrics.js가 맡는다.
 import { createApi } from './api.js';
 import { createPlayer } from './audio.js';
 import { COPY } from './copy.js';
+import { createLyrics } from './lyrics.js';
 import { nextTrack, prevTrack } from './queue.js';
 import {
-  $, closeNameForm, enableQueueSort, openNameForm, renderPicker, renderQueue, renderLibrary, renderBar, setNotice, setVisible,
+  $, closeNameForm, enableQueueSort, openNameForm, renderPicker, renderQueue, renderLibrary, renderBar, renderShare,
+  renderViewSwitch, setNotice, setVisible,
 } from './render.js';
-import { cleanName, createActiveSender, createSaves, mergeOrder, readLocal, writeLocal } from './store.js';
+import { cleanName, cleanTitle, createActiveSender, createSaves, mergeOrder, readLocal, writeLocal } from './store.js';
 
 const API_BASE = 'https://rrpmpqxoqxlwrmflpiyi.supabase.co/functions/v1/loopbot-api';
 const FILE_BASE = 'https://168-110-54-40.sslip.io';
@@ -15,6 +17,8 @@ const NEW_PLAYLIST = 'new';
 const REPEAT_ORDER = ['all', 'one', 'off'];
 const KEY_PLAYLIST = 'loopbot.player.playlist';
 const KEY_REPEAT = 'loopbot.player.repeat';
+const NAME_MAX = 20;
+const TRACK_NAME_MAX = 200;
 
 const tg = window.Telegram?.WebApp;
 try {
@@ -40,7 +44,16 @@ function applyTheme() {
 applyTheme();
 tg?.onEvent?.('themeChanged', applyTheme);
 
-const model = { library: [], playlists: [], viewedId: null };
+const model = {
+  library: [],
+  playlists: [],
+  viewedId: null,
+  sharedPlaylists: [],
+  sharedTracks: [],
+  media: {},
+  notes: {},
+  isAdmin: false,
+};
 const playback = {
   playingPlaylistId: null,
   currentTrackId: null,
@@ -53,6 +66,7 @@ const playback = {
 };
 let api;
 let player;
+let lyrics;
 // 끄는 동안에는 자동 전환이 목록 DOM을 바꾸지 않는다. 끝나면 onQueueEnd에서 다시 그린다.
 let dragging = false;
 // 지우는 중인 플레이리스트는 편집을 받지 않는다.
@@ -60,14 +74,16 @@ let deletingId = null;
 // 끌기를 시작한 목록. 끝날 때 보고 있는 목록이 같을 때만 순서를 저장한다.
 let dragPlaylistId = null;
 let refreshSeq = 0;
-// 이름 입력줄이 지금 무슨 일을 하는지. 'create' | 'rename' | null
+// 이름 입력줄이 지금 무슨 일을 하는지. 'create' | 'rename' | { kind: 'track', id } | null
 let nameFormMode = null;
+// 보기 방식. 'list'는 재생 순서와 라이브러리, 'lyrics'는 가사집.
+let viewMode = 'list';
 
 const saves = createSaves({
   save: async (value) => {
     await api.savePlaylist(value.id, value.name, value.track_ids);
-    // PUT은 그 목록을 활성으로 만든다. 다른 목록을 보고 있으면 활성을 그쪽으로 되돌린다.
-    if (value.id !== model.viewedId) activeSender.request(model.viewedId);
+    // PUT은 그 목록을 활성으로 만든다. 내 다른 목록을 보고 있으면 활성을 그쪽으로 되돌린다.
+    if (value.id !== model.viewedId && isOwnId(model.viewedId)) activeSender.request(model.viewedId);
   },
   onError: onSaveError,
   onSaved: () => showSaveNotice(''),
@@ -79,26 +95,63 @@ const activeSender = createActiveSender(
   },
 );
 
+// 곡 이름 표는 내 라이브러리와 공유 곡을 합친다.
+const allTracks = () => [...model.library, ...model.sharedTracks];
+const titleOf = (id) => allTracks().find((t) => t.id === id)?.title ?? '';
+const titleMap = () => new Map(allTracks().map((t) => [t.id, t.title]));
+// 내 목록과 공유 목록 모두에서 찾는다.
+const findPlaylist = (id) => model.playlists.find((p) => p.id === id) ?? model.sharedPlaylists.find((p) => p.id === id);
+const isOwnId = (id) => model.playlists.some((p) => p.id === id);
 // 재생 중인 목록이 지워졌으면 빈 목록이 되어 다음 곡이 없고 멈춘다.
-const playlistIds = (id) => model.playlists.find((p) => p.id === id)?.track_ids ?? [];
+const playlistIds = (id) => findPlaylist(id)?.track_ids ?? [];
 const viewedIds = () => playlistIds(model.viewedId);
 const playingIds = () => playlistIds(playback.playingPlaylistId ?? model.viewedId);
+// 내 목록만 돌려준다. 편집과 이름 바꾸기는 이것만 건드린다.
 const viewedPlaylist = () => model.playlists.find((p) => p.id === model.viewedId);
+// 보이는 목록(내 것이든 공유든).
+const viewedAny = () => findPlaylist(model.viewedId);
+const viewedShared = () => !viewedPlaylist() && Boolean(viewedAny());
+// 공유 목록은 가사집으로, 내 목록은 목록으로 연다.
+const modeFor = (id) => (isOwnId(id) ? 'list' : 'lyrics');
 const queueIds = () => [...$('queue').children].map((li) => Number(li.dataset.id));
-const titleOf = (id) => model.library.find((t) => t.id === id)?.title ?? '';
-const titleMap = () => new Map(model.library.map((t) => [t.id, t.title]));
 const barState = () => ({ title: playback.currentTitle, position: player?.position() ?? 0, duration: player?.duration() ?? 0, playing: player?.isPlaying() ?? false, repeat: playback.repeat });
+
+function lyricsState() {
+  return {
+    visible: viewMode === 'lyrics',
+    playlistId: model.viewedId,
+    trackIds: viewedIds(),
+    titles: titleMap(),
+    media: model.media,
+    notes: model.notes,
+    canEdit: model.isAdmin && isOwnId(model.viewedId),
+    currentId: playback.currentTrackId,
+  };
+}
 
 function renderAll() {
   const ids = viewedIds();
-  renderPicker(model.playlists, model.viewedId, NEW_PLAYLIST);
+  const shared = viewedShared();
+  renderPicker(model.playlists, model.sharedPlaylists, model.viewedId, NEW_PLAYLIST);
+  renderShare({ visible: model.isAdmin && !shared, shared: Boolean(viewedPlaylist()?.shared) });
+  renderViewSwitch({ visible: model.isAdmin || shared, mode: viewMode });
+  // 공유 목록은 이름 바꾸기와 삭제가 없다.
+  setVisible('rename-playlist', !shared);
+  setVisible('remove-playlist', !shared);
+  setVisible('queue-card', viewMode === 'list');
+  setVisible('library-card', viewMode === 'list' && !shared);
   if (!dragging) {
     renderQueue(ids, { titles: titleMap(), currentId: playback.currentTrackId, unplayable: playback.unplayable }, {
       onPlay: onPlayRow,
       onRemove: onRemoveFromQueue,
-    });
+    }, { readOnly: shared });
   }
-  renderLibrary(model.library, new Set(ids), { onAdd: onAddToQueue, onDelete: onDeleteTrack });
+  renderLibrary(model.library, new Set(ids), {
+    onAdd: onAddToQueue,
+    onDelete: onDeleteTrack,
+    onRename: openTrackRename,
+  });
+  lyrics.sync(lyricsState());
   renderBar(barState());
 }
 
@@ -152,7 +205,7 @@ function onAddToQueue(id) {
 }
 
 async function onDeleteTrack(id) {
-  if (!confirm(COPY.deleteTrackConfirm)) return;
+  if (!confirm(model.isAdmin ? COPY.deleteTrackAdminConfirm : COPY.deleteTrackConfirm)) return;
   try {
     await api.deleteTrack(id);
   } catch (err) {
@@ -166,6 +219,31 @@ async function onDeleteTrack(id) {
   syncLastIndex();
   player.forget(id);
   renderAll();
+}
+
+function openTrackRename(id) {
+  nameFormMode = { kind: 'track', id };
+  openNameForm({ value: titleOf(id), submitLabel: COPY.rename, maxLength: TRACK_NAME_MAX });
+}
+
+function setLibraryTitle(id, title) {
+  model.library = model.library.map((t) => (t.id === id ? { ...t, title } : t));
+}
+
+// 먼저 화면에 반영하고, 실패하면 되돌리고 알린다. 비었거나 그대로면 보내지 않는다.
+async function renameTrack(id, raw) {
+  const title = cleanTitle(raw);
+  const old = titleOf(id);
+  if (!title || title === old) return;
+  setLibraryTitle(id, title);
+  renderAll();
+  try {
+    await api.renameTrack(id, title);
+  } catch (err) {
+    setLibraryTitle(id, old);
+    renderAll();
+    showSaveNotice(err.code === 'expired' ? COPY.reopen : COPY.renameFailed);
+  }
 }
 
 function renameViewed(raw) {
@@ -182,7 +260,7 @@ function openRename() {
   const playlist = viewedPlaylist();
   if (!playlist) return;
   nameFormMode = 'rename';
-  openNameForm({ value: playlist.name, submitLabel: COPY.rename });
+  openNameForm({ value: playlist.name, submitLabel: COPY.rename, maxLength: NAME_MAX });
 }
 
 function closeNameFormAndReset() {
@@ -195,9 +273,36 @@ async function onPickPlaylist(id) {
   if (id === model.viewedId) return renderAll();
   await saves.flushAll();
   model.viewedId = id;
+  viewMode = modeFor(id);
   writeLocal(KEY_PLAYLIST, String(id));
   renderAll();
-  activeSender.request(id);
+  // 공유 목록을 골라도 활성 목록은 바꾸지 않는다. 봇이 받는 곡은 내 목록에 붙는다.
+  if (isOwnId(id)) activeSender.request(id);
+}
+
+function onViewMode(mode) {
+  viewMode = mode;
+  renderAll();
+}
+
+// 공유를 낙관적으로 바꾸고, 실패하면 되돌리고 알린다.
+function setPlaylistShared(id, shared) {
+  model.playlists = model.playlists.map((p) => (p.id === id ? { ...p, shared } : p));
+}
+
+async function onToggleShare() {
+  const playlist = viewedPlaylist();
+  if (!playlist || !model.isAdmin) return;
+  const next = !playlist.shared;
+  setPlaylistShared(playlist.id, next);
+  renderAll();
+  try {
+    await api.setShared(playlist.id, next);
+  } catch (err) {
+    setPlaylistShared(playlist.id, !next);
+    renderAll();
+    showSaveNotice(err.code === 'expired' ? COPY.reopen : COPY.shareFailed);
+  }
 }
 
 async function onCreatePlaylist(event) {
@@ -205,6 +310,10 @@ async function onCreatePlaylist(event) {
   const name = $('new-name').value;
   const mode = nameFormMode;
   closeNameFormAndReset();
+  if (mode?.kind === 'track') {
+    await renameTrack(mode.id, name);
+    return;
+  }
   if (mode === 'rename') {
     renameViewed(name);
     renderAll();
@@ -215,6 +324,7 @@ async function onCreatePlaylist(event) {
     const playlist = await api.createPlaylist(name, []);
     model.playlists = [...model.playlists, playlist];
     model.viewedId = playlist.id;
+    viewMode = 'list';
     writeLocal(KEY_PLAYLIST, String(playlist.id));
     // 대기 중이던 활성 전송이 방금 만든 목록을 덮지 않도록 다시 맞춘다.
     activeSender.request(playlist.id);
@@ -233,7 +343,7 @@ function onPickerChange() {
   const value = $('picker').value;
   if (value === NEW_PLAYLIST) {
     nameFormMode = 'create';
-    return openNameForm({ value: '', submitLabel: COPY.create });
+    return openNameForm({ value: '', submitLabel: COPY.create, maxLength: NAME_MAX });
   }
   return onPickPlaylist(Number(value));
 }
@@ -351,9 +461,22 @@ function onRepeat() {
   renderAll();
 }
 
+// 참고 영상을 여는 동안은 오디오를 멈추고 재생 바를 숨긴다. 닫아도 오디오는 자동으로 틀지 않는다.
+function onVideoToggle(open) {
+  document.body.classList.toggle('video-open', open);
+  setVisible('bar', !open);
+  if (open && player.isPlaying()) player.toggle();
+}
+
+function onMediaChange(id, next) {
+  model.media = { ...model.media, [id]: next };
+  renderAll();
+}
+
 async function refreshFromServer() {
   const mine = ++refreshSeq;
   await saves.flushAll();
+  await lyrics.flush();
   const seenSaves = saves.saved();
   let state;
   try {
@@ -369,7 +492,16 @@ async function refreshFromServer() {
   const local = new Map(model.playlists.map((p) => [p.id, p]));
   model.playlists = state.playlists.map((p) => (saves.pending(p.id) ? (local.get(p.id) ?? p) : p));
   model.library = state.library;
-  if (!model.playlists.some((p) => p.id === model.viewedId)) model.viewedId = state.active_id;
+  model.sharedPlaylists = state.shared_playlists;
+  model.sharedTracks = state.shared_tracks;
+  model.media = state.media;
+  model.notes = state.notes;
+  model.isAdmin = state.is_admin;
+  // 보고 있던 목록이 내 목록에서도 공유 목록에서도 사라졌으면(공유 해제 등) 활성 목록으로 돌아간다.
+  if (!findPlaylist(model.viewedId)) {
+    model.viewedId = state.active_id;
+    viewMode = modeFor(model.viewedId);
+  }
   writeLocal(KEY_PLAYLIST, String(model.viewedId));
   syncLastIndex();
   renderAll();
@@ -388,6 +520,14 @@ async function init() {
     onError: onTrackFailed,
     onSkip: (dir) => (dir === 'next' ? userMove(computeNext(true)) : userMove(computePrev())),
   });
+  lyrics = createLyrics({
+    api,
+    getState: lyricsState,
+    onPlay: onPlayRow,
+    onError: reportError,
+    onMediaChange,
+    onVideoToggle,
+  });
 
   let state;
   try {
@@ -397,10 +537,16 @@ async function init() {
   }
   model.library = state.library;
   model.playlists = state.playlists;
+  model.sharedPlaylists = state.shared_playlists;
+  model.sharedTracks = state.shared_tracks;
+  model.media = state.media;
+  model.notes = state.notes;
+  model.isAdmin = state.is_admin;
   const remembered = Number(readLocal(KEY_PLAYLIST));
-  model.viewedId = model.playlists.some((p) => p.id === remembered) ? remembered : state.active_id;
-  // 기억해 둔 목록을 보여 주되, 봇이 새 곡을 붙이는 활성 목록도 그 목록으로 맞춘다.
-  if (model.viewedId !== state.active_id) activeSender.request(model.viewedId);
+  model.viewedId = findPlaylist(remembered) ? remembered : state.active_id;
+  viewMode = modeFor(model.viewedId);
+  // 기억해 둔 내 목록이면, 봇이 새 곡을 붙이는 활성 목록도 그 목록으로 맞춘다.
+  if (model.viewedId !== state.active_id && isOwnId(model.viewedId)) activeSender.request(model.viewedId);
   const repeat = readLocal(KEY_REPEAT);
   playback.repeat = REPEAT_ORDER.includes(repeat) ? repeat : 'all';
 
@@ -423,6 +569,9 @@ async function init() {
     },
   });
   $('picker').addEventListener('change', onPickerChange);
+  $('share-playlist').addEventListener('click', onToggleShare);
+  $('view-list').addEventListener('click', () => onViewMode('list'));
+  $('view-lyrics').addEventListener('click', () => onViewMode('lyrics'));
   $('rename-playlist').addEventListener('click', openRename);
   $('new-form').addEventListener('submit', onCreatePlaylist);
   $('new-cancel').addEventListener('click', onCancelNew);

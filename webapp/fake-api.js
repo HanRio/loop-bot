@@ -1,19 +1,39 @@
 // localhost 시험용 가짜 API. app.js가 localhost일 때만 불러온다.
-// ?fail=too_big · ?fail=expired · ?fail=save 로 오류 장면을 만든다.
+// ?fail=too_big · ?fail=expired · ?fail=save · ?fail=note 로 오류 장면을 만든다.
+// ?role=member 면 관리자가 공유한 목록이 있는 멤버로 시작한다.
 import { ApiError } from './api.js';
 
-const FAIL = new URLSearchParams(location.search).get('fail');
+const params = new URLSearchParams(location.search);
+const FAIL = params.get('fail');
+const MEMBER = params.get('role') === 'member';
 const TOO_BIG_ID = 2;
 const AUDIO_URL = './fake-audio.mp3';
+const SHEET_URL = './fake-sheet.svg';
+const SHARED_PLAYLIST_ID = 101;
+const SHARED_VIDEO_ID = 'dQw4w9WgXcQ';
+const VIDEO_ID_RE = /(?:v=|youtu\.be\/|shorts\/|embed\/|live\/)([A-Za-z0-9_-]{11})(?![A-Za-z0-9_-])/;
 
 export function createApi() {
-  let library = [1, 2, 3, 4, 5].map((id) => ({ id, title: `시험 곡 ${id}`, duration: 60 + id }));
-  let playlists = [
-    { id: 1, name: '기본', track_ids: [1, 2, 3] },
-    { id: 2, name: '밤', track_ids: [4, 5] },
-  ];
+  let library = MEMBER ? [] : [1, 2, 3, 4, 5].map((id) => ({ id, title: `시험 곡 ${id}`, duration: 60 + id }));
+  let playlists = MEMBER
+    ? [{ id: 1, name: '기본', track_ids: [], shared: false }]
+    : [
+        { id: 1, name: '기본', track_ids: [1, 2, 3], shared: true },
+        { id: 2, name: '밤', track_ids: [4, 5], shared: false },
+      ];
+  // 관리자가 공유한 목록(멤버에게만 보인다). 곡 2개, 하나는 사진과 영상이 있다.
+  const sharedPlaylists = MEMBER ? [{ id: SHARED_PLAYLIST_ID, name: '공유 목록', track_ids: [201, 202] }] : [];
+  const sharedTracks = MEMBER
+    ? [
+        { id: 201, title: '공유 곡 1', duration: 90 },
+        { id: 202, title: '공유 곡 2', duration: 80 },
+      ]
+    : [];
+  let media = MEMBER ? { 201: { sheet_version: 1, video_id: SHARED_VIDEO_ID } } : { 1: { sheet_version: 1, video_id: null } };
+  let notes = {};
   let activeId = 1;
   let failedSaves = 0;
+  let failedNotes = 0;
   // 지운 id를 다시 쓰지 않도록 올라가기만 한다.
   let lastId = 2;
 
@@ -27,13 +47,30 @@ export function createApi() {
     if (!playlist) throw new ApiError('not_found', 404);
     return playlist;
   };
+  const findTrack = (id) => {
+    const track = library.find((t) => t.id === id);
+    if (!track) throw new ApiError('not_found', 404);
+    return track;
+  };
+  const adminOnly = () => {
+    if (MEMBER) throw new ApiError('forbidden', 403);
+  };
 
   return {
     async state() {
-      return copy({ library, playlists, active_id: activeId });
+      return copy({
+        library,
+        playlists,
+        active_id: activeId,
+        shared_playlists: sharedPlaylists,
+        shared_tracks: sharedTracks,
+        media,
+        notes,
+        is_admin: !MEMBER,
+      });
     },
     async createPlaylist(name, ids) {
-      const playlist = { id: nextId(), name: name.trim() || '새 플레이리스트', track_ids: ids };
+      const playlist = { id: nextId(), name: name.trim() || '새 플레이리스트', track_ids: ids, shared: false };
       playlists = [...playlists, playlist];
       activeId = playlist.id;
       return copy(playlist);
@@ -52,7 +89,7 @@ export function createApi() {
       find(id);
       playlists = playlists.filter((p) => p.id !== id);
       // 서버와 같다: 목록이 하나도 없으면 기본을 새로 만들고, 활성은 가장 최근 목록이다.
-      if (playlists.length === 0) playlists = [{ id: nextId(), name: '기본', track_ids: [] }];
+      if (playlists.length === 0) playlists = [{ id: nextId(), name: '기본', track_ids: [], shared: false }];
       if (activeId === id) activeId = playlists.at(-1).id;
       return { active_id: activeId };
     },
@@ -64,6 +101,20 @@ export function createApi() {
     async deleteTrack(id) {
       library = library.filter((t) => t.id !== id);
       playlists = playlists.map((p) => ({ ...p, track_ids: p.track_ids.filter((x) => x !== id) }));
+      media = Object.fromEntries(Object.entries(media).filter(([key]) => Number(key) !== id));
+      notes = Object.fromEntries(Object.entries(notes).filter(([key]) => Number(key) !== id));
+    },
+    async renameTrack(id, title) {
+      const track = findTrack(id);
+      const renamed = { ...track, title };
+      library = library.map((t) => (t.id === id ? renamed : t));
+      return { id, title };
+    },
+    async setShared(id, shared) {
+      adminOnly();
+      find(id);
+      playlists = playlists.map((p) => (p.id === id ? { ...p, shared } : p));
+      return { id, shared };
     },
     async file(id) {
       if (FAIL === 'expired') throw new ApiError('expired', 401);
@@ -71,6 +122,37 @@ export function createApi() {
       const res = await fetch(AUDIO_URL);
       if (!res.ok) throw new ApiError('upstream', res.status);
       return res.blob();
+    },
+    async sheet() {
+      const res = await fetch(SHEET_URL);
+      if (!res.ok) throw new ApiError('upstream', res.status);
+      return res.blob();
+    },
+    async uploadSheet(id) {
+      adminOnly();
+      const version = (media[id]?.sheet_version ?? 0) + 1;
+      media = { ...media, [id]: { ...media[id], video_id: media[id]?.video_id ?? null, sheet_version: version } };
+      return { version };
+    },
+    async deleteSheet(id) {
+      adminOnly();
+      media = { ...media, [id]: { video_id: media[id]?.video_id ?? null, sheet_version: null } };
+    },
+    async saveVideo(id, url) {
+      adminOnly();
+      const trimmed = url.trim();
+      const videoId = trimmed ? (VIDEO_ID_RE.exec(trimmed)?.[1] ?? null) : null;
+      if (trimmed && !videoId) throw new ApiError('bad_request', 400);
+      media = { ...media, [id]: { sheet_version: media[id]?.sheet_version ?? null, video_id: videoId } };
+      return { video_id: videoId };
+    },
+    async saveNote(id, body) {
+      if (FAIL === 'note' && failedNotes < 2) {
+        failedNotes += 1;
+        throw new ApiError('upstream', 502);
+      }
+      if (body) notes = { ...notes, [id]: body };
+      else notes = Object.fromEntries(Object.entries(notes).filter(([key]) => Number(key) !== id));
     },
   };
 }

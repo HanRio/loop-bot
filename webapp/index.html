@@ -37,7 +37,7 @@
     stroke-linecap: round; stroke-linejoin: round; display: block; margin: auto; pointer-events: none;
   }
 
-  .picker-row { display: flex; gap: 12px; align-items: center; }
+  .picker-row { display: flex; gap: 8px; align-items: center; }
   .select-wrap { flex: 1; min-width: 0; position: relative; }
   .well { background: var(--surface); box-shadow: var(--press); border-radius: var(--radius-md); }
   select {
@@ -156,11 +156,78 @@
     content: "1"; position: absolute; right: 8px; bottom: 6px; font-size: 10px; font-weight: 700;
   }
 
+  /* 목록 / 가사집 전환, 공유 토글 */
+  .view-switch { display: flex; gap: 4px; padding: 4px; margin-top: 24px; }
+  .view-switch button {
+    flex: 1; min-height: 40px; border: 0; border-radius: var(--radius-sm); background: none;
+    color: var(--hint); font: inherit; font-weight: 600;
+  }
+  .view-switch button[aria-selected="true"] { background: var(--surface); box-shadow: var(--raise-sm); color: var(--accent); }
+  .view-switch button[aria-selected="true"]:active { box-shadow: var(--press); }
+  #share-playlist[aria-pressed="true"] { color: var(--accent); box-shadow: var(--press); }
+
+  /* 가사집 카드 */
+  .text-button {
+    min-height: 44px; padding: 0 12px; border: 0; background: none;
+    color: var(--accent); font: inherit; font-weight: 600;
+  }
+  .text-button:disabled { opacity: .35; }
+  .lyric-title {
+    display: block; width: 100%; min-height: 44px; padding: 0 8px; border: 0; background: none;
+    color: inherit; font: inherit; font-weight: 700; text-align: left;
+  }
+  .lyric-card.current .lyric-title { color: var(--accent); }
+  .sheet {
+    display: block; width: 100%; aspect-ratio: 4 / 3; margin-top: 8px; padding: 0; border: 0;
+    border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--press); overflow: hidden;
+  }
+  .sheet img { display: block; width: 100%; height: 100%; object-fit: contain; }
+  .note-label { display: block; margin: 12px 8px 0; font-size: 13px; font-weight: 600; color: var(--hint); }
+  .note-input {
+    display: block; width: 100%; margin-top: 6px; padding: 12px 16px; border: 0; border-radius: var(--radius-md);
+    color: inherit; font: inherit; font-size: 16px; resize: vertical;
+  }
+  .note-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 4px; }
+  .note-status { font-size: 13px; color: var(--hint); }
+  .lyric-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 12px 8px 0; }
+  .video-input {
+    flex: 1 1 160px; min-width: 0; min-height: 44px; padding: 0 12px; border: 0; border-radius: var(--radius-sm);
+    background: var(--surface); box-shadow: var(--press); color: inherit; font: inherit; font-size: 16px;
+  }
+  .card-error { margin: 8px 8px 0; font-size: 14px; color: var(--danger); }
+  .card-error:empty { display: none; }
+
+  /* 참고 영상: 맨 위에 고정. 여는 동안 재생 바를 숨기므로 아래 여백을 줄인다. */
+  #video-panel {
+    position: sticky; top: 0; z-index: 5; margin: -16px -16px 0; padding: 8px 16px 0;
+    background: var(--surface); box-shadow: var(--raise-sm);
+  }
+  .video-frame { position: relative; aspect-ratio: 16 / 9; overflow: hidden; border-radius: var(--radius-md); background: var(--dark); }
+  .video-frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+  .video-foot { display: flex; justify-content: space-between; padding: 4px 0 8px; }
+  body.video-open { padding-bottom: 16px; }
+
+  /* 사진 크게 보기 */
+  .sheet-viewer {
+    width: 100vw; height: 100vh; max-width: none; max-height: none; margin: 0; padding: 0; border: 0;
+    background: var(--surface); overflow: auto; touch-action: pan-x pan-y pinch-zoom;
+  }
+  .sheet-viewer::backdrop { background: var(--surface); }
+  .sheet-viewer img { display: block; width: 100%; height: auto; }
+  .sheet-close { position: fixed; top: 12px; right: 12px; z-index: 1; }
+
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 </head>
 <body>
+<section id="video-panel" hidden>
+  <div id="video-frame" class="video-frame"></div>
+  <div class="video-foot">
+    <button id="video-youtube" class="text-button" type="button">유튜브에서 열기</button>
+    <button id="video-close" class="text-button" type="button">닫기</button>
+  </div>
+</section>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z" fill="currentColor" stroke="none"/></symbol>
   <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5.5h2.8v13H8zM13.2 5.5H16v13h-2.8z" fill="currentColor" stroke="none"/></symbol>
@@ -173,6 +240,7 @@
   <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
   <symbol id="i-grip" viewBox="0 0 24 24"><path d="M5 8h14M5 12h14M5 16h14"/></symbol>
   <symbol id="i-chevron" viewBox="0 0 24 24"><path d="M6 9.5l6 6 6-6"/></symbol>
+  <symbol id="i-share" viewBox="0 0 24 24"><path d="M12 15V4M8 8l4-4 4 4M5 13v6h14v-6"/></symbol>
 </svg>
 <p id="fatal" class="empty" hidden></p>
 <main id="app" hidden>
@@ -181,6 +249,7 @@
       <select id="picker" aria-label="플레이리스트 고르기"></select>
       <svg class="i chevron" aria-hidden="true"><use href="#i-chevron"/></svg>
     </div>
+    <button id="share-playlist" class="round" type="button" aria-pressed="false" aria-label="공유하기" hidden><svg class="i" aria-hidden="true"><use href="#i-share"/></svg></button>
     <button id="rename-playlist" class="round" type="button" aria-label="이름 바꾸기"><svg class="i" aria-hidden="true"><use href="#i-pencil"/></svg></button>
     <button id="remove-playlist" class="round danger" type="button" aria-label="플레이리스트 삭제"><svg class="i" aria-hidden="true"><use href="#i-trash"/></svg></button>
   </div>
@@ -192,12 +261,19 @@
     </div>
   </form>
   <div id="save-notice" class="notice" role="alert"></div>
-  <section class="card">
+  <div id="view-switch" class="well view-switch" role="tablist" hidden>
+    <button id="view-list" type="button" role="tab" aria-selected="true">목록</button>
+    <button id="view-lyrics" type="button" role="tab" aria-selected="false">가사집</button>
+  </div>
+  <section id="queue-card" class="card">
     <h2>재생 순서</h2>
     <ul id="queue"></ul>
     <p id="queue-empty" class="empty" hidden>아직 곡이 없어요. 아래 라이브러리에서 넣어보세요</p>
   </section>
-  <section class="card">
+  <div id="lyrics" hidden>
+    <p id="lyrics-empty" class="empty" hidden></p>
+  </div>
+  <section id="library-card" class="card">
     <h2>라이브러리</h2>
     <ul id="library"></ul>
     <p id="library-empty" class="empty" hidden>라이브러리가 비었어요. 링크나 음원을 보내주세요</p>
@@ -221,6 +297,10 @@
   </div>
   <p id="play-notice" role="alert"></p>
 </footer>
+<dialog id="sheet-viewer" class="sheet-viewer" aria-label="가사 사진">
+  <button id="sheet-viewer-close" class="round sheet-close" type="button" aria-label="닫기"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button>
+  <img id="sheet-viewer-img" alt="가사 사진">
+</dialog>
 <script type="module" src="app.js"></script>
 </body>
 </html>

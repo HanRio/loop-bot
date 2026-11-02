@@ -75,6 +75,29 @@ test('file uses only the function when no fileBase is given', async () => {
   assert.ok(calls[0].url.startsWith(SUPABASE));
 });
 
+test('sheet uses Oracle first and falls back to the function on 502', async () => {
+  const calls = stubFetch((url) => (url.startsWith(ORACLE) ? failing(502, 'upstream') : audio()));
+  const blob = await createApi(SUPABASE, INIT_DATA, ORACLE).sheet(7);
+
+  assert.equal(await blob.text(), 'AUDIO');
+  assert.equal(toOracle(calls)[0].url, `${ORACLE}/tracks/7/sheet`);
+  assert.equal(toSupabase(calls)[0].url, `${SUPABASE}/tracks/7/sheet`);
+});
+
+test('uploadSheet PUTs the JPEG bytes to the function with initData and returns the version', async () => {
+  const jpeg = new Blob(['JPEG'], { type: 'image/jpeg' });
+  const calls = stubFetch(() => new Response(JSON.stringify({ version: 2 }), { status: 200 }));
+  const result = await createApi(SUPABASE, INIT_DATA, ORACLE).uploadSheet(7, jpeg);
+
+  assert.deepEqual(result, { version: 2 });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, `${SUPABASE}/tracks/7/sheet`);
+  assert.equal(calls[0].init.method, 'PUT');
+  assert.equal(calls[0].init.body, jpeg);
+  assert.equal(calls[0].init.headers['Content-Type'], 'image/jpeg');
+  assert.equal(calls[0].init.headers['X-Telegram-Init-Data'], INIT_DATA);
+});
+
 test('file sends initData to both Oracle and the function', async () => {
   const calls = stubFetch((url) => (url.startsWith(ORACLE) ? failing(502, 'upstream') : audio()));
   await createApi(SUPABASE, INIT_DATA, ORACLE).file(7);
