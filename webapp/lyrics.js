@@ -315,6 +315,8 @@ export function createLyrics({ api, getState, onPlay, onError, onMediaChange, on
       if (cards.get(card.id) !== card) return;
       card.url = URL.createObjectURL(blob);
       card.img.src = card.url;
+      // 크기를 알기 전에 보여 주면 카드가 잠깐 납작해져 아래 카드까지 한꺼번에 받는다.
+      await card.img.decode().catch(() => {});
       card.img.hidden = false;
       card.loaded = true;
     } catch (err) {

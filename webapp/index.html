@@ -22,7 +22,8 @@
     --text: #E4E9F0; --hint: #A9B5C6; --accent: #8DB4EE; --danger: #F2988F;
   }
 
-  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  /* manipulation: 두 번 눌러도 확대되지 않는다. 두 손가락 확대와 스크롤은 그대로다. */
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
   [hidden] { display: none !important; }
   body {
     margin: 0; padding: 16px 16px 124px;
