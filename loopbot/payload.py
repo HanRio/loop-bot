@@ -4,7 +4,6 @@ import logging
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
-from urllib.parse import urlsplit
 
 from loopbot.store import Playlist, Track
 
@@ -16,9 +15,14 @@ INT64_MAX = 2**63 - 1
 NAME_MAX = 20
 DEFAULT_NEW_NAME = "새 플레이리스트"
 
-_YOUTUBE_HOSTS = frozenset({"youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"})
-_SCHEMES = frozenset({"http", "https"})
-_URL_TOKEN = re.compile(r"https?://.+?(?=https?://|[\s,]|$)")
+_URL_CHARS = r"A-Za-z0-9\-._~:/?#\[\]@!$&'*+;=%"
+# Text around a link may touch it directly, so a link ends at the first non-URL character (Korean, brackets, comma).
+_URL_TOKEN = re.compile(
+    r"(?:(?P<scheme>https?://)|(?<![A-Za-z0-9_./-]))(?:(?:www|m|music)\.)?(?:youtube\.com|youtu\.be)/"
+    rf"[{_URL_CHARS}]+?(?=https?://|[^{_URL_CHARS}]|$)",
+    re.IGNORECASE,
+)
+_TRAILING_PUNCTUATION = ".!?;:'"
 
 _MSG_MALFORMED = "목록이 바뀌었어요. 버튼을 다시 눌러주세요"
 _MSG_TOO_MANY = f"링크는 한 번에 {MAX_LINKS}개까지 넣을 수 있어요"
@@ -39,17 +43,12 @@ class WebAppAction:
     play: bool
 
 
-def is_youtube_url(text: str) -> bool:
-    try:
-        parts = urlsplit(text)
-        host = parts.hostname
-    except ValueError:
-        return False
-    return parts.scheme in _SCHEMES and host in _YOUTUBE_HOSTS
-
-
 def extract_youtube_urls(text: str) -> list[str]:
-    return list(dict.fromkeys(tok for tok in _URL_TOKEN.findall(text) if is_youtube_url(tok)))
+    urls = (
+        (m.group() if m["scheme"] else f"https://{m.group()}").rstrip(_TRAILING_PUNCTUATION)
+        for m in _URL_TOKEN.finditer(text)
+    )
+    return list(dict.fromkeys(urls))
 
 
 def build_webapp_url(base: str, library: Sequence[Track], playlists: Sequence[Playlist], active_id: int) -> str:
