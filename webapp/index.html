@@ -25,7 +25,7 @@
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   [hidden] { display: none !important; }
   body {
-    margin: 0; padding: 16px 16px 240px;
+    margin: 0; padding: 16px 16px 124px;
     background: var(--surface); color: var(--text);
     font: 500 16px/1.5 -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
   }
@@ -108,50 +108,51 @@
 
   #bar {
     position: fixed; left: 0; right: 0; bottom: 0;
-    background: var(--surface); border-radius: 24px 24px 0 0;
-    box-shadow: 0 -6px 16px var(--dark);
-    padding: 14px 20px calc(10px + env(safe-area-inset-bottom, 0px));
+    background: var(--surface); border-radius: 18px 18px 0 0;
+    box-shadow: 0 -4px 12px var(--dark);
+    padding: 4px 16px calc(6px + env(safe-area-inset-bottom, 0px));
   }
-  #bar-top { display: flex; align-items: center; gap: 12px; }
-  #now { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
-  #time { flex: none; font-size: 13px; color: var(--hint); font-variant-numeric: tabular-nums; }
+  #bar-row { display: flex; align-items: center; gap: 8px; }
+  #bar-top { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
+  #now { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; }
+  #time { font-size: 12px; color: var(--hint); font-variant-numeric: tabular-nums; }
 
   #seek {
     -webkit-appearance: none; appearance: none;
-    width: 100%; height: 44px; margin: 0; background: none;
+    display: block; width: 100%; height: 28px; margin: 0; background: none;
   }
   #seek::-webkit-slider-runnable-track {
-    height: 10px; border-radius: 5px; box-shadow: var(--press);
+    height: 6px; border-radius: 3px; box-shadow: var(--press);
     background: linear-gradient(var(--accent), var(--accent)) no-repeat 0 / var(--progress, 0%) 100%, var(--surface);
   }
   #seek::-moz-range-track {
-    height: 10px; border-radius: 5px; box-shadow: var(--press);
+    height: 6px; border-radius: 3px; box-shadow: var(--press);
     background: linear-gradient(var(--accent), var(--accent)) no-repeat 0 / var(--progress, 0%) 100%, var(--surface);
   }
   #seek::-webkit-slider-thumb {
     -webkit-appearance: none; appearance: none;
-    width: 24px; height: 24px; margin-top: -7px; border: 0; border-radius: 50%;
+    width: 18px; height: 18px; margin-top: -6px; border: 0; border-radius: 50%;
     background: var(--surface); box-shadow: var(--raise-sm);
   }
   #seek::-moz-range-thumb {
-    width: 24px; height: 24px; border: 0; border-radius: 50%;
+    width: 18px; height: 18px; border: 0; border-radius: 50%;
     background: var(--surface); box-shadow: var(--raise-sm);
   }
 
-  #controls { display: flex; justify-content: center; align-items: center; gap: 28px; }
+  #controls { flex: none; display: flex; align-items: center; gap: 4px; }
   #controls button {
-    min-width: 48px; min-height: 48px; border: 0; border-radius: 50%;
+    width: 44px; height: 44px; padding: 0; border: 0; border-radius: 50%;
     background: var(--surface); color: var(--text);
     box-shadow: var(--raise-sm); transition: box-shadow var(--ease);
   }
   #controls button:active { box-shadow: var(--press); }
-  #controls #toggle { width: 68px; height: 68px; box-shadow: var(--raise); color: var(--accent); }
+  #controls #toggle { width: 52px; height: 52px; box-shadow: var(--raise-sm); color: var(--accent); }
   #controls #toggle:active, #controls #toggle[aria-pressed="true"] { box-shadow: var(--press); }
-  #controls #toggle .i { width: 30px; height: 30px; }
+  #controls #toggle .i { width: 26px; height: 26px; }
   #toggle[aria-pressed="true"] .play-icon, #toggle[aria-pressed="false"] .pause-icon { display: none; }
-  #repeat { position: relative; width: 44px; height: 44px; }
-  #repeat[data-mode="off"] { color: var(--hint); }
-  #repeat[data-mode="all"], #repeat[data-mode="one"] { color: var(--accent); box-shadow: var(--press); }
+  #controls #repeat { position: relative; }
+  #controls #repeat[data-mode="off"] { color: var(--hint); }
+  #controls #repeat[data-mode="all"], #controls #repeat[data-mode="one"] { color: var(--accent); box-shadow: var(--press); }
   #repeat[data-mode="one"]::after {
     content: "1"; position: absolute; right: 8px; bottom: 6px; font-size: 10px; font-weight: 700;
   }
@@ -281,19 +282,21 @@
   <p class="empty">링크는 채팅에 붙여넣으면 추가돼요. 긴 곡은 채팅에서 /play로 들어요</p>
 </main>
 <footer id="bar" hidden>
-  <div id="bar-top">
-    <span id="now"></span>
-    <span id="time">0:00 / 0:00</span>
-    <button id="repeat" class="round" type="button" aria-label="전체 반복"><svg class="i" aria-hidden="true"><use href="#i-repeat"/></svg></button>
-  </div>
   <input id="seek" type="range" min="0" max="0" step="0.1" value="0" aria-label="재생 위치">
-  <div id="controls">
-    <button id="prev" type="button" aria-label="이전 곡"><svg class="i" aria-hidden="true"><use href="#i-prev"/></svg></button>
-    <button id="toggle" type="button" aria-label="재생">
-      <svg class="i play-icon" aria-hidden="true"><use href="#i-play"/></svg>
-      <svg class="i pause-icon" aria-hidden="true"><use href="#i-pause"/></svg>
-    </button>
-    <button id="next" type="button" aria-label="다음 곡"><svg class="i" aria-hidden="true"><use href="#i-next"/></svg></button>
+  <div id="bar-row">
+    <div id="bar-top">
+      <span id="now"></span>
+      <span id="time">0:00 / 0:00</span>
+    </div>
+    <div id="controls">
+      <button id="prev" type="button" aria-label="이전 곡"><svg class="i" aria-hidden="true"><use href="#i-prev"/></svg></button>
+      <button id="toggle" type="button" aria-label="재생">
+        <svg class="i play-icon" aria-hidden="true"><use href="#i-play"/></svg>
+        <svg class="i pause-icon" aria-hidden="true"><use href="#i-pause"/></svg>
+      </button>
+      <button id="next" type="button" aria-label="다음 곡"><svg class="i" aria-hidden="true"><use href="#i-next"/></svg></button>
+      <button id="repeat" type="button" aria-label="전체 반복"><svg class="i" aria-hidden="true"><use href="#i-repeat"/></svg></button>
+    </div>
   </div>
   <p id="play-notice" role="alert"></p>
 </footer>
