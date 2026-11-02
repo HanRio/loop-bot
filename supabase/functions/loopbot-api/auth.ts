@@ -19,22 +19,30 @@ function dataCheckString(params: URLSearchParams): string {
     .join("\n");
 }
 
-function userIdOf(user: string | null): number | null {
+export interface VerifiedUser {
+  id: number;
+  username: string | null;
+}
+
+function userOf(user: string | null): VerifiedUser | null {
   try {
-    const id = JSON.parse(user ?? "null")?.id;
-    return Number.isSafeInteger(id) ? id : null;
+    const parsed = JSON.parse(user ?? "null");
+    const id = parsed?.id;
+    if (!Number.isSafeInteger(id)) return null;
+    const username = typeof parsed.username === "string" && parsed.username !== "" ? parsed.username : null;
+    return { id, username };
   } catch {
     return null;
   }
 }
 
-/** Returns the Telegram user id when initData is signed by the bot and fresh; otherwise null. */
+/** Returns the signed Telegram user when initData is signed by the bot and fresh; otherwise null. */
 export async function verifyInitData(
   initData: string,
   botToken: string,
   nowSec: number,
   maxAgeSec: number = DEFAULT_MAX_AGE_SEC,
-): Promise<number | null> {
+): Promise<VerifiedUser | null> {
   const params = new URLSearchParams(initData);
   const hash = params.get("hash");
   if (!hash || !HASH_PATTERN.test(hash)) return null;
@@ -52,5 +60,5 @@ export async function verifyInitData(
     hexToBytes(hash),
     encoder.encode(dataCheckString(params)),
   );
-  return valid ? userIdOf(params.get("user")) : null;
+  return valid ? userOf(params.get("user")) : null;
 }

@@ -1,6 +1,6 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 import postgres from "postgres";
-import { handle, type Deps } from "./app.ts";
+import { handle, parseUsernames, type Deps } from "./app.ts";
 import { createDb, type Db } from "./db.ts";
 
 const dsn = Deno.env.get("LOOPBOT_TEST_DATABASE_URL") ?? "";
@@ -14,11 +14,12 @@ const STRANGER = 900003;
 const TEST_USERS = [ALLOWED_USER, OTHER_USER];
 
 // Test-only signer, same Telegram rules as auth_test.ts.
-async function signFor(userId: number): Promise<string> {
+async function signFor(userId: number, username?: string): Promise<string> {
   const encoder = new TextEncoder();
+  const user = username === undefined ? { id: userId } : { id: userId, username };
   const fields: [string, string][] = [
     ["auth_date", String(NOW)],
-    ["user", JSON.stringify({ id: userId })],
+    ["user", JSON.stringify(user)],
   ];
   const dataCheck = fields.map(([key, value]) => `${key}=${value}`).join("\n");
   const hmacKey = (raw: BufferSource) =>
@@ -41,6 +42,7 @@ function depsWith(db: Db, overrides: Partial<Deps> = {}): Deps {
   return {
     botToken: BOT_TOKEN,
     allowed: new Set([ALLOWED_USER, OTHER_USER]),
+    allowedUsernames: new Set(),
     db,
     fetch: unexpectedFetch,
     now: () => NOW,
@@ -118,6 +120,42 @@ Deno.test("answers 403 forbidden for a user outside the allowed set", async () =
 
   assertEquals(res.status, 403);
   assertEquals(await res.json(), { error: "forbidden" });
+});
+
+// Stub DB for the auth-only cases: GET /state only reads state, so no Postgres is needed.
+const stateOnlyDb = { state: async () => ({ library: [], playlists: [], active_id: null }) } as unknown as Db;
+
+async function getStateAs(allowedUsernames: string[], userId: number, username?: string): Promise<Response> {
+  const deps = depsWith(stateOnlyDb, { allowedUsernames: new Set(allowedUsernames) });
+  const req = new Request(`${ORIGIN}/loopbot-api/state`, {
+    headers: { "x-telegram-init-data": await signFor(userId, username) },
+  });
+  return handle(req, deps);
+}
+
+Deno.test("admits a user outside the id list by an allowed username, ignoring case", async () => {
+  const res = await getStateAs(["some_user"], STRANGER, "SOME_USER");
+
+  assertEquals(res.status, 200);
+});
+
+Deno.test("answers 403 for a user outside the id list whose username is not allowed", async () => {
+  const res = await getStateAs(["some_user"], STRANGER, "other");
+
+  assertEquals(res.status, 403);
+  assertEquals(await res.json(), { error: "forbidden" });
+});
+
+Deno.test("answers 403 for a user outside the id list who has no username", async () => {
+  const res = await getStateAs(["some_user"], STRANGER);
+
+  assertEquals(res.status, 403);
+  assertEquals(await res.json(), { error: "forbidden" });
+});
+
+Deno.test("parseUsernames trims, strips @, lowercases, and drops blank entries", () => {
+  assertEquals(parseUsernames("@Some_User, other ,,"), new Set(["some_user", "other"]));
+  assertEquals(parseUsernames(" , "), new Set());
 });
 
 dbTest("GET /state creates an active 기본 playlist for a new user", async (ctx) => {

@@ -31,7 +31,27 @@ function fieldsFor(user: object, authDate: number | string): [string, string][] 
 Deno.test("returns the user id for a correctly signed initData", async () => {
   const initData = await sign(fieldsFor({ id: USER_ID, first_name: "Vladislav" }, NOW - 60));
 
-  assertEquals(await verifyInitData(initData, BOT_TOKEN, NOW), USER_ID);
+  assertEquals((await verifyInitData(initData, BOT_TOKEN, NOW))?.id, USER_ID);
+});
+
+Deno.test("returns the username when the signed user has one", async () => {
+  const initData = await sign(fieldsFor({ id: USER_ID, username: "Some_User" }, NOW - 60));
+
+  assertEquals(await verifyInitData(initData, BOT_TOKEN, NOW), { id: USER_ID, username: "Some_User" });
+});
+
+Deno.test("returns a null username when the user has none", async () => {
+  const initData = await sign(fieldsFor({ id: USER_ID }, NOW - 60));
+
+  assertEquals(await verifyInitData(initData, BOT_TOKEN, NOW), { id: USER_ID, username: null });
+});
+
+Deno.test("treats a non-string or empty username as absent", async () => {
+  for (const username of [123, "", null]) {
+    const initData = await sign(fieldsFor({ id: USER_ID, username }, NOW - 60));
+
+    assertEquals(await verifyInitData(initData, BOT_TOKEN, NOW), { id: USER_ID, username: null });
+  }
 });
 
 Deno.test("rejects a tampered hash", async () => {
@@ -64,7 +84,7 @@ Deno.test("rejects auth_date more than 60 seconds in the future", async () => {
 Deno.test("accepts auth_date a few seconds in the future (clock skew)", async () => {
   const initData = await sign(fieldsFor({ id: USER_ID }, NOW + 30));
 
-  assertEquals(await verifyInitData(initData, BOT_TOKEN, NOW), USER_ID);
+  assertEquals((await verifyInitData(initData, BOT_TOKEN, NOW))?.id, USER_ID);
 });
 
 // Number() would read these as valid numbers; only plain decimal digits are a Telegram auth_date.
@@ -86,7 +106,7 @@ Deno.test("accepts non-ASCII user fields and a signature field", async () => {
     ["signature", "abc"],
   ]);
 
-  assertEquals(await verifyInitData(initData, BOT_TOKEN, NOW), 42);
+  assertEquals((await verifyInitData(initData, BOT_TOKEN, NOW))?.id, 42);
 });
 
 // Public sample from https://docs.telegram-mini-apps.com/packages/tma-js-init-data/validating (not a secret).
@@ -95,5 +115,5 @@ Deno.test("accepts the published Telegram docs sample", async () => {
   const initData =
     "query_id=AAHdF6IQAAAAAN0XohDhrOrc&user=%7B%22id%22%3A279058397%2C%22first_name%22%3A%22Vladislav%22%2C%22last_name%22%3A%22Kibenko%22%2C%22username%22%3A%22vdkfrost%22%2C%22language_code%22%3A%22ru%22%2C%22is_premium%22%3Atrue%7D&auth_date=1662771648&hash=c501b71e775f74ce10e377dea85a7ea24ecd640b223ea86dfe453e0eaed2e2b2";
 
-  assertEquals(await verifyInitData(initData, token, 1662771700), 279058397);
+  assertEquals((await verifyInitData(initData, token, 1662771700))?.id, 279058397);
 });
