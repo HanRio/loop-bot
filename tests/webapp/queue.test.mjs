@@ -78,3 +78,13 @@ test('prevTrack skips unplayable tracks', () => {
 test('prevTrack returns null for an empty list', () => {
   assert.equal(prev({ trackIds: [], currentId: null }), null);
 });
+
+test('nextTrack with repeat one moves on when the current track was removed from the list', () => {
+  assert.equal(next({ trackIds: [1, 3], currentId: 2, lastIndex: 1, repeat: 'one' }), 3);
+});
+
+test('nextTrack and prevTrack treat a missing or NaN lastIndex as 0', () => {
+  assert.equal(next({ trackIds: [1, 3], currentId: 2, lastIndex: NaN }), 1);
+  assert.equal(next({ trackIds: [1, 3], currentId: 2, lastIndex: undefined }), 1);
+  assert.equal(prev({ trackIds: [1, 3], currentId: 2, lastIndex: NaN }), 3);
+});

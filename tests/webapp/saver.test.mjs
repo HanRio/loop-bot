@@ -119,3 +119,67 @@ test('createSaver flush resolves after a failed save and leaves the value pendin
   await done;
   assert.equal(saver.pending(), true);
 });
+
+test('createSaver concurrent flushes wait for the queued newer save', async () => {
+  const timers = fakeTimers();
+  const { save, calls } = controlledSave();
+  const saver = createSaver(save, timers);
+
+  saver.update(1);
+  timers.fire();
+  saver.update(2);
+  const first = saver.flush();
+  const second = saver.flush();
+  let resolved = 0;
+  first.then(() => { resolved += 1; });
+  second.then(() => { resolved += 1; });
+
+  calls[0].resolve();
+  await settle();
+  assert.deepEqual(calls.map((call) => call.value), [1, 2]);
+  assert.equal(resolved, 0);
+
+  calls[1].resolve();
+  await Promise.all([first, second]);
+  assert.equal(saver.pending(), false);
+});
+
+test('createSaver keeps retrying when onError throws', async (t) => {
+  t.mock.method(console, 'error', () => {});
+  const timers = fakeTimers();
+  const { save, calls } = controlledSave();
+  const saver = createSaver(save, {
+    ...timers,
+    onError() {
+      throw new Error('boom');
+    },
+  });
+
+  saver.update(7);
+  timers.fire();
+  calls[0].reject(new Error('down'));
+  await settle();
+
+  assert.equal(timers.lastDelay(), 3000);
+  timers.fire();
+  assert.equal(calls[1].value, 7);
+});
+
+test('createSaver treats a synchronous throw from save like a failed save', async () => {
+  const timers = fakeTimers();
+  const errors = [];
+  const saver = createSaver(
+    () => {
+      throw new Error('sync');
+    },
+    { ...timers, onError: (err) => errors.push(err) },
+  );
+
+  saver.update(4);
+  timers.fire();
+  await settle();
+
+  assert.equal(errors.length, 1);
+  assert.equal(saver.pending(), true);
+  assert.equal(timers.lastDelay(), 3000);
+});
