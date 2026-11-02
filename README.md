@@ -92,7 +92,14 @@ supabase functions deploy loopbot-api --no-verify-jwt --use-api --project-ref <r
 
 ## 유튜브가 막을 때
 
-"유튜브가 서버 접근을 막았어요 (쿠키 필요)"가 나오면, 브라우저 확장(예: Get cookies.txt LOCALLY)으로 youtube.com 쿠키를 `cookies.txt`로 내보내고 `.env`의 `YTDLP_COOKIES`에 그 파일 경로를 넣은 뒤 봇을 다시 실행하세요.
+"유튜브 쿠키가 만료됐어요"가 나오면 맥에서 아래를 실행해요. 전용 Brave 창은 닫아 둬요. 유튜브·구글 쿠키만 걸러 서버에 넣고, 서버에서 받기가 되는지 확인한 뒤에 교체해요.
+
+```bash
+scripts/refresh_cookies.sh
+```
+
+- `.env`에 `LOOPBOT_SERVER=user@host`가 있어야 해요.
+- 그래도 실패하면 부계정 로그인이 풀린 거예요. `open -na "Brave Browser" --args --user-data-dir="$HOME/.loopbot-brave"`로 전용 창을 열어 다시 로그인하고, 창을 닫은 뒤 다시 실행해요.
 
 ## 플레이어 시험 (로컬)
 

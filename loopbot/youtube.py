@@ -37,7 +37,7 @@ def check_limits(info: Mapping[str, Any]) -> None:
 def _download_error_message(exc: Exception) -> str:
     text = str(exc)
     if "Sign in to confirm" in text:
-        return "유튜브가 서버 접근을 막았어요 (쿠키 필요)"
+        return "유튜브 쿠키가 만료됐어요. 맥에서 scripts/refresh_cookies.sh를 실행해주세요"
     if "Private video" in text:
         return "비공개 영상이에요"
     return _MSG_NOT_DOWNLOADED

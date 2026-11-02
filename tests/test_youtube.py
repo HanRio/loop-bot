@@ -20,6 +20,6 @@ def test_check_limits_rejects_playlist():
         check_limits({"entries": []})
 
 def test_download_error_message_maps_known_causes():
-    assert _download_error_message(Exception("Sign in to confirm you're not a bot")) == "유튜브가 서버 접근을 막았어요 (쿠키 필요)"
+    assert _download_error_message(Exception("Sign in to confirm you're not a bot")) == "유튜브 쿠키가 만료됐어요. 맥에서 scripts/refresh_cookies.sh를 실행해주세요"
     assert _download_error_message(Exception("ERROR: Private video. Sign in")) == "비공개 영상이에요"
     assert _download_error_message(Exception("something else")) == "영상을 받지 못했어요"
