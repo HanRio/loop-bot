@@ -6,7 +6,7 @@
 
 **Architecture:** Supabase Edge Function `loopbot-api`가 Telegram initData로 사용자를 확인하고 목록 API와 곡 파일 전달을 맡는다. 미니앱은 정적 페이지이며 곡을 Cache Storage에 저장해 하나의 `<audio>`로 재생한다. 봇은 곡을 받아 저장하는 일과 채팅 `/play`만 남는다.
 
-**Tech Stack:** Deno + TypeScript + `npm:postgres@3.4.5`, 바닐라 JS ES 모듈 + SortableJS 1.15.6, `node --test`, Python 3 + python-telegram-bot 22 + psycopg 3.
+**Tech Stack:** Deno + TypeScript + `npm:postgres@3.4.9`(4.0.0은 2026-10-29에 나와 아직 쓰지 않는다), 바닐라 JS ES 모듈 + SortableJS 1.15.6, `node --test`, Python 3 + python-telegram-bot 22 + psycopg 3.
 
 **Spec:** `docs/superpowers/specs/2026-11-02-miniapp-player-design.md`
 
@@ -56,7 +56,7 @@
 // auth.ts
 verifyInitData(initData: string, botToken: string, nowSec: number, maxAgeSec?: number): Promise<number | null> // user id. 기본 86400
 // db.ts (모든 함수는 sql.begin 안에서 select set_config('search_path', schema, true) 후 실행)
-createDb(dsn: string, schema: string): Db   // postgres(dsn, {max: 1, prepare: false}), bigint는 number로 파싱
+createDb(dsn: string, schema: string): Db   // postgres(dsn, {max: 1, prepare: false, fetch_types: false, types: {bigint: {to: 20, from: [20], serialize: String, parse: Number}}})
 interface Playlist { id: number; name: string; track_ids: number[] }
 interface Db {
   state(userId): Promise<{library: {id: number; title: string; duration: number | null}[]; playlists: Playlist[]; active_id: number}>
@@ -74,7 +74,7 @@ handle(req: Request, deps: Deps): Promise<Response>
 ```
 경로는 스펙의 API 표대로이며 함수 이름 뒤의 경로로 매칭한다(`/loopbot-api/state`와 `/state` 모두). 활성 선택 규칙은 `loopbot/store/postgres.py`의 `_active_id`, 곡 필터링은 `save_playlist`를 그대로 옮긴다. PUT의 남의 목록은 404다.
 
-- [ ] **Step 1: `auth_test.ts`를 쓴다.** 테스트 안에서 스펙 규칙대로 서명해 만든다. 검사: 정상 → user id, `hash` 변조 → null, 값 변조 → null, `auth_date`가 25시간 전 → null, 빈 문자열 → null, `user`에 `"first_name":"하늘"`과 `signature=abc` 필드가 있어도 정상 통과.
+- [ ] **Step 1: `auth_test.ts`를 쓴다.** 테스트 안에서 스펙 규칙대로 서명해 만든다. 검사: 정상 → user id, `hash` 변조 → null, 값 변조 → null, `auth_date`가 25시간 전 → null, 빈 문자열 → null, `user`에 `"first_name":"하늘"`과 `signature=abc` 필드가 있어도 정상 통과. 공개 문서 예제도 넣는다: `https://docs.telegram-mini-apps.com/packages/tma-js-init-data/validating`의 `initData`와 예제 봇 토큰, `nowSec = 1662771700` → `279058397`.
 - [ ] **Step 2: 실패 확인.** `deno test --allow-env --allow-net supabase/functions/loopbot-api/auth_test.ts`
 - [ ] **Step 3: `auth.ts` 구현.** 데이터 검사 문자열은 `hash`만 뺀 모든 필드를 키 순으로 `key=value`(디코딩 값), `\n`으로 잇는다. `secret = HMAC_SHA256(key="WebAppData", msg=botToken)`, `hash = hex(HMAC_SHA256(key=secret, msg=data_check_string))`. Web Crypto `crypto.subtle.verify`로 비교한다(상수 시간).
 - [ ] **Step 4: `app_test.ts`를 쓴다.** `LOOPBOT_TEST_DATABASE_URL`로 실제 `loopbot_test`에 접속한다. 없으면 실패가 아니라 `ignore`. 시작 시 테스트 사용자 id(900001, 900002)의 행을 지운다. 곡은 SQL로 넣는다. 검사:
