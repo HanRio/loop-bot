@@ -49,7 +49,7 @@
 
   .round, #toggle {
     border: 0; border-radius: 50%; background: var(--surface); color: var(--text);
-    box-shadow: var(--raise-sm); transition: box-shadow var(--ease);
+    box-shadow: var(--raise-sm);
   }
   .round:active, #toggle:active { box-shadow: var(--press); }
   .round { width: 48px; height: 48px; flex: none; }
@@ -64,7 +64,7 @@
   .buttons button {
     flex: 1; min-height: 48px; border: 0; border-radius: var(--radius-md);
     background: var(--surface); color: var(--text); font-weight: 600;
-    box-shadow: var(--raise-sm); transition: box-shadow var(--ease);
+    box-shadow: var(--raise-sm);
   }
   .buttons button:active { box-shadow: var(--press); }
   .buttons button.primary { color: var(--accent); }
@@ -143,7 +143,7 @@
   #controls button {
     width: 44px; height: 44px; padding: 0; border: 0; border-radius: 50%;
     background: var(--surface); color: var(--text);
-    box-shadow: var(--raise-sm); transition: box-shadow var(--ease);
+    box-shadow: var(--raise-sm);
   }
   #controls button:active { box-shadow: var(--press); }
   #controls #toggle { width: 52px; height: 52px; box-shadow: var(--raise-sm); color: var(--accent); }
@@ -163,8 +163,15 @@
     flex: 1; min-height: 40px; border: 0; border-radius: var(--radius-sm); background: none;
     color: var(--hint); font: inherit; font-weight: 600;
   }
-  .view-switch button[aria-selected="true"] { background: var(--surface); box-shadow: var(--raise-sm); color: var(--accent); }
-  .view-switch button[aria-selected="true"]:active { box-shadow: var(--press); }
+  .view-switch button[aria-selected="true"] { color: var(--accent); }
+  .view-switch button { position: relative; z-index: 1; }
+  .view-switch { position: relative; }
+  .view-switch .pill {
+    position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc(50% - 6px);
+    border-radius: var(--radius-sm); background: var(--surface); box-shadow: var(--raise-sm);
+    transition: transform 280ms cubic-bezier(.22, 1, .36, 1);
+  }
+  #view-lyrics[aria-selected="true"] ~ .pill { transform: translateX(calc(100% + 4px)); }
   #share-playlist[aria-pressed="true"] { color: var(--accent); box-shadow: var(--press); }
 
   /* 가사집 카드 */
@@ -218,10 +225,22 @@
   .sheet-close { position: fixed; top: 12px; right: 12px; z-index: 1; }
 
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+  /* 눌림 축소(press-scale) + 스프링 복귀, 탭 전환(motion-tab-transition). design-isms 수치 */
+  button { transition: transform 320ms cubic-bezier(.34, 1.56, .64, 1), box-shadow var(--ease), color var(--ease), opacity var(--ease); }
+  button:active:not(:disabled) { transform: scale(.94); transition: transform 90ms ease-out, box-shadow 90ms ease-out; }
+  button.title:active:not(:disabled), button.sheet:active:not(:disabled) { transform: scale(.985); }
+  #queue-card, #library-card, #lyrics { animation: panel-enter 220ms cubic-bezier(.22, 1, .36, 1); }
+  #toggle .i { animation: icon-pop 240ms cubic-bezier(.34, 1.56, .64, 1); }
+  @keyframes panel-enter { from { opacity: 0; transform: translateY(6px); } }
+  @keyframes icon-pop { from { opacity: .4; transform: scale(.7); } }
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+    button:active:not(:disabled) { transform: none !important; }
+  }
 </style>
 </head>
-<body>
+<body ontouchstart="">
 <section id="video-panel" hidden>
   <div id="video-frame" class="video-frame"></div>
   <div class="video-foot">
@@ -265,6 +284,7 @@
   <div id="view-switch" class="well view-switch" role="tablist" hidden>
     <button id="view-list" type="button" role="tab" aria-selected="true">목록</button>
     <button id="view-lyrics" type="button" role="tab" aria-selected="false">가사집</button>
+    <span class="pill" aria-hidden="true"></span>
   </div>
   <section id="queue-card" class="card">
     <h2>재생 순서</h2>
