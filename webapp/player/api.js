@@ -19,10 +19,13 @@ async function errorCode(res) {
   }
 }
 
+// 곡 한 개를 받는 시간 상한. 멈춘 요청이 같은 곡의 재시도를 막지 않게 한다. 본문을 읽는 동안도 걸린다.
+const FILE_TIMEOUT_MS = 120000;
+
 export function createApi(baseUrl, initData) {
-  async function request(method, path, body) {
+  async function request(method, path, body, extra = {}) {
     const headers = { 'X-Telegram-Init-Data': initData };
-    const init = { method, headers };
+    const init = { method, headers, ...extra };
     if (body !== undefined) {
       headers['Content-Type'] = 'application/json';
       init.body = JSON.stringify(body);
@@ -43,6 +46,8 @@ export function createApi(baseUrl, initData) {
     deleteTrack: async (id) => {
       await request('DELETE', `/tracks/${id}`);
     },
-    file: async (id) => (await request('GET', `/tracks/${id}/file`)).blob(),
+    // AbortSignal.timeout이 없는 오래된 웹뷰에서는 시간 상한 없이 받는다.
+    file: async (id) =>
+      (await request('GET', `/tracks/${id}/file`, undefined, { signal: AbortSignal.timeout?.(FILE_TIMEOUT_MS) })).blob(),
   };
 }

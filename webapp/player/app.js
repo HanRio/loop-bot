@@ -4,9 +4,9 @@ import { createPlayer } from './audio.js';
 import { COPY } from './copy.js';
 import { nextTrack, prevTrack } from './queue.js';
 import {
-  $, enableQueueSort, renderPicker, renderQueue, renderLibrary, renderBar, setNotice, setVisible,
+  $, enableQueueSort, renderPicker, renderQueue, renderLibrary, renderBar, setNewFormOpen, setNotice, setVisible,
 } from './render.js';
-import { createActiveSender, createSaves, readLocal, writeLocal } from './store.js';
+import { createActiveSender, createSaves, mergeOrder, readLocal, writeLocal } from './store.js';
 
 const API_BASE = 'https://rrpmpqxoqxlwrmflpiyi.supabase.co/functions/v1/loopbot-api';
 const IS_LOCAL = location.hostname === 'localhost';
@@ -42,10 +42,16 @@ let player;
 let dragging = false;
 // 지우는 중인 플레이리스트는 편집을 받지 않는다.
 let deletingId = null;
+// 끌기를 시작한 목록. 끝날 때 보고 있는 목록이 같을 때만 순서를 저장한다.
+let dragPlaylistId = null;
 let refreshSeq = 0;
 
 const saves = createSaves({
-  save: (value) => api.savePlaylist(value.id, value.name, value.track_ids),
+  save: async (value) => {
+    await api.savePlaylist(value.id, value.name, value.track_ids);
+    // PUT은 그 목록을 활성으로 만든다. 다른 목록을 보고 있으면 활성을 그쪽으로 되돌린다.
+    if (value.id !== model.viewedId) activeSender.request(model.viewedId);
+  },
   onError: onSaveError,
   onSaved: () => showSaveNotice(''),
 });
@@ -64,13 +70,7 @@ const viewedPlaylist = () => model.playlists.find((p) => p.id === model.viewedId
 const queueIds = () => [...$('queue').children].map((li) => Number(li.dataset.id));
 const titleOf = (id) => model.library.find((t) => t.id === id)?.title ?? '';
 const titleMap = () => new Map(model.library.map((t) => [t.id, t.title]));
-const barState = () => ({
-  title: playback.currentTitle,
-  position: player?.position() ?? 0,
-  duration: player?.duration() ?? 0,
-  playing: player?.isPlaying() ?? false,
-  repeat: playback.repeat,
-});
+const barState = () => ({ title: playback.currentTitle, position: player?.position() ?? 0, duration: player?.duration() ?? 0, playing: player?.isPlaying() ?? false, repeat: playback.repeat });
 
 function renderAll() {
   const ids = viewedIds();
@@ -152,7 +152,7 @@ async function onDeleteTrack(id) {
 }
 
 async function onPickPlaylist(id) {
-  closeNewForm();
+  setNewFormOpen(false);
   if (id === model.viewedId) return renderAll();
   await saves.flushAll();
   model.viewedId = id;
@@ -161,26 +161,18 @@ async function onPickPlaylist(id) {
   activeSender.request(id);
 }
 
-function openNewForm() {
-  $('new-name').value = '';
-  setVisible('new-form', true);
-  $('new-name').focus();
-}
-
-function closeNewForm() {
-  setVisible('new-form', false);
-}
-
 async function onCreatePlaylist(event) {
   event.preventDefault();
   const name = $('new-name').value;
-  closeNewForm();
+  setNewFormOpen(false);
   await saves.flushAll();
   try {
     const playlist = await api.createPlaylist(name, []);
     model.playlists = [...model.playlists, playlist];
     model.viewedId = playlist.id;
     writeLocal(KEY_PLAYLIST, String(playlist.id));
+    // 대기 중이던 활성 전송이 방금 만든 목록을 덮지 않도록 다시 맞춘다.
+    activeSender.request(playlist.id);
   } catch (err) {
     reportError(err);
   }
@@ -188,13 +180,13 @@ async function onCreatePlaylist(event) {
 }
 
 function onCancelNew() {
-  closeNewForm();
+  setNewFormOpen(false);
   renderAll();
 }
 
 function onPickerChange() {
   const value = $('picker').value;
-  if (value === NEW_PLAYLIST) return openNewForm();
+  if (value === NEW_PLAYLIST) return setNewFormOpen(true);
   return onPickPlaylist(Number(value));
 }
 
@@ -202,39 +194,36 @@ async function onDeletePlaylist() {
   if (!confirm(COPY.deletePlaylistConfirm)) return;
   const id = model.viewedId;
   deletingId = id;
+  // 저장 대기 중인 편집은 삭제가 실패하면 되돌리려고 먼저 잡아 둔다.
+  const edited = saves.pending(id) ? viewedPlaylist() : null;
   // 지울 목록의 저장은 버린다. 보내 봤자 404만 돌아오고 재시도가 멈추지 않는다.
   saves.drop(id);
   try {
     await api.deletePlaylist(id);
   } catch (err) {
     deletingId = null;
-    return reportError(err);
+    if (err.code !== 'not_found') {
+      if (edited) saves.update(edited);
+      return showSaveNotice(err.code === 'expired' ? COPY.reopen : COPY.deleteFailed);
+    }
   }
   deletingId = null;
   // 마지막 목록이었으면 서버가 기본을 새로 만든다. 그 값은 상태를 다시 받아서 맞춘다.
   await refreshFromServer();
 }
 
-function computeNext(manual) {
-  // ⏭·⏮는 한 곡 반복이어도 전체 반복처럼 움직인다.
-  const repeat = manual && playback.repeat === 'one' ? 'all' : playback.repeat;
-  return nextTrack({
+// ⏭·⏮는 한 곡 반복이어도 전체 반복처럼 움직인다.
+const computeNext = (manual) =>
+  nextTrack({
     trackIds: playingIds(),
     currentId: playback.currentTrackId,
     lastIndex: playback.lastIndex,
-    repeat,
+    repeat: manual && playback.repeat === 'one' ? 'all' : playback.repeat,
     unplayable: playback.unplayable,
   });
-}
 
-function computePrev() {
-  return prevTrack({
-    trackIds: playingIds(),
-    currentId: playback.currentTrackId,
-    lastIndex: playback.lastIndex,
-    unplayable: playback.unplayable,
-  });
-}
+const computePrev = () =>
+  prevTrack({ trackIds: playingIds(), currentId: playback.currentTrackId, lastIndex: playback.lastIndex, unplayable: playback.unplayable });
 
 function stopPlayback(message) {
   // 받는 중이던 곡이 있으면 버린다. 멈춘 뒤에 도착해 재생되지 않게 한다.
@@ -317,6 +306,7 @@ function onRepeat() {
 async function refreshFromServer() {
   const mine = ++refreshSeq;
   await saves.flushAll();
+  const seenSaves = saves.saved();
   let state;
   try {
     state = await api.state();
@@ -325,6 +315,8 @@ async function refreshFromServer() {
   }
   // 겹쳐서 온 요청은 가장 나중에 시작한 것만 적용한다.
   if (mine !== refreshSeq) return;
+  // 받는 동안 저장이 끝났으면 이 응답은 그 저장 전 값일 수 있다. 다시 받는다.
+  if (seenSaves !== saves.saved()) return refreshFromServer();
   // 저장이 실패해 남은 편집은 서버 값보다 우선한다.
   const local = new Map(model.playlists.map((p) => [p.id, p]));
   model.playlists = state.playlists.map((p) => (saves.pending(p.id) ? (local.get(p.id) ?? p) : p));
@@ -359,6 +351,8 @@ async function init() {
   model.playlists = state.playlists;
   const remembered = Number(readLocal(KEY_PLAYLIST));
   model.viewedId = model.playlists.some((p) => p.id === remembered) ? remembered : state.active_id;
+  // 기억해 둔 목록을 보여 주되, 봇이 새 곡을 붙이는 활성 목록도 그 목록으로 맞춘다.
+  if (model.viewedId !== state.active_id) activeSender.request(model.viewedId);
   const repeat = readLocal(KEY_REPEAT);
   playback.repeat = REPEAT_ORDER.includes(repeat) ? repeat : 'all';
 
@@ -369,11 +363,14 @@ async function init() {
   enableQueueSort({
     onStart: () => {
       dragging = true;
+      dragPlaylistId = model.viewedId;
     },
     onEnd: (evt) => {
       dragging = false;
-      // 제자리에 놓았으면 바뀐 것이 없다. 저장하지 않는다.
-      if (evt.oldIndex !== evt.newIndex) editViewed(queueIds());
+      // 제자리에 놓았거나 끄는 사이 다른 목록을 보았다면 저장하지 않는다. 그 DOM은 지금 목록의 것이 아니다.
+      if (evt.oldIndex !== evt.newIndex && model.viewedId === dragPlaylistId) {
+        editViewed(mergeOrder(queueIds(), viewedIds()));
+      }
       renderAll();
     },
   });

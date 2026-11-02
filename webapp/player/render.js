@@ -93,6 +93,13 @@ export function setVisible(id, visible) {
   $(id).hidden = !visible;
 }
 
+// 새 플레이리스트 이름 입력줄. 열 때마다 입력을 비우고 커서를 둔다.
+export function setNewFormOpen(open) {
+  if (open) $('new-name').value = '';
+  setVisible('new-form', open);
+  if (open) $('new-name').focus();
+}
+
 // SortableJS가 없으면(CDN 실패) 순서만 못 바꾼다. 나머지 화면은 그대로 동작한다.
 export function enableQueueSort({ onStart, onEnd }) {
   if (!window.Sortable) return;
