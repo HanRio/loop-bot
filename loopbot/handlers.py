@@ -7,14 +7,13 @@ from datetime import timedelta
 from pathlib import Path
 
 from telegram import (
-    Bot, Chat, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, Message, ReplyKeyboardMarkup, Update,
-    WebAppInfo,
+    Bot, Chat, InlineKeyboardButton, InlineKeyboardMarkup, MenuButtonWebApp, Message, Update, WebAppInfo,
 )
 from telegram.error import BadRequest, RetryAfter, TelegramError, TimedOut
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
 from loopbot.config import Config
-from loopbot.payload import MAX_LINKS, PayloadError, build_webapp_url, extract_youtube_urls, parse_action
+from loopbot.payload import MAX_LINKS, extract_youtube_urls
 from loopbot.store import Playlist, Store, Track
 from loopbot.youtube import FetchError, fetch_audio
 
@@ -29,7 +28,7 @@ TIMED_OUT_REASON = "텔레그램 응답이 늦어요. 잠시 뒤 다시 보내�
 UNKNOWN_REASON = "알 수 없는 오류"
 GROUP_START_TEXT = (
     "그룹에서는 텔레그램 규칙상 플레이리스트 앱을 바로 열 수 없어요. "
-    "아래 버튼을 누르면 봇과의 개인 채팅이 열리고, 거기 있는 🎵 버튼으로 플레이리스트를 만들 수 있어요. "
+    "아래 버튼을 누르면 봇과의 개인 채팅이 열리고, 거기서 왼쪽 아래 메뉴 버튼으로 플레이리스트를 만들 수 있어요. "
     "그룹에서는 /play로 지금 플레이리스트를 이 방에 재생해요."
 )
 
@@ -77,28 +76,20 @@ def _active_tracks(store: Store, user_id: int) -> tuple[Playlist, list[Track]]:
     return playlist, [by_id[i] for i in playlist.track_ids]
 
 
-def _keyboard(bot_data: dict, user_id: int) -> ReplyKeyboardMarkup:
-    cfg: Config = bot_data["cfg"]
-    store: Store = bot_data["store"]
-    active = store.active_playlist(user_id)  # before playlists(): creates '기본' for a new user
-    url = build_webapp_url(cfg.webapp_url, store.library(user_id), store.playlists(user_id), active.id)
-    button = KeyboardButton("🎵 플레이리스트", web_app=WebAppInfo(url))
-    return ReplyKeyboardMarkup([[button]], resize_keyboard=True, is_persistent=True)
-
-
-def _markup(context: ContextTypes.DEFAULT_TYPE, chat: Chat, user_id: int) -> ReplyKeyboardMarkup | InlineKeyboardMarkup:
+def _markup(context: ContextTypes.DEFAULT_TYPE, chat: Chat) -> InlineKeyboardMarkup:
     if chat.type == Chat.PRIVATE:
-        return _keyboard(context.bot_data, user_id)
+        cfg: Config = context.bot_data["cfg"]
+        return InlineKeyboardMarkup([[InlineKeyboardButton("🎵 플레이어 열기", web_app=WebAppInfo(cfg.webapp_url))]])
     # Web app buttons work only in private chats, so a group gets a link that opens the private chat.
     url = f"https://t.me/{context.bot.username}?start=playlist"
     return InlineKeyboardMarkup([[InlineKeyboardButton("🎵 플레이리스트 열기 (개인 채팅)", url=url)]])
 
 
 async def _reply(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str) -> None:
-    """Reply with the playlist button attached."""
+    """Reply with the player button attached."""
     msg = update.effective_message
     try:
-        await msg.reply_text(text, reply_markup=_markup(context, update.effective_chat, update.effective_user.id))
+        await msg.reply_text(text, reply_markup=_markup(context, update.effective_chat))
     except BadRequest:
         logging.exception("reply with keyboard rejected; resending without it")
         await msg.reply_text(text)
@@ -125,10 +116,10 @@ async def _delete_messages(bot: Bot, chat_id: int, message_ids: Sequence[int]) -
         await _best_effort(bot.delete_messages(chat_id, message_ids[start:start + DELETE_CHUNK]), "delete messages")
 
 
-async def _send(context: ContextTypes.DEFAULT_TYPE, chat: Chat, user_id: int, text: str) -> None:
-    """Send to the chat with the playlist button attached."""
+async def _send(context: ContextTypes.DEFAULT_TYPE, chat: Chat, text: str) -> None:
+    """Send to the chat with the player button attached."""
     try:
-        await context.bot.send_message(chat.id, text, reply_markup=_markup(context, chat, user_id))
+        await context.bot.send_message(chat.id, text, reply_markup=_markup(context, chat))
     except BadRequest:
         logging.exception("send with keyboard rejected; resending without it")
         await context.bot.send_message(chat.id, text)
@@ -142,7 +133,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         update,
         context,
         "링크나 음원 파일을 보내면 라이브러리와 지금 플레이리스트에 추가돼요. "
-        "🎵 버튼으로 플레이리스트를 여러 개 만들고 순서를 정해 재생하세요.",
+        "왼쪽 아래 메뉴 버튼으로 플레이어를 열어요.",
     )
 
 
@@ -253,29 +244,7 @@ async def on_audio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = update.effective_user.id
     context.bot_data["store"].add_track(user_id, title, media.file_id, duration, None)
     await _best_effort(msg.delete(), "audio delete")
-    await _send(context, update.effective_chat, user_id, f"✅ 추가됨: {title}")
-
-
-async def on_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    try:
-        action = parse_action(update.effective_message.web_app_data.data)
-    except PayloadError as e:
-        await _reply(update, context, str(e))
-        return
-    store: Store = context.bot_data["store"]
-    user_id = update.effective_user.id
-    if action.delete_playlist:
-        if action.playlist is not None:
-            store.delete_playlist(user_id, action.playlist)
-        await _reply(update, context, "🗑 플레이리스트를 지웠어요")
-        return
-    store.delete_tracks(user_id, action.delete_tracks)
-    store.save_playlist(user_id, action.playlist, action.name, action.tracks)
-    await _reply(update, context, "✅ 저장했어요")
-    if action.play:
-        await play(update, context)
-    if action.add:
-        context.application.create_task(add_urls(update, context, action.add))
+    await _send(context, update.effective_chat, f"✅ 추가됨: {title}")
 
 
 async def on_unauthorized(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -284,7 +253,6 @@ async def on_unauthorized(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 
 ERROR_TEXT = "잠시 문제가 생겼어요. 잠시 뒤 다시 시도해주세요"
-KEYBOARD_REFRESHED_TEXT = "🎵 플레이리스트 버튼을 새로 고쳤어요"
 
 
 async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -298,15 +266,19 @@ async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
         logging.exception("error notice failed")
 
 
-async def _refresh_keyboards(app: Application) -> None:
-    # Old persistent keyboards carry a stale-format URL; resend so every chat gets the current one.
-    for user_id in sorted(app.bot_data["cfg"].allowed_user_ids):
+async def _set_menu_button(app: Application) -> None:
+    cfg: Config = app.bot_data["cfg"]
+    # A per-chat menu override would hide the default button, so clear any left by earlier runs.
+    for user_id in sorted(cfg.allowed_user_ids):
         try:
-            await app.bot.send_message(
-                user_id, KEYBOARD_REFRESHED_TEXT, reply_markup=_keyboard(app.bot_data, user_id)
-            )
+            await app.bot.set_chat_menu_button(chat_id=user_id)
         except Exception:
-            logging.exception("keyboard refresh failed for user %s", user_id)
+            logging.exception("menu button reset failed for user %s", user_id)
+    try:
+        await app.bot.set_chat_menu_button(menu_button=MenuButtonWebApp("🎵 플레이어", WebAppInfo(cfg.webapp_url)))
+    except Exception:
+        # A network blip here must not abort run_polling; the old default button stays until the next start.
+        logging.exception("default menu button failed")
 
 
 def build_app(cfg: Config, store: Store) -> Application:
@@ -315,7 +287,7 @@ def build_app(cfg: Config, store: Store) -> Application:
         .token(cfg.bot_token)
         .concurrent_updates(True)
         .media_write_timeout(120)
-        .post_init(_refresh_keyboards)
+        .post_init(_set_menu_button)
         .build()
     )
     app.bot_data.update(cfg=cfg, store=store, lock=asyncio.Lock())
@@ -325,7 +297,6 @@ def build_app(cfg: Config, store: Store) -> Application:
     app.add_handler(CommandHandler("start", start, filters=commands))
     app.add_handler(CommandHandler("list", list_tracks, filters=commands))
     app.add_handler(CommandHandler("play", play, filters=commands))
-    app.add_handler(MessageHandler(allowed & filters.StatusUpdate.WEB_APP_DATA, on_web_app_data))
     app.add_handler(MessageHandler(allowed & filters.UpdateType.MESSAGE & is_audio, on_audio))
     app.add_handler(MessageHandler(allowed & filters.UpdateType.MESSAGE & filters.TEXT & ~filters.COMMAND, on_text))
     app.add_handler(MessageHandler(filters.ALL & ~allowed, on_unauthorized))

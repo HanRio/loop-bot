@@ -1,8 +1,7 @@
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-REQUIRED_KEYS = ("BOT_TOKEN", "ALLOWED_USER_IDS", "WEBAPP_URL")
-DEFAULT_DB_PATH = "data/loopbot.db"
+REQUIRED_KEYS = ("BOT_TOKEN", "ALLOWED_USER_IDS", "WEBAPP_URL", "DATABASE_URL")
 
 
 @dataclass(frozen=True)
@@ -11,8 +10,7 @@ class Config:
     allowed_user_ids: frozenset[int]
     webapp_url: str
     ytdlp_cookies: str | None
-    db_path: str
-    database_url: str | None
+    database_url: str
 
 
 def load_config(env: Mapping[str, str]) -> Config:
@@ -27,6 +25,5 @@ def load_config(env: Mapping[str, str]) -> Config:
         ),
         webapp_url=env["WEBAPP_URL"],
         ytdlp_cookies=env.get("YTDLP_COOKIES") or None,
-        db_path=env.get("DB_PATH") or DEFAULT_DB_PATH,
-        database_url=env.get("DATABASE_URL") or None,
+        database_url=env["DATABASE_URL"],
     )

@@ -1,11 +1,11 @@
-"""Send URLs through on_text with the real bot and a temp SQLite store.
+"""Send URLs through on_text with the real bot and the Supabase test schema.
 
-Usage: python -m scripts.e2e_batch URL [URL ...]   (posts to the first ALLOWED_USER_IDS chat)
+Usage: python -m scripts.e2e_batch URL [URL ...]   (needs LOOPBOT_TEST_DATABASE_URL; posts to the first ALLOWED_USER_IDS chat)
 """
 import asyncio
 import logging
+import os
 import sys
-import tempfile
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
@@ -14,27 +14,29 @@ from telegram import Bot, Chat, Message, Update, User
 
 from loopbot.config import load_config
 from loopbot.handlers import on_text
-from loopbot.store.sqlite import SqliteStore
+from loopbot.store.postgres import PostgresStore
 
 logging.basicConfig(level=logging.WARNING)
 
 
 async def main(urls: list[str]) -> None:
-    cfg = load_config(dotenv_values(".env"))
+    env = dotenv_values(".env")
+    cfg = load_config(env)
     user_id = next(iter(cfg.allowed_user_ids))
-    with tempfile.TemporaryDirectory() as d:
-        store = SqliteStore(f"{d}/t.db")
-        async with Bot(cfg.bot_token) as bot:
-            user = User(user_id, "me", False)
-            msg = Message(1, datetime.now(timezone.utc), Chat(user_id, Chat.PRIVATE), from_user=user,
-                          text="\n".join(urls))
-            msg.set_bot(bot)
-            context = SimpleNamespace(bot=bot, bot_data={"cfg": cfg, "store": store, "lock": asyncio.Lock()})
-            await on_text(Update(1, message=msg), context)
-        by_id = {t.id: t.title for t in store.library(user_id)}
-        for playlist in store.playlists(user_id):
-            print(f"{playlist.name}: {len(playlist.track_ids)}", [by_id[i] for i in playlist.track_ids])
-        store.close()
+    dsn = env.get("LOOPBOT_TEST_DATABASE_URL") or os.environ["LOOPBOT_TEST_DATABASE_URL"]
+    store = PostgresStore(dsn, schema="loopbot_test")
+    store.reset()
+    async with Bot(cfg.bot_token) as bot:
+        user = User(user_id, "me", False)
+        msg = Message(1, datetime.now(timezone.utc), Chat(user_id, Chat.PRIVATE), from_user=user,
+                      text="\n".join(urls))
+        msg.set_bot(bot)
+        context = SimpleNamespace(bot=bot, bot_data={"cfg": cfg, "store": store, "lock": asyncio.Lock()})
+        await on_text(Update(1, message=msg), context)
+    playlist = store.active_playlist(user_id)
+    by_id = {t.id: t.title for t in store.library(user_id)}
+    print(f"{playlist.name}: {len(playlist.track_ids)}", [by_id[i] for i in playlist.track_ids])
+    store.close()
 
 
 if __name__ == "__main__":
