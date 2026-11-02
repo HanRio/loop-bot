@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
 
-from telegram import KeyboardButton, Message, ReplyKeyboardMarkup, Update, WebAppInfo
+from telegram import Bot, KeyboardButton, Message, ReplyKeyboardMarkup, Update, WebAppInfo
 from telegram.error import BadRequest, RetryAfter, TelegramError, TimedOut
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
@@ -16,6 +16,7 @@ from loopbot.store import Playlist, Store, Track
 from loopbot.youtube import FetchError, fetch_audio
 
 PLAY_GAP_SECONDS = 0.5
+DELETE_CHUNK = 100  # Telegram's deleteMessages limit per call
 # Telegram answers an upload only after processing it, which takes several seconds; PTB's 5 s default is too short.
 UPLOAD_READ_TIMEOUT = 120
 EMPTY_TEXT = "아직 곡이 없어요. 링크나 음원을 보내주세요"
@@ -103,6 +104,20 @@ async def _best_effort(action, what: str) -> None:
         logging.warning("%s failed", what, exc_info=True)
 
 
+async def _delete_messages(bot: Bot, chat_id: int, message_ids: Sequence[int]) -> None:
+    for start in range(0, len(message_ids), DELETE_CHUNK):
+        await _best_effort(bot.delete_messages(chat_id, message_ids[start:start + DELETE_CHUNK]), "delete messages")
+
+
+async def _send(context: ContextTypes.DEFAULT_TYPE, chat_id: int, user_id: int, text: str) -> None:
+    """Send to the chat with the up-to-date playlist keyboard attached."""
+    try:
+        await context.bot.send_message(chat_id, text, reply_markup=_keyboard(context.bot_data, user_id))
+    except BadRequest:
+        logging.exception("send with keyboard rejected; resending without it")
+        await context.bot.send_message(chat_id, text)
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await _reply(
         update,
@@ -119,16 +134,21 @@ async def list_tracks(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 
 async def play(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    _, tracks = _active_tracks(context.bot_data["store"], update.effective_user.id)
+    store: Store = context.bot_data["store"]
+    user_id = update.effective_user.id
+    _, tracks = _active_tracks(store, user_id)
     if not tracks:
         await update.effective_message.reply_text(EMPTY_TEXT)
         return
     chat_id = update.effective_chat.id
+    await _delete_messages(context.bot, chat_id, store.play_messages(user_id))
+    sent_ids: list[int] = []
     for i, track in enumerate(tracks):
         if i:
             await asyncio.sleep(PLAY_GAP_SECONDS)
         try:
-            await _send_with_retry(lambda: context.bot.send_audio(chat_id, audio=track.file_id))
+            sent = await _send_with_retry(lambda: context.bot.send_audio(chat_id, audio=track.file_id))
+            sent_ids.append(sent.message_id)
         except TelegramError:
             try:
                 await _send_with_retry(
@@ -136,6 +156,7 @@ async def play(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 )
             except TelegramError:
                 logging.exception("failed to send playback failure notice: %s", track.title)
+    store.set_play_messages(user_id, sent_ids)
 
 
 async def _fetch_one(msg: Message, context: ContextTypes.DEFAULT_TYPE, user_id: int, url: str) -> Outcome:
@@ -158,6 +179,7 @@ async def _fetch_one(msg: Message, context: ContextTypes.DEFAULT_TYPE, user_id: 
                     sent = await _send_with_retry(upload)
         title = title_for_audio(audio.title, audio.performer, None)
         context.bot_data["store"].add_track(user_id, title, sent.audio.file_id, audio.duration, url)
+        await _best_effort(sent.delete(), "upload delete")
     except FetchError as e:
         return Failed(url, str(e))
     except TimedOut:
@@ -208,8 +230,10 @@ async def on_audio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         getattr(media, "title", None), getattr(media, "performer", None), media.file_name
     )
     duration = getattr(media, "duration", None)
-    context.bot_data["store"].add_track(update.effective_user.id, title, media.file_id, duration, None)
-    await _reply(update, context, f"✅ 추가됨: {title}")
+    user_id = update.effective_user.id
+    context.bot_data["store"].add_track(user_id, title, media.file_id, duration, None)
+    await _best_effort(msg.delete(), "audio delete")
+    await _send(context, update.effective_chat.id, user_id, f"✅ 추가됨: {title}")
 
 
 async def on_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

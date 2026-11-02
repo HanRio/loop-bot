@@ -167,3 +167,19 @@ class PostgresStore:
         self._run(lambda cur: cur.execute(
             "DELETE FROM tracks WHERE user_id = %s AND id = ANY(%s::bigint[])", (user_id, ids)
         ))
+
+    def play_messages(self, user_id: int) -> list[int]:
+        def work(cur: Cursor) -> list[int]:
+            cur.execute("SELECT play_message_ids FROM user_state WHERE user_id = %s", (user_id,))
+            row = cur.fetchone()
+            return list(row[0]) if row else []
+
+        return self._run(work)
+
+    def set_play_messages(self, user_id: int, message_ids: Sequence[int]) -> None:
+        ids = list(message_ids)
+        self._run(lambda cur: cur.execute(
+            "INSERT INTO user_state (user_id, play_message_ids) VALUES (%s, %s::bigint[]) "
+            "ON CONFLICT (user_id) DO UPDATE SET play_message_ids = EXCLUDED.play_message_ids",
+            (user_id, ids),
+        ))

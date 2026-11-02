@@ -155,6 +155,34 @@ def test_users_are_isolated(store):
     assert len(store.playlists(1)) == 1
 
 
+def test_play_messages_empty_for_new_user(store):
+    assert store.play_messages(1) == []
+
+
+def test_set_play_messages_roundtrips_in_order(store):
+    store.set_play_messages(1, [30, 10, 20])
+    assert store.play_messages(1) == [30, 10, 20]
+    store.set_play_messages(1, [5])
+    assert store.play_messages(1) == [5]
+
+
+def test_set_play_messages_keeps_active_playlist_and_save_keeps_messages(store):
+    [a] = _add(store, 1, "A")
+    pl = store.save_playlist(1, None, "목록", [a])
+    store.set_play_messages(1, [7, 8])
+    assert store.active_playlist(1) == pl
+    store.save_playlist(1, pl.id, "새 이름", [])
+    assert store.play_messages(1) == [7, 8]
+
+
+def test_play_messages_are_per_user(store):
+    store.set_play_messages(1, [1, 2])
+    store.set_play_messages(2, [3])
+    assert store.play_messages(1) == [1, 2]
+    assert store.play_messages(2) == [3]
+    assert store.play_messages(3) == []
+
+
 OLD_SCHEMA = """
 CREATE TABLE tracks (
   id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, position INTEGER NOT NULL,
@@ -198,6 +226,24 @@ def test_sqlite_migrates_old_schema_in_order_and_is_idempotent(tmp_path):
     conn = sqlite3.connect(path)
     assert "position" not in [r[1] for r in conn.execute("PRAGMA table_info(tracks)")]
     conn.close()
+
+
+def test_sqlite_adds_play_messages_column_when_missing(tmp_path):
+    path = str(tmp_path / "s.db")
+    store = SqliteStore(path)
+    [a] = _add(store, 1, "A")
+    store.close()
+    conn = sqlite3.connect(path)
+    conn.execute("ALTER TABLE user_state DROP COLUMN play_message_ids")
+    conn.commit()
+    conn.close()
+
+    again = SqliteStore(path)
+    assert again.play_messages(1) == []
+    again.set_play_messages(1, [5, 6])
+    assert again.play_messages(1) == [5, 6]
+    assert again.active_playlist(1).track_ids == (a,)
+    again.close()
 
 
 def test_open_store_defaults_to_sqlite(tmp_path):

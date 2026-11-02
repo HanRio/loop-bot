@@ -35,7 +35,11 @@ class FakeMessage:
 
     async def reply_audio(self, f, **kw):
         self.log.append(("audio", kw["title"]))
-        return SimpleNamespace(audio=SimpleNamespace(file_id="file-" + kw["title"]))
+        return SimpleNamespace(audio=SimpleNamespace(file_id="file-" + kw["title"]), delete=_noop)
+
+
+async def _noop():
+    pass
 
 
 def fake_fetch(url, workdir, cookies):

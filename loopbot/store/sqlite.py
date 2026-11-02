@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
@@ -38,6 +39,7 @@ class SqliteStore:
             for stmt in SCHEMA:
                 self._conn.execute(stmt)
             self._migrate_positions()
+            self._migrate_play_messages()
             self._conn.execute(TRACKS_INDEX)
 
     def close(self) -> None:
@@ -68,6 +70,11 @@ class SqliteStore:
             self._set_active(user_id, playlist_id)
         self._conn.execute("DROP INDEX IF EXISTS idx_tracks_user")
         self._conn.execute("ALTER TABLE tracks DROP COLUMN position")
+
+    def _migrate_play_messages(self) -> None:
+        columns = [row[1] for row in self._conn.execute("PRAGMA table_info(user_state)")]
+        if "play_message_ids" not in columns:
+            self._conn.execute("ALTER TABLE user_state ADD COLUMN play_message_ids TEXT NOT NULL DEFAULT '[]'")
 
     def _create_playlist(self, user_id: int, name: str) -> int:
         return self._conn.execute(
@@ -166,4 +173,18 @@ class SqliteStore:
         with self._tx():
             self._conn.executemany(
                 "DELETE FROM tracks WHERE id = ? AND user_id = ?", [(i, user_id) for i in set(track_ids)]
+            )
+
+    def play_messages(self, user_id: int) -> list[int]:
+        row = self._conn.execute(
+            "SELECT play_message_ids FROM user_state WHERE user_id = ?", (user_id,)
+        ).fetchone()
+        return json.loads(row[0]) if row else []
+
+    def set_play_messages(self, user_id: int, message_ids: Sequence[int]) -> None:
+        with self._tx():
+            self._conn.execute(
+                "INSERT INTO user_state (user_id, play_message_ids) VALUES (?, ?) "
+                "ON CONFLICT (user_id) DO UPDATE SET play_message_ids = excluded.play_message_ids",
+                (user_id, json.dumps(list(message_ids))),
             )

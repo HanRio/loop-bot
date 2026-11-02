@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 from loopbot.handlers import title_for_audio
 
 
@@ -154,6 +156,157 @@ def test_refresh_keyboards_sends_to_each_user_and_survives_failures(monkeypatch,
     asyncio.run(handlers._refresh_keyboards(app))
     assert sent == [(2, "🎵 플레이리스트 버튼을 새로 고쳤어요", "KB2")]
     assert "blocked" in caplog.text
+
+
+class _FakeStore:
+    def __init__(self, titles, prev=()):
+        self.tracks = [SimpleNamespace(id=i, title=t, file_id=f"f{t}") for i, t in enumerate(titles, 1)]
+        self.prev = list(prev)
+        self.saved = None
+
+    def active_playlist(self, user_id):
+        return SimpleNamespace(id=1, name="기본", track_ids=tuple(t.id for t in self.tracks))
+
+    def library(self, user_id):
+        return self.tracks
+
+    def play_messages(self, user_id):
+        return list(self.prev)
+
+    def set_play_messages(self, user_id, message_ids):
+        self.saved = list(message_ids)
+
+
+class _FakeBot:
+    def __init__(self, delete_error=None):
+        self.delete_error = delete_error
+        self.deleted = []
+        self.sent = []
+
+    async def delete_messages(self, chat_id, message_ids):
+        if self.delete_error:
+            raise self.delete_error
+        self.deleted.append((chat_id, list(message_ids)))
+
+    async def send_audio(self, chat_id, audio):
+        self.sent.append(audio)
+        return SimpleNamespace(message_id=100 + len(self.sent))
+
+
+def _play_update():
+    async def reply_text(text, **kw):
+        pass
+
+    msg = SimpleNamespace(reply_text=reply_text)
+    return SimpleNamespace(effective_message=msg, effective_user=SimpleNamespace(id=1),
+                           effective_chat=SimpleNamespace(id=5))
+
+
+def _run_play(monkeypatch, store, bot):
+    import asyncio
+
+    from loopbot import handlers
+
+    monkeypatch.setattr(handlers, "PLAY_GAP_SECONDS", 0)
+    context = SimpleNamespace(bot_data={"store": store}, bot=bot)
+    asyncio.run(handlers.play(_play_update(), context))
+
+
+def test_play_deletes_previous_play_messages_and_saves_new_ones(monkeypatch):
+    store = _FakeStore(["A", "B"], prev=[7, 8])
+    bot = _FakeBot()
+    _run_play(monkeypatch, store, bot)
+    assert bot.deleted == [(5, [7, 8])]
+    assert store.saved == [101, 102]
+
+
+def test_play_deletes_more_than_one_chunk_of_previous_messages(monkeypatch):
+    store = _FakeStore(["A"], prev=range(1, 102))
+    bot = _FakeBot()
+    _run_play(monkeypatch, store, bot)
+    assert bot.deleted == [(5, list(range(1, 101))), (5, [101])]
+    assert store.saved == [101]
+
+
+def test_play_continues_when_delete_fails(monkeypatch):
+    from telegram.error import TelegramError
+
+    store = _FakeStore(["A", "B"], prev=[7])
+    bot = _FakeBot(delete_error=TelegramError("message can't be deleted"))
+    _run_play(monkeypatch, store, bot)
+    assert bot.sent == ["fA", "fB"]
+    assert store.saved == [101, 102]
+
+
+def test_play_without_tracks_neither_deletes_nor_saves(monkeypatch):
+    store = _FakeStore([], prev=[7])
+    bot = _FakeBot()
+    _run_play(monkeypatch, store, bot)
+    assert bot.deleted == []
+    assert store.saved is None
+
+
+def test_on_audio_deletes_user_message_and_confirms_with_send_message(monkeypatch):
+    import asyncio
+
+    from loopbot import handlers
+
+    monkeypatch.setattr(handlers, "_keyboard", lambda bot_data, uid: "KB")
+    events = []
+
+    class Store:
+        def add_track(self, *a):
+            events.append(("add", a))
+
+    async def delete():
+        events.append(("delete",))
+
+    async def send_message(chat_id, text, reply_markup=None):
+        events.append(("send", chat_id, text, reply_markup))
+
+    media = SimpleNamespace(file_id="F", title="곡", performer=None, file_name="a.mp3", duration=7)
+    update = SimpleNamespace(effective_message=SimpleNamespace(audio=media, delete=delete),
+                             effective_user=SimpleNamespace(id=1), effective_chat=SimpleNamespace(id=5))
+    context = SimpleNamespace(bot_data={"store": Store()}, bot=SimpleNamespace(send_message=send_message))
+    asyncio.run(handlers.on_audio(update, context))
+    assert events == [
+        ("add", (1, "곡", "F", 7, None)),
+        ("delete",),
+        ("send", 5, "✅ 추가됨: 곡", "KB"),
+    ]
+
+
+def test_fetch_one_deletes_upload_after_adding_track(monkeypatch, tmp_path):
+    import asyncio
+
+    from loopbot import handlers
+    from loopbot.handlers import Added
+
+    audio_file = tmp_path / "a.mp3"
+    audio_file.write_bytes(b"x")
+    monkeypatch.setattr(handlers, "fetch_audio", lambda url, tmp, cookies: SimpleNamespace(
+        path=audio_file, title="곡", performer=None, duration=10))
+    events = []
+
+    class Store:
+        def add_track(self, *a):
+            events.append("add")
+
+    async def delete():
+        events.append("delete")
+
+    async def reply_audio(f, **kw):
+        return SimpleNamespace(audio=SimpleNamespace(file_id="F"), delete=delete)
+
+    msg = SimpleNamespace(reply_audio=reply_audio)
+    context = SimpleNamespace(bot_data={
+        "cfg": SimpleNamespace(ytdlp_cookies=None),
+        "lock": asyncio.Lock(),
+        "store": Store(),
+    })
+    outcome = asyncio.run(handlers._fetch_one(msg, context, 1, "https://youtu.be/a"))
+    assert outcome == Added("https://youtu.be/a", "곡")
+    assert events == ["add", "delete"]
 
 
 def _app():
