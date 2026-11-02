@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { nextTrack, prevTrack } from '../../webapp/player/queue.js';
+import { nextTrack, prevTrack } from '../../webapp/queue.js';
 
 const DEFAULTS = { lastIndex: 0, repeat: 'all', unplayable: new Set() };
 const next = (args) => nextTrack({ ...DEFAULTS, ...args });

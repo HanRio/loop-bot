@@ -4,7 +4,7 @@ import { ApiError } from './api.js';
 
 const FAIL = new URLSearchParams(location.search).get('fail');
 const TOO_BIG_ID = 2;
-const AUDIO_URL = '../bgtest.mp3';
+const AUDIO_URL = './fake-audio.mp3';
 
 export function createApi() {
   let library = [1, 2, 3, 4, 5].map((id) => ({ id, title: `시험 곡 ${id}`, duration: 60 + id }));

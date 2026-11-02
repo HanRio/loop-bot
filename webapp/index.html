@@ -9,7 +9,7 @@
 <style>
   * { box-sizing: border-box; }
   body {
-    margin: 0; padding: 12px 16px 24px;
+    margin: 0; padding: 12px 16px 220px;
     background: var(--tg-theme-bg-color, #fff);
     color: var(--tg-theme-text-color, #000);
     font: 16px/1.4 -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
@@ -21,21 +21,28 @@
     border-bottom: 1px solid var(--tg-theme-secondary-bg-color, #eee);
     background: var(--tg-theme-bg-color, #fff);
   }
+  li.current .title { font-weight: 700; color: var(--tg-theme-button-color, #2481cc); }
+  li.unplayable .title { opacity: .4; }
   .icon {
     flex: none; width: 44px; height: 44px; border: 0; background: none; padding: 0;
     color: var(--tg-theme-hint-color, #888); font-size: 20px; text-align: center; line-height: 44px;
   }
+  button.icon:disabled { opacity: .3; }
   .handle { cursor: grab; user-select: none; touch-action: none; }
-  .title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .title {
+    flex: 1; min-width: 0; min-height: 44px; padding: 0; border: 0; background: none; font: inherit;
+    line-height: 44px; color: inherit; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .note { flex: none; font-size: 12px; color: var(--tg-theme-hint-color, #888); }
   .ghost { opacity: .4; }
   .empty { color: var(--tg-theme-hint-color, #888); padding: 12px 0; margin: 0; }
-  #warn { color: #d33; min-height: 1.4em; margin: 8px 0; }
-  select, input, textarea {
+  .notice { color: #d33; margin: 0; }
+  .notice:empty { display: none; }
+  select, #new-name {
     width: 100%; min-height: 44px; padding: 10px; font: inherit; margin-top: 8px;
     background: var(--tg-theme-secondary-bg-color, #f2f2f2); color: inherit;
     border: 0; border-radius: 8px;
   }
-  textarea { min-height: 96px; resize: vertical; }
   .buttons { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
   .buttons button {
     flex: 1; min-height: 44px; border: 0; border-radius: 8px; font: inherit; font-weight: 600;
@@ -44,168 +51,67 @@
   .buttons button.primary { background: var(--tg-theme-button-color, #2481cc); color: var(--tg-theme-button-text-color, #fff); }
   .buttons button.danger { color: #d33; flex-basis: 100%; }
   button:disabled { opacity: .5; }
+
+  #bar {
+    position: fixed; left: 0; right: 0; bottom: 0; padding: 8px 16px env(safe-area-inset-bottom, 8px);
+    background: var(--tg-theme-secondary-bg-color, #f2f2f2);
+    border-top: 1px solid var(--tg-theme-hint-color, #ccc);
+  }
+  #bar-top { display: flex; align-items: center; gap: 8px; }
+  #now { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+  #time { flex: none; font-size: 13px; color: var(--tg-theme-hint-color, #888); font-variant-numeric: tabular-nums; }
+  #seek { width: 100%; height: 44px; margin: 0; accent-color: var(--tg-theme-button-color, #2481cc); }
+  #controls { display: flex; justify-content: space-around; align-items: center; }
+  #controls button {
+    min-width: 44px; min-height: 44px; border: 0; background: none; font-size: 22px;
+    color: var(--tg-theme-text-color, #000);
+  }
+  #controls #toggle { font-size: 28px; }
+  #repeat { position: relative; color: var(--tg-theme-hint-color, #888); }
+  #repeat[data-mode="all"], #repeat[data-mode="one"] { color: var(--tg-theme-button-color, #2481cc); }
+  #repeat[data-mode="one"]::after {
+    content: "1"; position: absolute; right: 6px; bottom: 6px; font-size: 10px; font-weight: 700;
+  }
+  #play-notice { min-height: 1.4em; margin: 0; font-size: 13px; color: #d33; }
 </style>
 </head>
 <body>
 <p id="fatal" class="empty" hidden></p>
 <main id="app" hidden>
   <select id="picker" aria-label="플레이리스트 고르기"></select>
-  <input id="name" maxlength="20" placeholder="플레이리스트 이름" aria-label="플레이리스트 이름">
+  <form id="new-form" hidden>
+    <input id="new-name" maxlength="20" placeholder="플레이리스트 이름" aria-label="플레이리스트 이름" autocomplete="off">
+    <div class="buttons">
+      <button type="submit" class="primary">만들기</button>
+      <button id="new-cancel" type="button">취소</button>
+    </div>
+  </form>
+  <div id="save-notice" class="notice" role="alert"></div>
   <h2>재생 순서</h2>
   <ul id="queue"></ul>
   <p id="queue-empty" class="empty" hidden>아직 곡이 없어요. 아래 라이브러리에서 넣어보세요</p>
   <h2>라이브러리</h2>
   <ul id="library"></ul>
-  <p id="library-empty" class="empty" hidden></p>
-  <h2>링크로 추가</h2>
-  <textarea id="add" placeholder="유튜브 링크를 한 줄에 하나씩 붙여넣어요" aria-label="유튜브 링크"></textarea>
-  <div id="warn" role="alert"></div>
+  <p id="library-empty" class="empty" hidden>라이브러리가 비었어요. 링크나 음원을 보내주세요</p>
   <div class="buttons">
-    <button id="save">저장</button>
-    <button id="play" class="primary">▶ 재생</button>
-    <button id="remove" class="danger" hidden>목록 삭제</button>
+    <button id="remove-playlist" class="danger" type="button">목록 삭제</button>
   </div>
-  <p class="empty"><a href="bgtest.html">백그라운드 재생 시험</a></p>
+  <p class="empty">링크는 채팅에 붙여넣으면 추가돼요. 긴 곡은 채팅에서 /play로 들어요</p>
 </main>
-<script>
-// --- pure logic (extracted by node for testing) ---
-const MAX_LINKS = 10, MAX_BYTES = 4096, MAX_NAME = 20;
-const isId = (x) => Number.isSafeInteger(x) && x >= 0;
-
-function decodeData(hash) {
-  const d = new URLSearchParams(hash.slice(1)).get("d");
-  if (!d || !/^[A-Za-z0-9_-]+$/.test(d)) throw new Error("no data");
-  let b64 = d.replace(/-/g, "+").replace(/_/g, "/");
-  while (b64.length % 4) b64 += "=";
-  const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-  const o = JSON.parse(new TextDecoder().decode(bytes));
-  const ok = o && o.v === 2 && Array.isArray(o.lib) && Array.isArray(o.pls) && (o.a === null || isId(o.a)) &&
-    o.lib.every((x) => x && isId(x.i) && typeof x.t === "string") &&
-    o.pls.every((p) => p && isId(p.i) && typeof p.n === "string" && Array.isArray(p.t) && p.t.every(isId));
-  if (!ok) throw new Error("bad data");
-  return o;
-}
-
-// state: {playlist: id|null, name, tracks: [ids], deleted: [ids], remove: bool}
-function buildPayload(state, linksText, play) {
-  const add = linksText.split("\n").map((s) => s.trim()).filter(Boolean);
-  if (add.length > MAX_LINKS) return { warn: `링크는 한 번에 ${MAX_LINKS}개까지 넣을 수 있어요` };
-  const name = [...state.name.trim()].slice(0, MAX_NAME).join("");
-  const json = JSON.stringify({
-    v: 2, playlist: state.playlist, name, tracks: state.tracks, delete_tracks: state.deleted,
-    delete_playlist: state.remove, add: state.remove ? [] : add, play: state.remove ? false : play,
-  });
-  if (new TextEncoder().encode(json).length > MAX_BYTES) {
-    return { warn: "한 번에 보낼 내용이 너무 많아요. 링크나 삭제할 곡을 줄여주세요" };
-  }
-  return { json };
-}
-// --- end pure logic ---
-
-if (typeof document !== "undefined") (function () {
-  const tg = window.Telegram && window.Telegram.WebApp;
-  const $ = (id) => document.getElementById(id);
-  try { tg && (tg.ready(), tg.expand()); } catch (e) {}
-
-  let data;
-  try { data = decodeData(location.hash); } catch (e) {
-    $("fatal").textContent = "목록이 오래됐어요. 봇에 /start를 보내주세요";
-    $("fatal").hidden = false;
-    return;
-  }
-  $("app").hidden = false;
-
-  const titles = new Map(data.lib.map((x) => [x.i, x.t]));
-  const NEW = "new";
-  let cur = null;     // {playlist, name, tracks, deleted}
-  let sent = false;
-
-  function load(key) {
-    const p = key === NEW ? null : data.pls.find((x) => String(x.i) === key);
-    cur = { playlist: p ? p.i : null, name: p ? p.n : "", tracks: p ? p.t.filter((i) => titles.has(i)) : [], deleted: [], remove: false };
-    $("name").value = cur.name;
-    $("add").value = "";
-    $("warn").textContent = "";
-    $("remove").hidden = !p;
-    render();
-  }
-
-  function row(id, ctl) {
-    const li = document.createElement("li");
-    li.dataset.id = id;
-    const title = document.createElement("span");
-    title.className = "title"; title.textContent = titles.get(id);
-    li.append(...ctl(title));
-    return li;
-  }
-  function btn(text, label, cls, fn) {
-    const b = document.createElement("button");
-    b.type = "button"; b.className = cls; b.textContent = text; b.setAttribute("aria-label", label);
-    b.addEventListener("click", fn);
-    return b;
-  }
-
-  function render() {
-    const inQueue = new Set(cur.tracks), gone = new Set(cur.deleted);
-    const queue = $("queue"), lib = $("library");
-    queue.replaceChildren(...cur.tracks.map((id) => row(id, (t) => {
-      const h = document.createElement("span");
-      h.className = "icon handle"; h.textContent = "≡";
-      return [h, t, btn("✕", "목록에서 빼기", "icon", () => { cur.tracks = cur.tracks.filter((x) => x !== id); render(); })];
-    })));
-    const rest = data.lib.filter((x) => !inQueue.has(x.i) && !gone.has(x.i));
-    lib.replaceChildren(...rest.map((x) => row(x.i, (t) => [
-      t,
-      btn("＋", "목록에 넣기", "icon", () => { cur.tracks = [...cur.tracks, x.i]; render(); }),
-      btn("🗑", "라이브러리에서 지우기", "icon", () => {
-        if (!confirm("라이브러리에서 지울까요? 모든 플레이리스트에서 빠져요")) return;
-        cur.deleted = [...cur.deleted, x.i]; render();
-      }),
-    ])));
-    $("queue-empty").hidden = cur.tracks.length > 0;
-    const libEmpty = $("library-empty");
-    libEmpty.hidden = rest.length > 0;
-    libEmpty.textContent = data.lib.length - gone.size === 0
-      ? "라이브러리가 비었어요. 링크나 음원을 보내주세요"
-      : "라이브러리의 곡이 모두 이 목록에 있어요";
-  }
-
-  const picker = $("picker");
-  for (const p of data.pls) picker.append(new Option(p.n, String(p.i)));
-  picker.append(new Option("+ 새 플레이리스트", NEW));
-  const start = data.pls.some((p) => p.i === data.a) ? String(data.a) : data.pls.length ? String(data.pls[0].i) : NEW;
-  picker.value = start;
-  picker.addEventListener("change", () => load(picker.value));
-  $("name").addEventListener("input", () => { cur.name = $("name").value; });
-
-  if (window.Sortable) {
-    Sortable.create($("queue"), {
-      handle: ".handle", animation: 150, ghostClass: "ghost",
-      onEnd: () => { cur.tracks = [...$("queue").children].map((li) => Number(li.dataset.id)); },
-    });
-  }
-
-  function submit(play, remove) {
-    $("warn").textContent = "";
-    const r = buildPayload({ ...cur, remove }, $("add").value, play);
-    if (r.warn) { $("warn").textContent = r.warn; return; }
-    if (!tg || !tg.sendData) { $("warn").textContent = "텔레그램 안에서 열어야 보낼 수 있어요"; return; }
-    try {
-      tg.sendData(r.json);
-      sent = true;
-      for (const id of ["save", "play", "remove"]) $(id).disabled = true;
-    } catch (e) {
-      $("warn").textContent = "전송하지 못했어요. 다시 시도해주세요";
-    }
-  }
-  $("save").addEventListener("click", () => submit(false, false));
-  $("play").addEventListener("click", () => submit(true, false));
-  $("remove").addEventListener("click", () => {
-    if (confirm("이 플레이리스트를 지울까요?")) submit(false, true);
-  });
-
-  load(start);
-})();
-</script>
+<footer id="bar" hidden>
+  <div id="bar-top">
+    <span id="now"></span>
+    <span id="time">0:00 / 0:00</span>
+  </div>
+  <input id="seek" type="range" min="0" max="0" step="0.1" value="0" aria-label="재생 위치">
+  <div id="controls">
+    <button id="prev" type="button" aria-label="이전 곡">⏮</button>
+    <button id="toggle" type="button" aria-label="재생">⏯</button>
+    <button id="next" type="button" aria-label="다음 곡">⏭</button>
+    <button id="repeat" type="button" aria-label="전체 반복">🔁</button>
+  </div>
+  <p id="play-notice" role="alert"></p>
+</footer>
+<script type="module" src="app.js"></script>
 </body>
 </html>

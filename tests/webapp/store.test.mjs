@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createActiveSender, mergeOrder } from '../../webapp/player/store.js';
+import { createActiveSender, mergeOrder } from '../../webapp/store.js';
 
 // 저장소 쪽 Promise 연쇄를 한 바퀴 돌린다. 가짜 타이머는 setTimeout만 막으므로 setImmediate는 그대로 돈다.
 const settle = () => new Promise((resolve) => setImmediate(resolve));

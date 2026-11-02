@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createSaver } from '../../webapp/player/saver.js';
+import { createSaver } from '../../webapp/saver.js';
 
 function fakeTimers() {
   const pending = new Map();

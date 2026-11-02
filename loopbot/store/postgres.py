@@ -72,14 +72,6 @@ class PostgresStore:
             (user_id, playlist_id),
         )
 
-    @staticmethod
-    def _owned_playlist_id(cur: Cursor, user_id: int, playlist_id: int | None) -> int | None:
-        if playlist_id is None:
-            return None
-        cur.execute("SELECT id FROM playlists WHERE id = %s AND user_id = %s", (playlist_id, user_id))
-        row = cur.fetchone()
-        return row[0] if row else None
-
     def _active_id(self, cur: Cursor, user_id: int) -> int:
         cur.execute("SELECT active_playlist_id FROM user_state WHERE user_id = %s", (user_id,))
         row = cur.fetchone()
@@ -123,50 +115,8 @@ class PostgresStore:
 
         return self._run(work)
 
-    def playlists(self, user_id: int) -> list[Playlist]:
-        def work(cur: Cursor) -> list[Playlist]:
-            cur.execute(
-                "SELECT p.id, p.user_id, p.name, "
-                "COALESCE(array_agg(pt.track_id ORDER BY pt.position) FILTER (WHERE pt.track_id IS NOT NULL), '{}') "
-                "FROM playlists p LEFT JOIN playlist_tracks pt ON pt.playlist_id = p.id "
-                "WHERE p.user_id = %s GROUP BY p.id ORDER BY p.id",
-                (user_id,),
-            )
-            return [Playlist(i, u, n, tuple(ids)) for i, u, n, ids in cur.fetchall()]
-
-        return self._run(work)
-
     def active_playlist(self, user_id: int) -> Playlist:
         return self._run(lambda cur: self._playlist(cur, self._active_id(cur, user_id)))
-
-    def save_playlist(self, user_id: int, playlist_id: int | None, name: str, track_ids: Sequence[int]) -> Playlist:
-        def work(cur: Cursor) -> Playlist:
-            owned = self._owned_playlist_id(cur, user_id, playlist_id)
-            if owned is None:
-                owned = self._create_playlist(cur, user_id, name)
-            else:
-                cur.execute("UPDATE playlists SET name = %s WHERE id = %s", (name, owned))
-            cur.execute("SELECT id FROM tracks WHERE user_id = %s", (user_id,))
-            library_ids = {i for (i,) in cur.fetchall()}
-            ordered = [i for i in dict.fromkeys(track_ids) if i in library_ids]
-            cur.execute("DELETE FROM playlist_tracks WHERE playlist_id = %s", (owned,))
-            cur.executemany(
-                "INSERT INTO playlist_tracks (playlist_id, track_id, position) VALUES (%s, %s, %s)",
-                [(owned, track_id, pos) for pos, track_id in enumerate(ordered)],
-            )
-            self._set_active(cur, user_id, owned)
-            return self._playlist(cur, owned)
-
-        return self._run(work)
-
-    def delete_playlist(self, user_id: int, playlist_id: int) -> None:
-        self._run(lambda cur: cur.execute("DELETE FROM playlists WHERE id = %s AND user_id = %s", (playlist_id, user_id)))
-
-    def delete_tracks(self, user_id: int, track_ids: Sequence[int]) -> None:
-        ids = list(set(track_ids))
-        self._run(lambda cur: cur.execute(
-            "DELETE FROM tracks WHERE user_id = %s AND id = ANY(%s::bigint[])", (user_id, ids)
-        ))
 
     def play_messages(self, user_id: int) -> list[int]:
         def work(cur: Cursor) -> list[int]:

@@ -81,7 +81,7 @@ def test_reply_falls_back_without_keyboard_on_bad_request(monkeypatch):
 
     from loopbot import handlers
 
-    monkeypatch.setattr(handlers, "_keyboard", lambda c, u: "KB")
+    monkeypatch.setattr(handlers, "_markup", lambda c, chat: "KB")
     calls = []
 
     async def reply_text(text, **kw):
@@ -89,10 +89,22 @@ def test_reply_falls_back_without_keyboard_on_bad_request(monkeypatch):
         if kw.get("reply_markup"):
             raise BadRequest("too big")
 
-    update = SimpleNamespace(effective_message=SimpleNamespace(reply_text=reply_text),
-                             effective_user=SimpleNamespace(id=1), effective_chat=_PRIVATE)
+    update = SimpleNamespace(effective_message=SimpleNamespace(reply_text=reply_text), effective_chat=_PRIVATE)
     asyncio.run(handlers._reply(update, SimpleNamespace(bot_data={}), "hi"))
     assert calls == [{"reply_markup": "KB"}, {}]
+
+
+def test_private_markup_is_inline_web_app_button_to_player():
+    from telegram import InlineKeyboardMarkup
+
+    from loopbot import handlers
+
+    context = SimpleNamespace(bot_data={"cfg": SimpleNamespace(webapp_url="https://x.io/app/")})
+    markup = handlers._markup(context, _PRIVATE)
+    assert isinstance(markup, InlineKeyboardMarkup)
+    [[button]] = markup.inline_keyboard
+    assert button.text == "🎵 플레이어 열기"
+    assert button.web_app.url == "https://x.io/app/"
 
 
 def _error_context(exc):
@@ -136,29 +148,54 @@ def test_on_error_swallows_failed_reply_and_handles_no_message(caplog):
     asyncio.run(handlers.on_error(SimpleNamespace(effective_message=None), _error_context(RuntimeError("boom"))))
 
 
-def test_refresh_keyboards_sends_to_each_user_and_survives_failures(monkeypatch, caplog):
-    import asyncio
-    from types import SimpleNamespace
+def _menu_app(calls, failing_chats=(), allowed=frozenset({1})):
+    from telegram.error import TelegramError
 
-    from telegram.error import Forbidden
+    async def set_chat_menu_button(chat_id=None, menu_button=None):
+        if chat_id in failing_chats:
+            raise TelegramError("chat menu reset refused")
+        calls.append((chat_id, menu_button))
+
+    async def send_message(*a, **kw):
+        raise AssertionError("startup must not send messages")
+
+    cfg = SimpleNamespace(allowed_user_ids=allowed, webapp_url="https://x.io/app/")
+    bot = SimpleNamespace(set_chat_menu_button=set_chat_menu_button, send_message=send_message)
+    return SimpleNamespace(bot_data={"cfg": cfg}, bot=bot)
+
+
+def test_set_menu_button_resets_user_chats_then_sets_default_webapp_menu(caplog):
+    import asyncio
+
+    from telegram import MenuButtonWebApp, WebAppInfo
 
     from loopbot import handlers
 
-    monkeypatch.setattr(handlers, "_keyboard", lambda bot_data, uid: f"KB{uid}")
-    sent = []
+    calls = []
+    app = _menu_app(calls, allowed=frozenset({1, 2}))
+    asyncio.run(handlers._set_menu_button(app))
+    assert calls == [
+        (1, None),
+        (2, None),
+        (None, MenuButtonWebApp("🎵 플레이어", WebAppInfo("https://x.io/app/"))),
+    ]
 
-    async def send_message(chat_id, text, reply_markup=None):
-        if chat_id == 1:
-            raise Forbidden("blocked")
-        sent.append((chat_id, text, reply_markup))
 
-    app = SimpleNamespace(
-        bot_data={"cfg": SimpleNamespace(allowed_user_ids=frozenset({1, 2}))},
-        bot=SimpleNamespace(send_message=send_message),
-    )
-    asyncio.run(handlers._refresh_keyboards(app))
-    assert sent == [(2, "🎵 플레이리스트 버튼을 새로 고쳤어요", "KB2")]
-    assert "blocked" in caplog.text
+def test_set_menu_button_logs_failed_chat_reset_and_still_sets_default(caplog):
+    import asyncio
+
+    from telegram import MenuButtonWebApp, WebAppInfo
+
+    from loopbot import handlers
+
+    calls = []
+    app = _menu_app(calls, failing_chats={1}, allowed=frozenset({1, 2}))
+    asyncio.run(handlers._set_menu_button(app))
+    assert calls == [
+        (2, None),
+        (None, MenuButtonWebApp("🎵 플레이어", WebAppInfo("https://x.io/app/"))),
+    ]
+    assert "chat menu reset refused" in caplog.text
 
 
 class _FakeStore:
@@ -254,7 +291,7 @@ def test_on_audio_deletes_user_message_and_confirms_with_send_message(monkeypatc
 
     from loopbot import handlers
 
-    monkeypatch.setattr(handlers, "_keyboard", lambda bot_data, uid: "KB")
+    monkeypatch.setattr(handlers, "_markup", lambda context, chat: "KB")
     events = []
 
     class Store:
@@ -327,10 +364,10 @@ def test_build_app_registers_error_handler():
     assert handlers.on_error in _app().error_handlers
 
 
-def test_build_app_refreshes_keyboards_on_startup():
+def test_build_app_sets_menu_button_on_startup():
     from loopbot import handlers
 
-    assert _app().post_init is handlers._refresh_keyboards
+    assert _app().post_init is handlers._set_menu_button
 
 
 def _group_update(replies):
@@ -342,36 +379,29 @@ def _group_update(replies):
 
 
 def _group_context():
-    def no_keyboard(*a):
-        raise AssertionError("web app keyboard must not be built for a group")
-
-    return SimpleNamespace(bot_data={}, bot=SimpleNamespace(username="loopbot_test_bot")), no_keyboard
+    return SimpleNamespace(bot_data={}, bot=SimpleNamespace(username="loopbot_test_bot"))
 
 
-def test_reply_in_group_uses_link_button_to_private_chat(monkeypatch):
+def test_reply_in_group_uses_link_button_to_private_chat():
     import asyncio
 
     from loopbot import handlers
 
-    context, no_keyboard = _group_context()
-    monkeypatch.setattr(handlers, "_keyboard", no_keyboard)
     replies = []
-    asyncio.run(handlers._reply(_group_update(replies), context, "hi"))
+    asyncio.run(handlers._reply(_group_update(replies), _group_context(), "hi"))
     [(text, markup)] = replies
     [[button]] = markup.inline_keyboard
     assert text == "hi"
     assert button.url == "https://t.me/loopbot_test_bot?start=playlist"
 
 
-def test_start_in_group_explains_why_the_app_opens_in_private_chat(monkeypatch):
+def test_start_in_group_explains_why_the_app_opens_in_private_chat():
     import asyncio
 
     from loopbot import handlers
 
-    context, no_keyboard = _group_context()
-    monkeypatch.setattr(handlers, "_keyboard", no_keyboard)
     replies = []
-    asyncio.run(handlers.start(_group_update(replies), context))
+    asyncio.run(handlers.start(_group_update(replies), _group_context()))
     [(text, markup)] = replies
     assert "개인 채팅" in text
     assert markup.inline_keyboard[0][0].url.endswith("?start=playlist")

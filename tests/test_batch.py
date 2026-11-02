@@ -1,14 +1,15 @@
 import asyncio
-import json
+import os
 from types import SimpleNamespace
 
 import pytest
 
 from loopbot import handlers
 from loopbot.config import load_config
-from loopbot.store.sqlite import SqliteStore
+from loopbot.store.postgres import PostgresStore
 from loopbot.youtube import Audio, FetchError
 
+PG_ENV = "LOOPBOT_TEST_DATABASE_URL"
 USER = 1
 
 
@@ -24,9 +25,8 @@ class FakeStatus:
 
 
 class FakeMessage:
-    def __init__(self, text=None, web_app_data=None):
+    def __init__(self, text=None):
         self.text = text
-        self.web_app_data = web_app_data and SimpleNamespace(data=web_app_data)
         self.log = []
 
     async def reply_text(self, text, **kw):
@@ -51,11 +51,16 @@ def fake_fetch(url, workdir, cookies):
 
 
 @pytest.fixture
-def env(tmp_path, monkeypatch):
+def env(monkeypatch):
+    dsn = os.environ.get(PG_ENV)
+    if not dsn:
+        pytest.skip(f"{PG_ENV} not set")
     monkeypatch.setattr(handlers, "fetch_audio", fake_fetch)
-    store = SqliteStore(str(tmp_path / "s.db"))
+    store = PostgresStore(dsn, schema="loopbot_test")
+    store.reset()
     tasks = []
-    cfg = load_config({"BOT_TOKEN": "t", "ALLOWED_USER_IDS": str(USER), "WEBAPP_URL": "https://x.io/app/"})
+    cfg = load_config({"BOT_TOKEN": "t", "ALLOWED_USER_IDS": str(USER), "WEBAPP_URL": "https://x.io/app/",
+                       "DATABASE_URL": dsn})
     context = SimpleNamespace(
         bot=None,
         bot_data={"cfg": cfg, "store": store, "lock": asyncio.Lock()},
@@ -103,46 +108,10 @@ def test_single_failed_link_summary(env):
     assert msg.log[-1] == ("text", "❌ 받지 못했어요: https://youtu.be/bad (비공개 영상이에요)", True)
 
 
-def _web(env, **payload):
-    msg = FakeMessage(web_app_data=json.dumps({"v": 2, **payload}))
-    asyncio.run(handlers.on_web_app_data(_update(msg), env.context))
-    return msg
-
-
-def test_web_app_saves_new_playlist_and_adds_links_to_it(env):
-    a, b, c = (env.store.add_track(USER, t, "f", None, None).id for t in "ABC")
-    msg = _web(env, playlist=None, name="출근길", tracks=[c, b, a], delete_tracks=[b],
-               add=["https://youtu.be/d"])
-    assert msg.log == [("text", "✅ 저장했어요", True)]
-    assert env.store.active_playlist(USER).name == "출근길"
-    assert _active_titles(env.store) == ["C", "A"]
-    [task] = env.tasks
-    asyncio.run(task)
-    assert _active_titles(env.store) == ["C", "A", "d"]
-    assert msg.log[-1] == ("text", "✅ 추가됨: d", True)
-
-
-def test_web_app_delete_playlist_ignores_other_fields(env):
-    [a] = (env.store.add_track(USER, "A", "f", None, None).id,)
-    other = env.store.save_playlist(USER, None, "다른", [a])
-    msg = _web(env, playlist=other.id, delete_playlist=True, delete_tracks=[a], play=True)
-    assert [p.name for p in env.store.playlists(USER)] == ["기본"]
-    assert [t.title for t in env.store.library(USER)] == ["A"]
-    assert msg.log == [("text", "🗑 플레이리스트를 지웠어요", True)]
-
-
-def test_web_app_malformed_payload(env):
-    msg = FakeMessage(web_app_data='{"v":1}')
-    asyncio.run(handlers.on_web_app_data(_update(msg), env.context))
-    assert msg.log == [("text", "목록이 바뀌었어요. 버튼을 다시 눌러주세요", True)]
-
-
 def test_list_shows_active_playlist_name(env):
-    env.store.add_track(USER, "A", "f", None, None)
-    env.store.save_playlist(USER, None, "출근길", [])
     msg = FakeMessage()
     asyncio.run(handlers.list_tracks(_update(msg), env.context))
-    assert msg.log == [("text", "🎵 출근길\n아직 곡이 없어요. 링크나 음원을 보내주세요", False)]
-    env.store.save_playlist(USER, env.store.playlists(USER)[0].id, "기본", [1])
+    assert msg.log == [("text", "🎵 기본\n아직 곡이 없어요. 링크나 음원을 보내주세요", False)]
+    env.store.add_track(USER, "A", "f", None, None)
     asyncio.run(handlers.list_tracks(_update(msg), env.context))
     assert msg.log[-1] == ("text", "🎵 기본\n1. A", False)
