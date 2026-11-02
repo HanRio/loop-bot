@@ -39,3 +39,11 @@ export function watchUrl(videoId) {
 export function sheetCacheKey(trackId, version) {
   return `sheet-${trackId}-${version}`;
 }
+
+// 처음 보여 줄 목록. 내 목록이 비어 있고 공유 목록이 있으면 공유 목록을 연다. 처음 온 사람이 빈 화면을 보지 않게 한다.
+export function startPlaylistId({ rememberedId, activeId, playlists, sharedPlaylists }) {
+  const isKnown = [...playlists, ...sharedPlaylists].some((p) => p.id === rememberedId);
+  const id = isKnown ? rememberedId : activeId;
+  const own = playlists.find((p) => p.id === id);
+  return own && own.track_ids.length === 0 && sharedPlaylists.length > 0 ? sharedPlaylists[0].id : id;
+}

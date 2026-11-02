@@ -7,6 +7,7 @@ import {
   fitSize,
   isWritable,
   sheetCacheKey,
+  startPlaylistId,
   watchUrl,
 } from '../../webapp/lyrics-logic.js';
 
@@ -59,4 +60,24 @@ test('embedUrl and watchUrl build the YouTube links from a video id', () => {
 
 test('sheetCacheKey names the cached photo by track and version', () => {
   assert.equal(sheetCacheKey(7, 2), 'sheet-7-2');
+});
+
+test('startPlaylistId opens the first shared list when the list to show is my own empty one', () => {
+  const playlists = [{ id: 1, track_ids: [] }];
+  const sharedPlaylists = [{ id: 9, track_ids: [5] }, { id: 8, track_ids: [6] }];
+  assert.equal(startPlaylistId({ rememberedId: 0, activeId: 1, playlists, sharedPlaylists }), 9);
+  assert.equal(startPlaylistId({ rememberedId: 1, activeId: 1, playlists, sharedPlaylists }), 9);
+});
+
+test('startPlaylistId keeps my own list when it has songs or nothing is shared', () => {
+  const playlists = [{ id: 1, track_ids: [3] }, { id: 2, track_ids: [] }];
+  assert.equal(startPlaylistId({ rememberedId: 1, activeId: 2, playlists, sharedPlaylists: [{ id: 9, track_ids: [] }] }), 1);
+  assert.equal(startPlaylistId({ rememberedId: 0, activeId: 2, playlists, sharedPlaylists: [] }), 2);
+});
+
+test('startPlaylistId keeps a remembered shared list and ignores a remembered list that is gone', () => {
+  const playlists = [{ id: 1, track_ids: [3] }];
+  const sharedPlaylists = [{ id: 9, track_ids: [] }, { id: 8, track_ids: [] }];
+  assert.equal(startPlaylistId({ rememberedId: 8, activeId: 1, playlists, sharedPlaylists }), 8);
+  assert.equal(startPlaylistId({ rememberedId: 77, activeId: 1, playlists, sharedPlaylists }), 1);
 });

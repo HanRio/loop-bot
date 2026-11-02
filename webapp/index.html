@@ -74,6 +74,9 @@
     padding: 16px 8px 8px; margin-top: 24px;
   }
   .card h2 { margin: 0 8px 8px; font-size: 13px; font-weight: 600; color: var(--hint); }
+  .guide-step { margin: 0 8px 8px; font-size: 14px; }
+  #guide { margin-top: 0; margin-bottom: 24px; padding-bottom: 16px; }
+  #guide .buttons { margin: 16px 8px 0; }
   li {
     display: flex; align-items: center; gap: 4px; min-height: 48px;
     border-radius: var(--radius-sm); background: var(--surface);
@@ -230,7 +233,7 @@
   button { transition: transform 320ms cubic-bezier(.34, 1.56, .64, 1), box-shadow var(--ease), color var(--ease), opacity var(--ease); }
   button:active:not(:disabled) { transform: scale(.94); transition: transform 90ms ease-out, box-shadow 90ms ease-out; }
   button.title:active:not(:disabled), button.sheet:active:not(:disabled) { transform: scale(.985); }
-  #queue-card, #library-card, #lyrics { animation: panel-enter 220ms cubic-bezier(.22, 1, .36, 1); }
+  #queue-card, #library-card, #lyrics, #guide { animation: panel-enter 220ms cubic-bezier(.22, 1, .36, 1); }
   #toggle .i { animation: icon-pop 240ms cubic-bezier(.34, 1.56, .64, 1); }
   @keyframes panel-enter { from { opacity: 0; transform: translateY(6px); } }
   @keyframes icon-pop { from { opacity: .4; transform: scale(.7); } }
@@ -264,6 +267,14 @@
 </svg>
 <p id="fatal" class="empty" hidden></p>
 <main id="app" hidden>
+  <section id="guide" class="card" hidden>
+    <h2>사용법</h2>
+    <p class="guide-step">1. 위쪽 칸에서 가사집 목록을 골라요.</p>
+    <p class="guide-step">2. 곡마다 가사 사진을 보며 느낀점을 써요. 쓰는 대로 저장돼요.</p>
+    <p class="guide-step">3. 복사 버튼을 눌러 느낀점을 가져가요.</p>
+    <p class="guide-step">4. 내 곡을 넣으려면 봇 채팅에 유튜브 링크나 음원 파일을 보내요. 곡을 누르면 재생되고, 화면을 꺼도 이어져요.</p>
+    <div class="buttons"><button id="guide-close" type="button" class="primary">알겠어요</button></div>
+  </section>
   <div class="picker-row">
     <div class="well select-wrap">
       <select id="picker" aria-label="플레이리스트 고르기"></select>
@@ -300,6 +311,7 @@
     <p id="library-empty" class="empty" hidden>라이브러리가 비었어요. 링크나 음원을 보내주세요</p>
   </section>
   <p class="empty">링크는 채팅에 붙여넣으면 추가돼요. 긴 곡은 채팅에서 /play로 들어요</p>
+  <button id="guide-open" class="text-button" type="button">사용법 보기</button>
 </main>
 <footer id="bar" hidden>
   <input id="seek" type="range" min="0" max="0" step="0.1" value="0" aria-label="재생 위치">

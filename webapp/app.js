@@ -9,6 +9,7 @@ import {
   renderViewSwitch, setNotice, setVisible,
 } from './render.js';
 import { cleanName, cleanTitle, createActiveSender, createSaves, mergeOrder, readLocal, writeLocal } from './store.js';
+import { startPlaylistId } from './lyrics-logic.js';
 
 const API_BASE = 'https://rrpmpqxoqxlwrmflpiyi.supabase.co/functions/v1/loopbot-api';
 const FILE_BASE = 'https://168-110-54-40.sslip.io';
@@ -17,6 +18,7 @@ const NEW_PLAYLIST = 'new';
 const REPEAT_ORDER = ['all', 'one', 'off'];
 const KEY_PLAYLIST = 'loopbot.player.playlist';
 const KEY_REPEAT = 'loopbot.player.repeat';
+const KEY_GUIDE = 'loopbot.player.guideSeen';
 const NAME_MAX = 20;
 const TRACK_NAME_MAX = 200;
 
@@ -549,8 +551,12 @@ async function init() {
   model.media = state.media;
   model.notes = state.notes;
   model.isAdmin = state.is_admin;
-  const remembered = Number(readLocal(KEY_PLAYLIST));
-  model.viewedId = findPlaylist(remembered) ? remembered : state.active_id;
+  model.viewedId = startPlaylistId({
+    rememberedId: Number(readLocal(KEY_PLAYLIST)),
+    activeId: state.active_id,
+    playlists: state.playlists,
+    sharedPlaylists: state.shared_playlists,
+  });
   viewMode = modeFor(model.viewedId);
   // 기억해 둔 내 목록이면, 봇이 새 곡을 붙이는 활성 목록도 그 목록으로 맞춘다.
   if (model.viewedId !== state.active_id && isOwnId(model.viewedId)) activeSender.request(model.viewedId);
@@ -558,6 +564,7 @@ async function init() {
   playback.repeat = REPEAT_ORDER.includes(repeat) ? repeat : 'all';
 
   setVisible('app', true);
+  setVisible('guide', !readLocal(KEY_GUIDE));
   setVisible('bar', true);
   renderAll();
 
@@ -576,6 +583,14 @@ async function init() {
     },
   });
   $('picker').addEventListener('change', onPickerChange);
+  $('guide-close').addEventListener('click', () => {
+    writeLocal(KEY_GUIDE, '1');
+    setVisible('guide', false);
+  });
+  $('guide-open').addEventListener('click', () => {
+    setVisible('guide', true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
   $('share-playlist').addEventListener('click', onToggleShare);
   $('view-list').addEventListener('click', () => onViewMode('list'));
   $('view-lyrics').addEventListener('click', () => onViewMode('lyrics'));
