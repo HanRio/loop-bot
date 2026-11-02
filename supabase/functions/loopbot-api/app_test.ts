@@ -705,6 +705,47 @@ dbTest("PUT /tracks/:id/sheet answers 413 over 10MB, 400 for another type, and 4
   assertEquals(calls.length, 0);
 });
 
+dbTest("PUT /tracks/:id/sheet stops reading a chunked body past 10MB and answers 413", async (ctx) => {
+  const t = await insertTrack(ctx, ALLOWED_USER, "song");
+  const CHUNK_BYTES = 1024 * 1024;
+  const CHUNK_COUNT = 20;
+  let pulled = 0;
+  const body = new ReadableStream<Uint8Array<ArrayBuffer>>({
+    pull(controller) {
+      if (pulled === CHUNK_COUNT) {
+        controller.close();
+        return;
+      }
+      pulled += 1;
+      controller.enqueue(new Uint8Array(CHUNK_BYTES));
+    },
+  });
+  const req = new Request(`${ORIGIN}/loopbot-api/tracks/${t}/sheet`, {
+    method: "PUT",
+    headers: { "x-telegram-init-data": await signFor(ALLOWED_USER), "content-type": "image/jpeg" },
+    body,
+  });
+
+  const res = await handle(req, depsWith(ctx.db, { fetch: telegramStub() }));
+
+  assertEquals(res.status, 413);
+  assertEquals(await res.json(), { error: "too_big" });
+  assertEquals(pulled < CHUNK_COUNT, true);
+});
+
+dbTest("PUT /tracks/:id/sheet answers 400 when the request has no body", async (ctx) => {
+  const t = await insertTrack(ctx, ALLOWED_USER, "song");
+  const req = new Request(`${ORIGIN}/loopbot-api/tracks/${t}/sheet`, {
+    method: "PUT",
+    headers: { "x-telegram-init-data": await signFor(ALLOWED_USER), "content-type": "image/jpeg" },
+  });
+
+  const res = await handle(req, depsWith(ctx.db));
+
+  assertEquals(res.status, 400);
+  assertEquals(await res.json(), { error: "bad_request" });
+});
+
 dbTest("DELETE /tracks/:id/sheet clears the photo, keeps the version, and answers 204", async (ctx) => {
   const t = await insertTrack(ctx, ALLOWED_USER, "song");
   await ctx.db.saveSheet(ALLOWED_USER, t, "sheet-1");

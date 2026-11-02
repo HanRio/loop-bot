@@ -133,6 +133,7 @@ export function createDb(dsn: string, schema: string): Db {
       await tx`select set_config('search_path', ${schema}, true)`;
       await tx`select set_config('lock_timeout', '5s', true)`;
       await tx`select set_config('statement_timeout', '10s', true)`;
+      await tx`select set_config('idle_in_transaction_session_timeout', '15s', true)`;
       return work(tx);
     }) as Promise<T>;
 

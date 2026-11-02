@@ -6,11 +6,13 @@ import os
 import re
 import shutil
 import tempfile
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import BinaryIO
 from urllib.parse import parse_qsl, urlsplit
 
 import httpx
@@ -29,9 +31,13 @@ CONNECT_TIMEOUT_SEC = 10
 DB_SCHEMA = "loopbot"  # same default as PostgresStore
 PART_SUFFIX = ".part"
 HASH_PATTERN = re.compile(r"[0-9a-f]{64}")
-AUTH_DATE_PATTERN = re.compile(r"\d+", re.ASCII)
+AUTH_DATE_PATTERN = re.compile(r"\d{1,15}", re.ASCII)
 TRACK_PATH = re.compile(r"/tracks/([1-9][0-9]{0,17})/(file|sheet)")
 CONTENT_TYPES = {"file": "audio/mp4", "sheet": "image/jpeg"}
+# The sheet URL stays the same when the photo is replaced, so it must always revalidate.
+CACHE_CONTROL = {"file": "private, max-age=31536000", "sheet": "private, no-cache"}
+# A cached file can be evicted between store and open, so one more fetch is allowed.
+OPEN_ATTEMPTS = 2
 TELEGRAM_API = "https://api.telegram.org"
 CORS_HEADERS = {
     "access-control-allow-origin": ALLOWED_ORIGIN,
@@ -90,11 +96,20 @@ def verify_init_data(init_data: str, bot_token: str, now: int, max_age: int = MA
     return _parse_user(_first(pairs, "user"))
 
 
+def _is_part(path: Path) -> bool:
+    return path.name.endswith(PART_SUFFIX)
+
+
 class FileCache:
     def __init__(self, directory: Path, max_bytes: int = CACHE_MAX_BYTES) -> None:
         self._dir = directory
         self._max_bytes = max_bytes
+        self._lock = threading.Lock()
         self._dir.mkdir(parents=True, exist_ok=True)
+        # Partial downloads left by a previous run can never be finished, so drop them.
+        for leftover in self._dir.iterdir():
+            if leftover.is_file() and _is_part(leftover):
+                leftover.unlink(missing_ok=True)
 
     def path(self, file_id: str) -> Path:
         return self._dir / hashlib.sha256(file_id.encode()).hexdigest()
@@ -122,14 +137,28 @@ class FileCache:
         return final
 
     def _evict(self, keep: Path) -> None:
-        # ponytail: 파일별 잠금 없음. 동시에 같은 곡을 받으면 마지막 것이 남는다.
-        entries = [p for p in self._dir.iterdir() if p.is_file() and p.suffix != PART_SUFFIX]
-        total = sum(p.stat().st_size for p in entries)
-        for path in sorted((p for p in entries if p != keep), key=lambda p: p.stat().st_mtime):
-            if total <= self._max_bytes:
-                break
-            total -= path.stat().st_size
-            path.unlink(missing_ok=True)
+        # ponytail: 잠금은 _evict 전체에 하나. 파일별 잠금 없음, 동시에 같은 곡을 받으면 마지막 것이 남는다.
+        with self._lock:
+            entries = self._snapshot()
+            total = sum(size for _, _, size in entries)
+            for path, _, size in sorted((e for e in entries if e[0] != keep), key=lambda e: e[1]):
+                if total <= self._max_bytes:
+                    break
+                total -= size
+                path.unlink(missing_ok=True)
+
+    def _snapshot(self) -> list[tuple[Path, float, int]]:
+        # A file another thread removed mid-scan is simply left out.
+        found = []
+        for path in self._dir.iterdir():
+            if not path.is_file() or _is_part(path):
+                continue
+            try:
+                stat = path.stat()
+            except FileNotFoundError:
+                continue
+            found.append((path, stat.st_mtime, stat.st_size))
+        return found
 
 
 class TooBig(Exception):
@@ -227,15 +256,12 @@ class FileHandler(BaseHTTPRequestHandler):
 
         kind = match.group(2)
         lookup = self.deps.file_id_for if kind == "file" else self.deps.sheet_file_id_for
-        file_id = lookup(user.id, int(match.group(1)))
-        if file_id is None:
-            self._json(404, "not_found")
-            return
-
         try:
-            path = self.deps.cache.get(file_id) or self.deps.cache.store(
-                file_id, lambda dest: self.deps.download(file_id, dest)
-            )
+            file_id = lookup(user.id, int(match.group(1)))
+            if file_id is None:
+                self._json(404, "not_found")
+                return
+            source = self._open_cached(file_id)
         except TooBig:
             self._json(413, "too_big")
             return
@@ -244,18 +270,31 @@ class FileHandler(BaseHTTPRequestHandler):
             logging.warning("file fetch failed: %s", type(err).__name__)
             self._json(502, "upstream")
             return
-        self._send_file(path, CONTENT_TYPES[kind])
+        with source:
+            self._send_file(source, CONTENT_TYPES[kind], CACHE_CONTROL[kind])
 
-    def _send_file(self, path: Path, content_type: str) -> None:
+    def _cached_path(self, file_id: str) -> Path:
+        return self.deps.cache.get(file_id) or self.deps.cache.store(
+            file_id, lambda dest: self.deps.download(file_id, dest)
+        )
+
+    def _open_cached(self, file_id: str) -> BinaryIO:
+        for _ in range(OPEN_ATTEMPTS - 1):
+            try:
+                return self._cached_path(file_id).open("rb")
+            except FileNotFoundError:
+                continue
+        return self._cached_path(file_id).open("rb")
+
+    def _send_file(self, source: BinaryIO, content_type: str, cache_control: str) -> None:
         self.send_response(200)
         self._cors()
         self.send_header("content-type", content_type)
-        self.send_header("cache-control", "private, max-age=31536000")
-        self.send_header("content-length", str(path.stat().st_size))
+        self.send_header("cache-control", cache_control)
+        self.send_header("content-length", str(os.fstat(source.fileno()).st_size))
         self.end_headers()
         try:
-            with path.open("rb") as f:
-                shutil.copyfileobj(f, self.wfile)
+            shutil.copyfileobj(source, self.wfile)
         except (BrokenPipeError, ConnectionResetError):
             pass
 

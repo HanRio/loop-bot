@@ -83,6 +83,7 @@ def test_verify_returns_none_username_when_absent_empty_or_not_a_string():
         pytest.param(signed('{"id": 42}', str(NOW - 86401)), id="expired"),
         pytest.param(signed('{"id": 42}', str(NOW + 3600)), id="future"),
         pytest.param(signed('{"id": 42}', "1e10"), id="exponent-auth-date"),
+        pytest.param(signed('{"id": 42}', "1" * 5000), id="huge-auth-date"),
         pytest.param(signed_user({"username": "friend"}), id="no-id"),
         pytest.param(signed_user({"id": True}), id="bool-id"),
         pytest.param(signed("not json"), id="user-not-json"),
@@ -104,13 +105,18 @@ class Fakes:
         self.sheet_lookups: list[tuple[int, int]] = []
         self.downloads: list[str] = []
         self.error: Exception | None = None
+        self.lookup_error: Exception | None = None
 
     def file_id_for(self, user_id: int, track_id: int) -> str | None:
         self.lookups.append((user_id, track_id))
+        if self.lookup_error is not None:
+            raise self.lookup_error
         return OWNED.get((user_id, track_id))
 
     def sheet_file_id_for(self, user_id: int, track_id: int) -> str | None:
         self.sheet_lookups.append((user_id, track_id))
+        if self.lookup_error is not None:
+            raise self.lookup_error
         return SHEETS.get((user_id, track_id))
 
     def download(self, file_id: str, dest: Path) -> None:
@@ -290,6 +296,67 @@ def test_sheet_by_disallowed_user_is_403_and_touches_nothing(serve):
     assert fakes.downloads == []
 
 
+def test_sheet_response_revalidates_while_file_stays_cacheable(serve):
+    base, _, _ = serve
+    headers = auth(signed_user({"id": ALLOWED_ID}))
+
+    sheet = httpx.get(f"{base}/tracks/7/sheet", headers=headers)
+    file = httpx.get(f"{base}/tracks/7/file", headers=headers)
+
+    assert sheet.headers["cache-control"] == "private, no-cache"
+    assert file.headers["cache-control"] == "private, max-age=31536000"
+
+
+def test_lookup_db_error_is_502_upstream_for_file_and_sheet(serve):
+    base, fakes, _ = serve
+    fakes.lookup_error = RuntimeError("db down")
+    headers = auth(signed_user({"id": ALLOWED_ID}))
+
+    for kind in ("file", "sheet"):
+        r = httpx.get(f"{base}/tracks/7/{kind}", headers=headers)
+
+        assert r.status_code == 502
+        assert r.json() == {"error": "upstream"}
+    assert fakes.downloads == []
+
+
+def _vanishing_store(monkeypatch, times: int) -> None:
+    # Simulates another request's eviction deleting the file right after it is stored.
+    real_store = FileCache.store
+    remaining = [times]
+
+    def store_then_vanish(self: FileCache, file_id: str, fill) -> Path:
+        path = real_store(self, file_id, fill)
+        if remaining[0] > 0:
+            remaining[0] -= 1
+            path.unlink()
+        return path
+
+    monkeypatch.setattr(FileCache, "store", store_then_vanish)
+
+
+def test_file_vanished_before_open_is_fetched_once_more(serve, monkeypatch):
+    base, fakes, _ = serve
+    _vanishing_store(monkeypatch, times=1)
+
+    r = httpx.get(f"{base}/tracks/7/file", headers=auth(signed_user({"id": ALLOWED_ID})))
+
+    assert r.status_code == 200
+    assert r.content == AUDIO
+    assert fakes.downloads == ["FILE-7", "FILE-7"]
+
+
+def test_file_vanishing_twice_is_502_upstream(serve, monkeypatch):
+    base, fakes, _ = serve
+    _vanishing_store(monkeypatch, times=2)
+
+    r = httpx.get(f"{base}/tracks/7/file", headers=auth(signed_user({"id": ALLOWED_ID})))
+
+    assert r.status_code == 502
+    assert r.json() == {"error": "upstream"}
+    assert fakes.downloads == ["FILE-7", "FILE-7"]
+
+
 @pytest.mark.parametrize("path", ["/tracks/abc/file", "/tracks/1", "/tracks/0/file", "/tracks/7/file/extra", "/tracks/1/other"])
 def test_other_paths_are_404(serve, path):
     base, fakes, _ = serve
@@ -337,6 +404,48 @@ def test_failed_fill_leaves_no_partial_file(tmp_path):
 
     assert list(tmp_path.iterdir()) == []
     assert cache.get("x") is None
+
+
+def test_concurrent_stores_do_not_fail_and_stay_within_limit(tmp_path):
+    cache = FileCache(tmp_path, max_bytes=10)
+    errors: list[BaseException] = []
+
+    def store(index: int) -> None:
+        try:
+            cache.store(f"file-{index}", lambda dest: dest.write_bytes(b"x" * 4))
+        except BaseException as err:
+            errors.append(err)
+
+    threads = [threading.Thread(target=store, args=(i,)) for i in range(50)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert errors == []
+    assert sum(p.stat().st_size for p in tmp_path.iterdir()) <= 10
+
+
+def test_init_removes_leftover_part_files(tmp_path):
+    leftover = tmp_path / "tmpabc.part"
+    leftover.write_bytes(b"partial")
+
+    FileCache(tmp_path)
+
+    assert not leftover.exists()
+
+
+def test_evict_ignores_in_flight_part_files(tmp_path):
+    cache = FileCache(tmp_path, max_bytes=10)
+    in_flight = tmp_path / "tmpxyz.part"
+    in_flight.write_bytes(b"z" * 100)
+
+    small = cache.store("small", lambda dest: dest.write_bytes(b"x" * 4))
+    other = cache.store("other", lambda dest: dest.write_bytes(b"y" * 4))
+
+    assert in_flight.exists()
+    assert small.exists()
+    assert other.exists()
 
 
 # DB queries: run only when LOOPBOT_TEST_DATABASE_URL is set; they use the loopbot_test schema.

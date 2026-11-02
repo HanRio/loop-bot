@@ -216,13 +216,37 @@ async function uploadSheet(userId: number, bytes: Uint8Array<ArrayBuffer>, deps:
   return fileId;
 }
 
+// Reads chunk by chunk so a body without Content-Length cannot make us buffer more than the cap.
+async function readSheetBytes(req: Request): Promise<Uint8Array<ArrayBuffer>> {
+  const reader = req.body?.getReader();
+  if (reader === undefined) throw badRequest();
+  const chunks: Uint8Array<ArrayBuffer>[] = [];
+  let total = 0;
+  let next = await reader.read();
+  while (!next.done) {
+    total += next.value.byteLength;
+    if (total > SHEET_MAX_BYTES) {
+      await reader.cancel();
+      throw new HttpError(413, "too_big");
+    }
+    chunks.push(next.value);
+    next = await reader.read();
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
+}
+
 async function putSheet(req: Request, userId: number, id: number, deps: Deps): Promise<Response> {
   if (!(await deps.db.ownsTrack(userId, id))) throw notFound();
   if (mediaType(req) !== "image/jpeg") throw badRequest();
   const declared = req.headers.get("content-length");
   if (declared !== null && Number(declared) > SHEET_MAX_BYTES) throw new HttpError(413, "too_big");
-  const bytes = new Uint8Array(await req.arrayBuffer());
-  if (bytes.byteLength > SHEET_MAX_BYTES) throw new HttpError(413, "too_big");
+  const bytes = await readSheetBytes(req);
 
   const fileId = await uploadSheet(userId, bytes, deps);
   const version = await deps.db.saveSheet(userId, id, fileId);
