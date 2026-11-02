@@ -8,11 +8,15 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 import httpx
+import psycopg
 import pytest
 
 from loopbot.config import load_config
-from loopbot.files import Deps, FileCache, TooBig, VerifiedUser, make_server, verify_init_data
+from loopbot.files import Deps, FileCache, TooBig, VerifiedUser, file_id_for, make_server, sheet_file_id_for, verify_init_data
+from loopbot.store.postgres import PostgresStore
 
+PG_ENV = "LOOPBOT_TEST_DATABASE_URL"
+TEST_SCHEMA = "loopbot_test"
 TEST_TOKEN = "0000000000:test-bot-token"
 NOW = 1_800_000_000
 ALLOWED_ID = 1001
@@ -91,17 +95,23 @@ def test_verify_rejects_invalid_init_data(init_data):
 # HTTP server
 
 OWNED = {(ALLOWED_ID, 7): "FILE-7", (OTHER_ID, 8): "FILE-8", (FRIEND_ID, 9): "FILE-9"}
+SHEETS = {(ALLOWED_ID, 7): "SHEET-7"}
 
 
 class Fakes:
     def __init__(self) -> None:
         self.lookups: list[tuple[int, int]] = []
+        self.sheet_lookups: list[tuple[int, int]] = []
         self.downloads: list[str] = []
         self.error: Exception | None = None
 
     def file_id_for(self, user_id: int, track_id: int) -> str | None:
         self.lookups.append((user_id, track_id))
         return OWNED.get((user_id, track_id))
+
+    def sheet_file_id_for(self, user_id: int, track_id: int) -> str | None:
+        self.sheet_lookups.append((user_id, track_id))
+        return SHEETS.get((user_id, track_id))
 
     def download(self, file_id: str, dest: Path) -> None:
         self.downloads.append(file_id)
@@ -125,6 +135,7 @@ def serve(tmp_path):
         bot_token=TEST_TOKEN,
         is_allowed=cfg.is_allowed,
         file_id_for=fakes.file_id_for,
+        sheet_file_id_for=fakes.sheet_file_id_for,
         download=fakes.download,
         cache=FileCache(cache_dir),
         now=lambda: NOW,
@@ -243,7 +254,43 @@ def test_options_is_204_with_cors_headers(serve):
     assert r.headers["access-control-allow-origin"] == "https://hanrio.github.io"
 
 
-@pytest.mark.parametrize("path", ["/tracks/abc/file", "/tracks/1", "/tracks/0/file", "/tracks/7/file/extra"])
+def test_get_sheet_streams_jpeg_and_serves_second_request_from_cache(serve):
+    base, fakes, _ = serve
+    headers = auth(signed_user({"id": ALLOWED_ID}))
+
+    first = httpx.get(f"{base}/tracks/7/sheet", headers=headers)
+    second = httpx.get(f"{base}/tracks/7/sheet", headers=headers)
+
+    assert first.status_code == 200
+    assert first.content == AUDIO
+    assert first.headers["content-type"] == "image/jpeg"
+    assert second.status_code == 200
+    assert fakes.downloads == ["SHEET-7"]
+
+
+def test_sheet_missing_is_404_without_download(serve):
+    base, fakes, _ = serve
+
+    r = httpx.get(f"{base}/tracks/8/sheet", headers=auth(signed_user({"id": ALLOWED_ID})))
+
+    assert r.status_code == 404
+    assert r.json() == {"error": "not_found"}
+    assert fakes.downloads == []
+
+
+def test_sheet_by_disallowed_user_is_403_and_touches_nothing(serve):
+    base, fakes, _ = serve
+
+    r = httpx.get(f"{base}/tracks/7/sheet", headers=auth(signed_user({"id": OTHER_ID})))
+
+    assert r.status_code == 403
+    assert r.json() == {"error": "forbidden"}
+    assert fakes.sheet_lookups == []
+    assert fakes.lookups == []
+    assert fakes.downloads == []
+
+
+@pytest.mark.parametrize("path", ["/tracks/abc/file", "/tracks/1", "/tracks/0/file", "/tracks/7/file/extra", "/tracks/1/other"])
 def test_other_paths_are_404(serve, path):
     base, fakes, _ = serve
 
@@ -290,3 +337,68 @@ def test_failed_fill_leaves_no_partial_file(tmp_path):
 
     assert list(tmp_path.iterdir()) == []
     assert cache.get("x") is None
+
+
+# DB queries: run only when LOOPBOT_TEST_DATABASE_URL is set; they use the loopbot_test schema.
+
+@pytest.fixture
+def pg():
+    dsn = os.environ.get(PG_ENV)
+    if not dsn:
+        pytest.skip(f"{PG_ENV} not set")
+    store = PostgresStore(dsn, schema=TEST_SCHEMA)
+    store.reset()
+    yield dsn, store
+    store.reset()
+    store.close()
+
+
+def _run_sql(dsn: str, text: str, params: tuple = ()) -> None:
+    with psycopg.connect(dsn, autocommit=True) as conn:
+        conn.execute(text, params)
+
+
+def _set_shared(dsn: str, user_id: int, shared: bool) -> None:
+    _run_sql(dsn, "UPDATE loopbot_test.playlists SET shared = %s WHERE user_id = %s", (shared, user_id))
+
+
+def _set_sheet(dsn: str, track_id: int, sheet_file_id: str | None) -> None:
+    _run_sql(
+        dsn,
+        "INSERT INTO loopbot_test.track_media (track_id, sheet_file_id) VALUES (%s, %s)",
+        (track_id, sheet_file_id),
+    )
+
+
+def test_file_id_for_reads_own_and_shared_playlist_tracks_only(pg):
+    dsn, store = pg
+    mine = store.add_track(ALLOWED_ID, "mine", "FILE-MINE", None, None).id
+    shared = store.add_track(FRIEND_ID, "shared", "FILE-SHARED", None, None).id
+    stranger = store.add_track(OTHER_ID, "stranger", "FILE-STRANGER", None, None).id
+
+    _set_shared(dsn, FRIEND_ID, True)
+    assert file_id_for(dsn, ALLOWED_ID, mine, schema=TEST_SCHEMA) == "FILE-MINE"
+    assert file_id_for(dsn, ALLOWED_ID, shared, schema=TEST_SCHEMA) == "FILE-SHARED"
+    assert file_id_for(dsn, ALLOWED_ID, stranger, schema=TEST_SCHEMA) is None
+
+    _set_shared(dsn, FRIEND_ID, False)
+    assert file_id_for(dsn, ALLOWED_ID, shared, schema=TEST_SCHEMA) is None
+    assert file_id_for(dsn, ALLOWED_ID, mine, schema=TEST_SCHEMA) == "FILE-MINE"
+
+
+def test_sheet_file_id_for_needs_readable_track_and_a_sheet(pg):
+    dsn, store = pg
+    mine = store.add_track(ALLOWED_ID, "mine", "FILE-MINE", None, None).id
+    shared = store.add_track(FRIEND_ID, "shared", "FILE-SHARED", None, None).id
+    stranger = store.add_track(OTHER_ID, "stranger", "FILE-STRANGER", None, None).id
+    no_sheet = store.add_track(ALLOWED_ID, "no-sheet", "FILE-NO-SHEET", None, None).id
+    _set_shared(dsn, FRIEND_ID, True)
+    _set_sheet(dsn, mine, "SHEET-MINE")
+    _set_sheet(dsn, shared, "SHEET-SHARED")
+    _set_sheet(dsn, stranger, "SHEET-STRANGER")
+    _set_sheet(dsn, no_sheet, None)
+
+    assert sheet_file_id_for(dsn, ALLOWED_ID, mine, schema=TEST_SCHEMA) == "SHEET-MINE"
+    assert sheet_file_id_for(dsn, ALLOWED_ID, shared, schema=TEST_SCHEMA) == "SHEET-SHARED"
+    assert sheet_file_id_for(dsn, ALLOWED_ID, stranger, schema=TEST_SCHEMA) is None
+    assert sheet_file_id_for(dsn, ALLOWED_ID, no_sheet, schema=TEST_SCHEMA) is None
