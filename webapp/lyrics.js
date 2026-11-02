@@ -256,8 +256,26 @@ export function createLyrics({ api, getState, onPlay, onError, onMediaChange, on
     }
   }
 
+  // 다시 그리면 입력칸 포커스가 사라지므로 곡, 커서, 스크롤을 적어 둔다.
+  function keepFocus() {
+    const card = [...cards.values()].find((c) => c.textarea === document.activeElement);
+    if (!card) return null;
+    const { selectionStart: start, selectionEnd: end } = card.textarea;
+    return { id: card.id, start, end, scrollY: window.scrollY };
+  }
+
+  // 같은 곡이 아직 있을 때만 포커스와 커서, 스크롤을 되돌린다.
+  function restoreFocus(saved) {
+    const card = saved && cards.get(saved.id);
+    if (!card) return;
+    card.textarea.focus({ preventScroll: true });
+    card.textarea.setSelectionRange(saved.start, saved.end);
+    window.scrollTo(0, saved.scrollY);
+  }
+
   function rebuild(state, key) {
     if (viewer.open) viewer.close();
+    const focus = keepFocus();
     observer?.disconnect();
     for (const card of cards.values()) {
       if (card.url) URL.revokeObjectURL(card.url);
@@ -266,6 +284,9 @@ export function createLyrics({ api, getState, onPlay, onError, onMediaChange, on
     root.replaceChildren(empty, ...[...cards.values()].map((card) => card.section));
     feed = key;
     refresh(state);
+    restoreFocus(focus);
+    // 열린 영상이 새 목록에 더는 없으면 닫는다.
+    if (openedVideoId && !state.trackIds.some((id) => state.media[id]?.video_id === openedVideoId)) closeVideo();
     for (const card of cards.values()) {
       if (!card.hasSheet) continue;
       if (observer) observer.observe(card.sheet);
@@ -386,6 +407,7 @@ export function createLyrics({ api, getState, onPlay, onError, onMediaChange, on
   }
 
   function closeVideo() {
+    if (!openedVideoId) return;
     videoFrame.replaceChildren();
     videoPanel.hidden = true;
     openedVideoId = null;
@@ -416,7 +438,11 @@ export function createLyrics({ api, getState, onPlay, onError, onMediaChange, on
       restoreDrafts(state.notes);
     }
     root.hidden = !state.visible;
-    if (!state.visible) return;
+    if (!state.visible) {
+      // 가사집을 떠나면 열린 영상도 닫는다.
+      closeVideo();
+      return;
+    }
     const key = feedKey(state.playlistId, state.trackIds, state.media, state.canEdit);
     if (key === feed) refresh(state);
     else rebuild(state, key);
@@ -426,5 +452,5 @@ export function createLyrics({ api, getState, onPlay, onError, onMediaChange, on
   const flush = () => saves.flushAll();
 
   empty.textContent = COPY.emptyLyrics;
-  return { sync, flush };
+  return { sync, flush, closeVideo };
 }

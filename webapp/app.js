@@ -272,8 +272,10 @@ async function onPickPlaylist(id) {
   closeNameFormAndReset();
   if (id === model.viewedId) return renderAll();
   await saves.flushAll();
+  // 관리자가 내 목록끼리 옮길 때는 보기 방식을 지킨다. 그 밖에는 modeFor를 따른다.
+  const keepMode = model.isAdmin && isOwnId(model.viewedId) && isOwnId(id);
   model.viewedId = id;
-  viewMode = modeFor(id);
+  viewMode = keepMode ? viewMode : modeFor(id);
   writeLocal(KEY_PLAYLIST, String(id));
   renderAll();
   // 공유 목록을 골라도 활성 목록은 바꾸지 않는다. 봇이 받는 곡은 내 목록에 붙는다.
@@ -443,6 +445,8 @@ function onTrackFailed(err) {
 
 function onPlayRow(id) {
   if (playback.unplayable.has(id)) return;
+  // 영상이 열려 있으면 닫고 그 곡을 튼다.
+  lyrics.closeVideo();
   playback.playingPlaylistId = model.viewedId;
   userMove(id);
 }
@@ -465,7 +469,10 @@ function onRepeat() {
 function onVideoToggle(open) {
   document.body.classList.toggle('video-open', open);
   setVisible('bar', !open);
-  if (open && player.isPlaying()) player.toggle();
+  if (!open) return;
+  // 받는 중이던 곡은 버려서 영상을 연 뒤에 소리가 나지 않게 한다.
+  player.cancel();
+  if (player.isPlaying()) player.toggle();
 }
 
 function onMediaChange(id, next) {
