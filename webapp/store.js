@@ -58,6 +58,9 @@ export function createSaves({ save, onError, onSaved }) {
   };
 }
 
+// 플레이리스트 이름. 앞뒤 공백을 떼고 서버와 같게 코드포인트 20자까지만 쓴다.
+export const cleanName = (raw) => [...raw.trim()].slice(0, 20).join('');
+
 // 드래그로 정한 순서에 목록 밖에서 생긴 곡을 붙인다. 화면 DOM에 없던 곡(새로 받은 곡)은 뒤에 둔다.
 // 서버가 지운 곡은 current에 없으므로 빠진다.
 export function mergeOrder(domIds, currentIds) {

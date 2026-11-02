@@ -4,9 +4,9 @@ import { createPlayer } from './audio.js';
 import { COPY } from './copy.js';
 import { nextTrack, prevTrack } from './queue.js';
 import {
-  $, enableQueueSort, renderPicker, renderQueue, renderLibrary, renderBar, setNewFormOpen, setNotice, setVisible,
+  $, closeNameForm, enableQueueSort, openNameForm, renderPicker, renderQueue, renderLibrary, renderBar, setNotice, setVisible,
 } from './render.js';
-import { createActiveSender, createSaves, mergeOrder, readLocal, writeLocal } from './store.js';
+import { cleanName, createActiveSender, createSaves, mergeOrder, readLocal, writeLocal } from './store.js';
 
 const API_BASE = 'https://rrpmpqxoqxlwrmflpiyi.supabase.co/functions/v1/loopbot-api';
 const IS_LOCAL = location.hostname === 'localhost';
@@ -24,6 +24,20 @@ try {
 } catch {
   // 텔레그램 밖이거나 오래된 버전이면 그냥 연다.
 }
+
+function applyTheme() {
+  document.documentElement.dataset.theme = tg?.colorScheme === 'dark' ? 'dark' : 'light';
+  // 텔레그램 상단·배경도 표면색에 맞춰 경계를 없앤다.
+  const surface = getComputedStyle(document.documentElement).getPropertyValue('--surface').trim();
+  try {
+    tg?.setHeaderColor?.(surface);
+    tg?.setBackgroundColor?.(surface);
+  } catch {
+    // 오래된 버전이면 색만 안 맞는다.
+  }
+}
+applyTheme();
+tg?.onEvent?.('themeChanged', applyTheme);
 
 const model = { library: [], playlists: [], viewedId: null };
 const playback = {
@@ -45,6 +59,8 @@ let deletingId = null;
 // 끌기를 시작한 목록. 끝날 때 보고 있는 목록이 같을 때만 순서를 저장한다.
 let dragPlaylistId = null;
 let refreshSeq = 0;
+// 이름 입력줄이 지금 무슨 일을 하는지. 'create' | 'rename' | null
+let nameFormMode = null;
 
 const saves = createSaves({
   save: async (value) => {
@@ -151,8 +167,30 @@ async function onDeleteTrack(id) {
   renderAll();
 }
 
+function renameViewed(raw) {
+  const playlist = viewedPlaylist();
+  const name = cleanName(raw);
+  // 비웠거나 그대로면 바꾸지 않는다. 서버는 빈 이름을 '새 플레이리스트'로 덮어쓴다.
+  if (!playlist || playlist.id === deletingId || !name || name === playlist.name) return;
+  const updated = { ...playlist, name };
+  model.playlists = model.playlists.map((p) => (p.id === playlist.id ? updated : p));
+  saves.update({ id: updated.id, name: updated.name, track_ids: updated.track_ids });
+}
+
+function openRename() {
+  const playlist = viewedPlaylist();
+  if (!playlist) return;
+  nameFormMode = 'rename';
+  openNameForm({ value: playlist.name, submitLabel: COPY.rename });
+}
+
+function closeNameFormAndReset() {
+  nameFormMode = null;
+  closeNameForm();
+}
+
 async function onPickPlaylist(id) {
-  setNewFormOpen(false);
+  closeNameFormAndReset();
   if (id === model.viewedId) return renderAll();
   await saves.flushAll();
   model.viewedId = id;
@@ -164,7 +202,13 @@ async function onPickPlaylist(id) {
 async function onCreatePlaylist(event) {
   event.preventDefault();
   const name = $('new-name').value;
-  setNewFormOpen(false);
+  const mode = nameFormMode;
+  closeNameFormAndReset();
+  if (mode === 'rename') {
+    renameViewed(name);
+    renderAll();
+    return;
+  }
   await saves.flushAll();
   try {
     const playlist = await api.createPlaylist(name, []);
@@ -180,13 +224,16 @@ async function onCreatePlaylist(event) {
 }
 
 function onCancelNew() {
-  setNewFormOpen(false);
+  closeNameFormAndReset();
   renderAll();
 }
 
 function onPickerChange() {
   const value = $('picker').value;
-  if (value === NEW_PLAYLIST) return setNewFormOpen(true);
+  if (value === NEW_PLAYLIST) {
+    nameFormMode = 'create';
+    return openNameForm({ value: '', submitLabel: COPY.create });
+  }
   return onPickPlaylist(Number(value));
 }
 
@@ -375,6 +422,7 @@ async function init() {
     },
   });
   $('picker').addEventListener('change', onPickerChange);
+  $('rename-playlist').addEventListener('click', openRename);
   $('new-form').addEventListener('submit', onCreatePlaylist);
   $('new-cancel').addEventListener('click', onCancelNew);
   $('remove-playlist').addEventListener('click', onDeletePlaylist);

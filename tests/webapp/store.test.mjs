@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createActiveSender, mergeOrder } from '../../webapp/store.js';
+import { cleanName, createActiveSender, mergeOrder } from '../../webapp/store.js';
 
 // 저장소 쪽 Promise 연쇄를 한 바퀴 돌린다. 가짜 타이머는 setTimeout만 막으므로 setImmediate는 그대로 돈다.
 const settle = () => new Promise((resolve) => setImmediate(resolve));
@@ -89,4 +89,11 @@ test('createActiveSender sends a newer selection instead of retrying the old one
 test('mergeOrder keeps the dragged order, drops rows the server removed, and appends new tracks', () => {
   assert.deepEqual(mergeOrder([3, 1, 2], [1, 2, 3, 9]), [3, 1, 2, 9]);
   assert.deepEqual(mergeOrder([3, 1, 2], [1, 2]), [1, 2]);
+});
+
+test('cleanName trims spaces and keeps at most 20 code points', () => {
+  assert.equal(cleanName('  밤  '), '밤');
+  assert.equal(cleanName('   '), '');
+  assert.equal(cleanName('가'.repeat(25)), '가'.repeat(20));
+  assert.equal([...cleanName('😀'.repeat(25))].length, 20);
 });
