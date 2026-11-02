@@ -11,7 +11,8 @@ import {
 import { cleanName, cleanTitle, createActiveSender, createSaves, mergeOrder, readLocal, writeLocal } from './store.js';
 
 const API_BASE = 'https://rrpmpqxoqxlwrmflpiyi.supabase.co/functions/v1/loopbot-api';
-const FILE_BASE = 'https://168-110-54-40.sslip.io';
+// 'https://168-110-54-40.sslip.io'. Oracle 콘솔에서 80, 443을 열면 이 값을 넣는다. 없으면 함수로 받는다.
+const FILE_BASE = null;
 const IS_LOCAL = location.hostname === 'localhost';
 const NEW_PLAYLIST = 'new';
 const REPEAT_ORDER = ['all', 'one', 'off'];

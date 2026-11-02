@@ -26,6 +26,7 @@ function stubFetch(respond) {
 const audio = () => new Response('AUDIO', { status: 200 });
 const failing = (status, error) => new Response(JSON.stringify({ error }), { status });
 const toOracle = (calls) => calls.filter((c) => c.url.startsWith(ORACLE));
+const toSupabaseUrls = (urls) => urls.filter((u) => u.startsWith(SUPABASE));
 const toSupabase = (calls) => calls.filter((c) => c.url.startsWith(SUPABASE));
 
 test('file uses Oracle and does not call the function when Oracle answers 200', async () => {
@@ -106,4 +107,21 @@ test('file sends initData to both Oracle and the function', async () => {
   for (const call of calls) {
     assert.equal(call.init.headers['X-Telegram-Init-Data'], INIT_DATA);
   }
+});
+
+test('file falls back to the function when Oracle sends no response headers in time', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const calls = [];
+  globalThis.fetch = (url, init) => {
+    calls.push(url);
+    if (!url.startsWith(ORACLE)) return Promise.resolve(audio());
+    return new Promise((_, reject) => {
+      init.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+    });
+  };
+  const pending = createApi(SUPABASE, INIT_DATA, ORACLE).file(7);
+  t.mock.timers.tick(15000);
+
+  assert.equal(await (await pending).text(), 'AUDIO');
+  assert.equal(toSupabaseUrls(calls).length, 1);
 });
