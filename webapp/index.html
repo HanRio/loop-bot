@@ -7,92 +7,200 @@
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.6/Sortable.min.js"></script>
 <style>
-  * { box-sizing: border-box; }
+  /* 뉴모피즘 토큰. 밝은 면과 어두운 면의 그림자 두 개로 올라온 면과 눌린 면을 만든다. */
+  :root {
+    --surface: #E0E5EC; --light: #FFFFFF; --dark: #A3B1C6;
+    --text: #2F3A4A; --hint: #566579; --accent: #2F5C9E; --danger: #A8261C;
+    --raise: 6px 6px 12px var(--dark), -6px -6px 12px var(--light);
+    --raise-sm: 3px 3px 6px var(--dark), -3px -3px 6px var(--light);
+    --press: inset 3px 3px 6px var(--dark), inset -3px -3px 6px var(--light);
+    --radius-lg: 24px; --radius-md: 16px; --radius-sm: 12px;
+    --ease: 200ms ease-in-out;
+  }
+  :root[data-theme="dark"] {
+    --surface: #2B3038; --light: #363C46; --dark: #1C2026;
+    --text: #E4E9F0; --hint: #A9B5C6; --accent: #8DB4EE; --danger: #F2988F;
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  [hidden] { display: none !important; }
   body {
-    margin: 0; padding: 12px 16px 220px;
-    background: var(--tg-theme-bg-color, #fff);
-    color: var(--tg-theme-text-color, #000);
-    font: 16px/1.4 -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+    margin: 0; padding: 16px 16px 240px;
+    background: var(--surface); color: var(--text);
+    font: 500 16px/1.5 -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
   }
-  h2 { margin: 20px 0 4px; font-size: 14px; font-weight: 600; color: var(--tg-theme-section-header-text-color, var(--tg-theme-hint-color, #888)); }
   ul { list-style: none; margin: 0; padding: 0; }
-  li {
-    display: flex; align-items: center; gap: 4px; min-height: 44px;
-    border-bottom: 1px solid var(--tg-theme-secondary-bg-color, #eee);
-    background: var(--tg-theme-bg-color, #fff);
+
+  /* 아이콘은 인라인 SVG 스프라이트. 이모지는 플랫폼마다 색이 달라 쓰지 않는다. */
+  .i {
+    width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2;
+    stroke-linecap: round; stroke-linejoin: round; display: block; margin: auto; pointer-events: none;
   }
-  li.current .title { font-weight: 700; color: var(--tg-theme-button-color, #2481cc); }
-  li.unplayable .title { opacity: .4; }
+
+  .picker-row { display: flex; gap: 16px; align-items: center; }
+  .select-wrap { flex: 1; min-width: 0; position: relative; }
+  .well { background: var(--surface); box-shadow: var(--press); border-radius: var(--radius-md); }
+  select {
+    appearance: none; -webkit-appearance: none; background: transparent; border: 0;
+    width: 100%; min-height: 48px; padding: 0 44px 0 16px;
+    font: inherit; color: inherit; font-weight: 600;
+  }
+  .chevron { position: absolute; right: 12px; top: 13px; color: var(--hint); margin: 0; }
+
+  .round, #toggle {
+    border: 0; border-radius: 50%; background: var(--surface); color: var(--text);
+    box-shadow: var(--raise-sm); transition: box-shadow var(--ease);
+  }
+  .round:active, #toggle:active { box-shadow: var(--press); }
+  .round { width: 48px; height: 48px; flex: none; }
+
+  #new-name {
+    width: 100%; min-height: 48px; padding: 0 16px; margin-top: 16px;
+    border: 0; border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--press);
+    color: inherit; font: inherit;
+  }
+  .buttons { display: flex; gap: 12px; margin-top: 16px; }
+  .buttons button {
+    flex: 1; min-height: 48px; border: 0; border-radius: var(--radius-md);
+    background: var(--surface); color: var(--text); font-weight: 600;
+    box-shadow: var(--raise-sm); transition: box-shadow var(--ease);
+  }
+  .buttons button:active { box-shadow: var(--press); }
+  .buttons button.primary { color: var(--accent); }
+  .buttons button.danger { color: var(--danger); flex-basis: 100%; }
+
+  .card {
+    background: var(--surface); border-radius: var(--radius-lg); box-shadow: var(--raise);
+    padding: 16px 8px 8px; margin-top: 24px;
+  }
+  .card h2 { margin: 0 8px 8px; font-size: 13px; font-weight: 600; color: var(--hint); }
+  li {
+    display: flex; align-items: center; gap: 4px; min-height: 48px;
+    border-radius: var(--radius-sm); background: var(--surface);
+    transition: box-shadow var(--ease);
+  }
+  li + li { margin-top: 4px; }
+  li.current { box-shadow: var(--press); }
+  li.current .title { color: var(--accent); font-weight: 700; }
+  li.unplayable .title { color: var(--hint); }
+
   .icon {
     flex: none; width: 44px; height: 44px; border: 0; background: none; padding: 0;
-    color: var(--tg-theme-hint-color, #888); font-size: 20px; text-align: center; line-height: 44px;
+    color: var(--hint); border-radius: 50%;
   }
-  button.icon:disabled { opacity: .3; }
-  .handle { cursor: grab; user-select: none; touch-action: none; }
+  button.icon:active { box-shadow: var(--press); }
+  button.icon:disabled { opacity: .35; }
+  .handle { cursor: grab; user-select: none; touch-action: none; display: flex; }
   .title {
-    flex: 1; min-width: 0; min-height: 44px; padding: 0; border: 0; background: none; font: inherit;
-    line-height: 44px; color: inherit; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    flex: 1; min-width: 0; min-height: 44px; padding: 0; border: 0; background: none;
+    font: inherit; line-height: 44px; color: inherit; text-align: left;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-  .note { flex: none; font-size: 12px; color: var(--tg-theme-hint-color, #888); }
-  .ghost { opacity: .4; }
-  .empty { color: var(--tg-theme-hint-color, #888); padding: 12px 0; margin: 0; }
-  .notice { color: #d33; margin: 0; }
+  .note { flex: none; font-size: 12px; color: var(--hint); }
+  .ghost { opacity: .5; }
+  .empty { color: var(--hint); padding: 8px; margin: 0; font-size: 14px; }
+  body > main > .empty:last-child { margin-top: 16px; }
+  .notice, #play-notice { color: var(--danger); font-size: 14px; }
+  .notice { margin: 12px 0 0; }
   .notice:empty { display: none; }
-  select, #new-name {
-    width: 100%; min-height: 44px; padding: 10px; font: inherit; margin-top: 8px;
-    background: var(--tg-theme-secondary-bg-color, #f2f2f2); color: inherit;
-    border: 0; border-radius: 8px;
-  }
-  .buttons { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
-  .buttons button {
-    flex: 1; min-height: 44px; border: 0; border-radius: 8px; font: inherit; font-weight: 600;
-    background: var(--tg-theme-secondary-bg-color, #f2f2f2); color: var(--tg-theme-text-color, #000);
-  }
-  .buttons button.primary { background: var(--tg-theme-button-color, #2481cc); color: var(--tg-theme-button-text-color, #fff); }
-  .buttons button.danger { color: #d33; flex-basis: 100%; }
-  button:disabled { opacity: .5; }
+  #play-notice { margin: 0; min-height: 0; text-align: center; }
 
   #bar {
-    position: fixed; left: 0; right: 0; bottom: 0; padding: 8px 16px env(safe-area-inset-bottom, 8px);
-    background: var(--tg-theme-secondary-bg-color, #f2f2f2);
-    border-top: 1px solid var(--tg-theme-hint-color, #ccc);
+    position: fixed; left: 0; right: 0; bottom: 0;
+    background: var(--surface); border-radius: 24px 24px 0 0;
+    box-shadow: 0 -6px 16px var(--dark);
+    padding: 14px 20px calc(10px + env(safe-area-inset-bottom, 0px));
   }
-  #bar-top { display: flex; align-items: center; gap: 8px; }
+  #bar-top { display: flex; gap: 12px; }
   #now { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
-  #time { flex: none; font-size: 13px; color: var(--tg-theme-hint-color, #888); font-variant-numeric: tabular-nums; }
-  #seek { width: 100%; height: 44px; margin: 0; accent-color: var(--tg-theme-button-color, #2481cc); }
-  #controls { display: flex; justify-content: space-around; align-items: center; }
+  #time { flex: none; font-size: 13px; color: var(--hint); font-variant-numeric: tabular-nums; }
+
+  #seek {
+    -webkit-appearance: none; appearance: none;
+    width: 100%; height: 44px; margin: 0; background: none;
+  }
+  #seek::-webkit-slider-runnable-track {
+    height: 10px; border-radius: 5px; box-shadow: var(--press);
+    background: linear-gradient(var(--accent), var(--accent)) no-repeat 0 / var(--progress, 0%) 100%, var(--surface);
+  }
+  #seek::-moz-range-track {
+    height: 10px; border-radius: 5px; box-shadow: var(--press);
+    background: linear-gradient(var(--accent), var(--accent)) no-repeat 0 / var(--progress, 0%) 100%, var(--surface);
+  }
+  #seek::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 24px; height: 24px; margin-top: -7px; border: 0; border-radius: 50%;
+    background: var(--surface); box-shadow: var(--raise-sm);
+  }
+  #seek::-moz-range-thumb {
+    width: 24px; height: 24px; border: 0; border-radius: 50%;
+    background: var(--surface); box-shadow: var(--raise-sm);
+  }
+
+  #controls { display: flex; justify-content: space-between; align-items: center; }
   #controls button {
-    min-width: 44px; min-height: 44px; border: 0; background: none; font-size: 22px;
-    color: var(--tg-theme-text-color, #000);
+    min-width: 48px; min-height: 48px; border: 0; border-radius: 50%;
+    background: var(--surface); color: var(--text);
+    box-shadow: var(--raise-sm); transition: box-shadow var(--ease);
   }
-  #controls #toggle { font-size: 28px; }
-  #repeat { position: relative; color: var(--tg-theme-hint-color, #888); }
-  #repeat[data-mode="all"], #repeat[data-mode="one"] { color: var(--tg-theme-button-color, #2481cc); }
+  #controls button:active { box-shadow: var(--press); }
+  #controls #toggle { width: 68px; height: 68px; box-shadow: var(--raise); color: var(--accent); }
+  #controls #toggle:active, #controls #toggle[aria-pressed="true"] { box-shadow: var(--press); }
+  #controls #toggle .i { width: 30px; height: 30px; }
+  #toggle[aria-pressed="true"] .play-icon, #toggle[aria-pressed="false"] .pause-icon { display: none; }
+  .spacer { width: 48px; }
+  #repeat { position: relative; }
+  #repeat[data-mode="off"] { color: var(--hint); }
+  #repeat[data-mode="all"], #repeat[data-mode="one"] { color: var(--accent); box-shadow: var(--press); }
   #repeat[data-mode="one"]::after {
-    content: "1"; position: absolute; right: 6px; bottom: 6px; font-size: 10px; font-weight: 700;
+    content: "1"; position: absolute; right: 8px; bottom: 6px; font-size: 10px; font-weight: 700;
   }
-  #play-notice { min-height: 1.4em; margin: 0; font-size: 13px; color: #d33; }
+
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 </head>
 <body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5.5h2.8v13H8zM13.2 5.5H16v13h-2.8z" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-prev" viewBox="0 0 24 24"><path d="M18 6v12l-8.5-6zM6.5 6v12" /></symbol>
+  <symbol id="i-next" viewBox="0 0 24 24"><path d="M6 6v12l8.5-6zM17.5 6v12" /></symbol>
+  <symbol id="i-repeat" viewBox="0 0 24 24"><path d="M17 3l3.5 3.5L17 10M20 6.5H8a4 4 0 0 0-4 4V12M7 21l-3.5-3.5L7 14M4 17.5h12a4 4 0 0 0 4-4V12"/></symbol>
+  <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M4 20l1-4L16 5a2.1 2.1 0 0 1 3 3L8 19zM14 7l3 3"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 13h9l1-13M10 11v5.5M14 11v5.5"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-grip" viewBox="0 0 24 24"><path d="M5 8h14M5 12h14M5 16h14"/></symbol>
+  <symbol id="i-chevron" viewBox="0 0 24 24"><path d="M6 9.5l6 6 6-6"/></symbol>
+</svg>
 <p id="fatal" class="empty" hidden></p>
 <main id="app" hidden>
-  <select id="picker" aria-label="플레이리스트 고르기"></select>
+  <div class="picker-row">
+    <div class="well select-wrap">
+      <select id="picker" aria-label="플레이리스트 고르기"></select>
+      <svg class="i chevron" aria-hidden="true"><use href="#i-chevron"/></svg>
+    </div>
+    <button id="rename-playlist" class="round" type="button" aria-label="이름 바꾸기"><svg class="i" aria-hidden="true"><use href="#i-pencil"/></svg></button>
+  </div>
   <form id="new-form" hidden>
     <input id="new-name" maxlength="20" placeholder="플레이리스트 이름" aria-label="플레이리스트 이름" autocomplete="off">
     <div class="buttons">
-      <button type="submit" class="primary">만들기</button>
+      <button id="new-submit" type="submit" class="primary">만들기</button>
       <button id="new-cancel" type="button">취소</button>
     </div>
   </form>
   <div id="save-notice" class="notice" role="alert"></div>
-  <h2>재생 순서</h2>
-  <ul id="queue"></ul>
-  <p id="queue-empty" class="empty" hidden>아직 곡이 없어요. 아래 라이브러리에서 넣어보세요</p>
-  <h2>라이브러리</h2>
-  <ul id="library"></ul>
-  <p id="library-empty" class="empty" hidden>라이브러리가 비었어요. 링크나 음원을 보내주세요</p>
+  <section class="card">
+    <h2>재생 순서</h2>
+    <ul id="queue"></ul>
+    <p id="queue-empty" class="empty" hidden>아직 곡이 없어요. 아래 라이브러리에서 넣어보세요</p>
+  </section>
+  <section class="card">
+    <h2>라이브러리</h2>
+    <ul id="library"></ul>
+    <p id="library-empty" class="empty" hidden>라이브러리가 비었어요. 링크나 음원을 보내주세요</p>
+  </section>
   <div class="buttons">
     <button id="remove-playlist" class="danger" type="button">목록 삭제</button>
   </div>
@@ -105,10 +213,14 @@
   </div>
   <input id="seek" type="range" min="0" max="0" step="0.1" value="0" aria-label="재생 위치">
   <div id="controls">
-    <button id="prev" type="button" aria-label="이전 곡">⏮</button>
-    <button id="toggle" type="button" aria-label="재생">⏯</button>
-    <button id="next" type="button" aria-label="다음 곡">⏭</button>
-    <button id="repeat" type="button" aria-label="전체 반복">🔁</button>
+    <button id="repeat" type="button" aria-label="전체 반복"><svg class="i" aria-hidden="true"><use href="#i-repeat"/></svg></button>
+    <button id="prev" type="button" aria-label="이전 곡"><svg class="i" aria-hidden="true"><use href="#i-prev"/></svg></button>
+    <button id="toggle" type="button" aria-label="재생">
+      <svg class="i play-icon" aria-hidden="true"><use href="#i-play"/></svg>
+      <svg class="i pause-icon" aria-hidden="true"><use href="#i-pause"/></svg>
+    </button>
+    <button id="next" type="button" aria-label="다음 곡"><svg class="i" aria-hidden="true"><use href="#i-next"/></svg></button>
+    <span class="spacer"></span>
   </div>
   <p id="play-notice" role="alert"></p>
 </footer>

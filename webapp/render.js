@@ -10,8 +10,20 @@ function el(tag, className, text) {
   return node;
 }
 
-function iconButton(text, label, onClick, disabled = false) {
-  const button = el('button', 'icon', text);
+// index.html의 SVG 스프라이트(#i-이름)를 가리킨다. 이모지는 플랫폼마다 색이 달라 쓰지 않는다.
+function icon(name) {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('class', 'i');
+  svg.setAttribute('aria-hidden', 'true');
+  const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+  use.setAttribute('href', `#i-${name}`);
+  svg.append(use);
+  return svg;
+}
+
+function iconButton(name, label, onClick, disabled = false) {
+  const button = el('button', 'icon');
+  button.append(icon(name));
   button.type = 'button';
   button.setAttribute('aria-label', label);
   button.disabled = disabled;
@@ -37,7 +49,8 @@ export function renderQueue(ids, { titles, currentId, unplayable }, handlers) {
       li.classList.toggle('current', id === currentId);
       li.classList.toggle('unplayable', unplayable.has(id));
 
-      const handle = el('span', 'icon handle', '≡');
+      const handle = el('span', 'icon handle');
+      handle.append(icon('grip'));
       handle.setAttribute('role', 'img');
       handle.setAttribute('aria-label', '끌어서 순서 바꾸기');
 
@@ -47,7 +60,7 @@ export function renderQueue(ids, { titles, currentId, unplayable }, handlers) {
 
       li.append(handle, title);
       if (unplayable.has(id)) li.append(el('span', 'note', '채팅 재생만 가능'));
-      li.append(iconButton('✕', '목록에서 빼기', () => handlers.onRemove(id)));
+      li.append(iconButton('x', '목록에서 빼기', () => handlers.onRemove(id)));
       return li;
     }),
   );
@@ -62,8 +75,8 @@ export function renderLibrary(library, inQueue, handlers) {
       li.dataset.id = String(track.id);
       li.append(
         el('span', 'title', track.title),
-        iconButton('＋', '목록에 넣기', () => handlers.onAdd(track.id), inQueue.has(track.id)),
-        iconButton('🗑', '라이브러리에서 지우기', () => handlers.onDelete(track.id)),
+        iconButton('plus', '목록에 넣기', () => handlers.onAdd(track.id), inQueue.has(track.id)),
+        iconButton('trash', '라이브러리에서 지우기', () => handlers.onDelete(track.id)),
       );
       return li;
     }),
@@ -76,6 +89,7 @@ export function renderBar({ title, position, duration, playing, repeat }) {
   const seek = $('seek');
   seek.max = String(duration);
   seek.value = String(position);
+  seek.style.setProperty('--progress', `${duration > 0 ? (position / duration) * 100 : 0}%`);
   $('time').textContent = `${formatTime(position)} / ${formatTime(duration)}`;
   const toggle = $('toggle');
   toggle.setAttribute('aria-label', playing ? '일시정지' : '재생');
@@ -93,12 +107,15 @@ export function setVisible(id, visible) {
   $(id).hidden = !visible;
 }
 
-// 새 플레이리스트 이름 입력줄. 열 때마다 입력을 비우고 커서를 둔다.
-export function setNewFormOpen(open) {
-  if (open) $('new-name').value = '';
-  setVisible('new-form', open);
-  if (open) $('new-name').focus();
+// 이름 입력줄. 새로 만들 때와 이름을 바꿀 때 같이 쓴다. value는 처음 넣어 둘 이름, submitLabel은 확인 버튼 글자.
+export function openNameForm({ value, submitLabel }) {
+  $('new-name').value = value;
+  $('new-submit').textContent = submitLabel;
+  setVisible('new-form', true);
+  $('new-name').focus();
+  $('new-name').select();
 }
+export const closeNameForm = () => setVisible('new-form', false);
 
 // SortableJS가 없으면(CDN 실패) 순서만 못 바꾼다. 나머지 화면은 그대로 동작한다.
 export function enableQueueSort({ onStart, onEnd }) {
