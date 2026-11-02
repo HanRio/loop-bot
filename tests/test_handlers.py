@@ -198,6 +198,23 @@ def test_set_menu_button_logs_failed_chat_reset_and_still_sets_default(caplog):
     assert "chat menu reset refused" in caplog.text
 
 
+def test_set_menu_button_returns_and_logs_when_default_menu_call_fails(caplog):
+    import asyncio
+
+    from telegram.error import NetworkError
+
+    from loopbot import handlers
+
+    async def set_chat_menu_button(chat_id=None, menu_button=None):
+        if menu_button is not None:
+            raise NetworkError("default menu refused")
+
+    cfg = SimpleNamespace(allowed_user_ids=frozenset({1}), webapp_url="https://x.io/app/")
+    app = SimpleNamespace(bot_data={"cfg": cfg}, bot=SimpleNamespace(set_chat_menu_button=set_chat_menu_button))
+    asyncio.run(handlers._set_menu_button(app))
+    assert "default menu refused" in caplog.text
+
+
 class _FakeStore:
     def __init__(self, titles, prev=()):
         self.tracks = [SimpleNamespace(id=i, title=t, file_id=f"f{t}") for i, t in enumerate(titles, 1)]

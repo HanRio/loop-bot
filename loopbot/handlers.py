@@ -274,7 +274,11 @@ async def _set_menu_button(app: Application) -> None:
             await app.bot.set_chat_menu_button(chat_id=user_id)
         except Exception:
             logging.exception("menu button reset failed for user %s", user_id)
-    await app.bot.set_chat_menu_button(menu_button=MenuButtonWebApp("🎵 플레이어", WebAppInfo(cfg.webapp_url)))
+    try:
+        await app.bot.set_chat_menu_button(menu_button=MenuButtonWebApp("🎵 플레이어", WebAppInfo(cfg.webapp_url)))
+    except Exception:
+        # A network blip here must not abort run_polling; the old default button stays until the next start.
+        logging.exception("default menu button failed")
 
 
 def build_app(cfg: Config, store: Store) -> Application:
