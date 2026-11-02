@@ -37,7 +37,7 @@
     stroke-linecap: round; stroke-linejoin: round; display: block; margin: auto; pointer-events: none;
   }
 
-  .picker-row { display: flex; gap: 16px; align-items: center; }
+  .picker-row { display: flex; gap: 12px; align-items: center; }
   .select-wrap { flex: 1; min-width: 0; position: relative; }
   .well { background: var(--surface); box-shadow: var(--press); border-radius: var(--radius-md); }
   select {
@@ -53,6 +53,7 @@
   }
   .round:active, #toggle:active { box-shadow: var(--press); }
   .round { width: 48px; height: 48px; flex: none; }
+  .round.danger { color: var(--danger); }
 
   #new-name {
     width: 100%; min-height: 48px; padding: 0 16px; margin-top: 16px;
@@ -67,7 +68,6 @@
   }
   .buttons button:active { box-shadow: var(--press); }
   .buttons button.primary { color: var(--accent); }
-  .buttons button.danger { color: var(--danger); flex-basis: 100%; }
 
   .card {
     background: var(--surface); border-radius: var(--radius-lg); box-shadow: var(--raise);
@@ -182,6 +182,7 @@
       <svg class="i chevron" aria-hidden="true"><use href="#i-chevron"/></svg>
     </div>
     <button id="rename-playlist" class="round" type="button" aria-label="이름 바꾸기"><svg class="i" aria-hidden="true"><use href="#i-pencil"/></svg></button>
+    <button id="remove-playlist" class="round danger" type="button" aria-label="플레이리스트 삭제"><svg class="i" aria-hidden="true"><use href="#i-trash"/></svg></button>
   </div>
   <form id="new-form" hidden>
     <input id="new-name" maxlength="20" placeholder="플레이리스트 이름" aria-label="플레이리스트 이름" autocomplete="off">
@@ -201,9 +202,6 @@
     <ul id="library"></ul>
     <p id="library-empty" class="empty" hidden>라이브러리가 비었어요. 링크나 음원을 보내주세요</p>
   </section>
-  <div class="buttons">
-    <button id="remove-playlist" class="danger" type="button">목록 삭제</button>
-  </div>
   <p class="empty">링크는 채팅에 붙여넣으면 추가돼요. 긴 곡은 채팅에서 /play로 들어요</p>
 </main>
 <footer id="bar" hidden>

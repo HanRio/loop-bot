@@ -361,7 +361,7 @@ def test_build_app_registers_error_handler():
 def test_build_app_sets_menu_button_on_startup():
     from loopbot import handlers
 
-    assert _app().post_init is handlers._set_menu_button
+    assert _app().post_init is handlers._on_startup
 
 
 def _group_update(replies):
@@ -513,3 +513,31 @@ def test_allowed_user_filter_rejects_blank_username():
 
 BASE_CONFIG = {"BOT_TOKEN": "t", "ALLOWED_USER_IDS": "1", "WEBAPP_URL": "https://x.io/app/",
                "DATABASE_URL": "postgresql://u@h/db"}
+
+
+def test_startup_sets_description_and_survives_its_failure():
+    import asyncio
+    from types import SimpleNamespace
+
+    from loopbot import handlers
+    from telegram.error import TelegramError
+
+    calls = []
+
+    class Bot:
+        async def set_my_description(self, text):
+            calls.append(text)
+            raise TelegramError("down")
+
+        async def set_chat_menu_button(self, chat_id, menu_button):
+            calls.append(chat_id)
+
+    app = SimpleNamespace(
+        bot=Bot(),
+        bot_data={"cfg": SimpleNamespace(allowed_user_ids=frozenset({1}), webapp_url="https://x.io/app/")},
+    )
+
+    asyncio.run(handlers._on_startup(app))
+
+    assert calls == [handlers.BOT_DESCRIPTION, 1]
+    assert len(handlers.BOT_DESCRIPTION) <= 512
