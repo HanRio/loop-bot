@@ -1,5 +1,7 @@
 const DEFAULT_MAX_AGE_SEC = 86400;
 const HASH_PATTERN = /^[0-9a-f]{64}$/;
+const AUTH_DATE_PATTERN = /^\d+$/;
+const MAX_CLOCK_SKEW_SEC = 60;
 const encoder = new TextEncoder();
 
 const hmacKey = (raw: BufferSource, usage: KeyUsage): Promise<CryptoKey> =>
@@ -37,8 +39,11 @@ export async function verifyInitData(
   const hash = params.get("hash");
   if (!hash || !HASH_PATTERN.test(hash)) return null;
 
-  const authDate = Number(params.get("auth_date"));
-  if (!Number.isInteger(authDate) || nowSec - authDate > maxAgeSec) return null;
+  // Digits only: Number() would also accept "1e10" and "0x6B49D200".
+  const rawAuthDate = params.get("auth_date") ?? "";
+  if (!AUTH_DATE_PATTERN.test(rawAuthDate)) return null;
+  const authDate = Number(rawAuthDate);
+  if (authDate > nowSec + MAX_CLOCK_SKEW_SEC || nowSec - authDate > maxAgeSec) return null;
 
   const secret = await crypto.subtle.sign("HMAC", await hmacKey(encoder.encode("WebAppData"), "sign"), encoder.encode(botToken));
   const valid = await crypto.subtle.verify(

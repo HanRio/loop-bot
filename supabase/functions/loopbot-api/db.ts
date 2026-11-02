@@ -82,6 +82,7 @@ async function playlistOf(tx: Tx, id: number): Promise<Playlist> {
 export function createDb(dsn: string, schema: string): Db {
   const sql = postgres(dsn, {
     max: 1,
+    idle_timeout: 20,
     prepare: false,
     fetch_types: false,
     types: {
@@ -93,6 +94,8 @@ export function createDb(dsn: string, schema: string): Db {
   const inSchema = <T>(work: (tx: Tx) => Promise<T>): Promise<T> =>
     sql.begin(async (tx) => {
       await tx`select set_config('search_path', ${schema}, true)`;
+      await tx`select set_config('lock_timeout', '5s', true)`;
+      await tx`select set_config('statement_timeout', '10s', true)`;
       return work(tx);
     }) as Promise<T>;
 

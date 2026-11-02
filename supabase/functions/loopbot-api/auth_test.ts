@@ -20,7 +20,7 @@ async function sign(fields: [string, string][], botToken = BOT_TOKEN): Promise<s
   return new URLSearchParams([...fields, ["hash", hash]]).toString();
 }
 
-function fieldsFor(user: object, authDate: number): [string, string][] {
+function fieldsFor(user: object, authDate: number | string): [string, string][] {
   return [
     ["query_id", "AAHtest"],
     ["user", JSON.stringify(user)],
@@ -53,6 +53,27 @@ Deno.test("rejects auth_date older than 24 hours", async () => {
   const initData = await sign(fieldsFor({ id: USER_ID }, NOW - 25 * 3600));
 
   assertEquals(await verifyInitData(initData, BOT_TOKEN, NOW), null);
+});
+
+Deno.test("rejects auth_date more than 60 seconds in the future", async () => {
+  const initData = await sign(fieldsFor({ id: USER_ID }, NOW + 3600));
+
+  assertEquals(await verifyInitData(initData, BOT_TOKEN, NOW), null);
+});
+
+Deno.test("accepts auth_date a few seconds in the future (clock skew)", async () => {
+  const initData = await sign(fieldsFor({ id: USER_ID }, NOW + 30));
+
+  assertEquals(await verifyInitData(initData, BOT_TOKEN, NOW), USER_ID);
+});
+
+// Number() would read these as valid numbers; only plain decimal digits are a Telegram auth_date.
+Deno.test("rejects auth_date written in exponent or hex notation", async () => {
+  for (const authDate of ["1e10", "0x6B49D200"]) {
+    const initData = await sign(fieldsFor({ id: USER_ID }, authDate));
+
+    assertEquals(await verifyInitData(initData, BOT_TOKEN, NOW), null);
+  }
 });
 
 Deno.test("rejects an empty string", async () => {

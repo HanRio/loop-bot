@@ -75,11 +75,11 @@ async function call(
   ctx: Ctx,
   method: string,
   path: string,
-  options: { body?: unknown; userId?: number; initData?: string; deps?: Deps } = {},
+  options: { body?: unknown; rawBody?: string; userId?: number; initData?: string; deps?: Deps } = {},
 ): Promise<Response> {
   const initData = options.initData ?? (await signFor(options.userId ?? ALLOWED_USER));
   const headers: Record<string, string> = { "x-telegram-init-data": initData, "content-type": "application/json" };
-  const body = options.body === undefined ? undefined : JSON.stringify(options.body);
+  const body = options.rawBody ?? (options.body === undefined ? undefined : JSON.stringify(options.body));
   return handle(new Request(`${ORIGIN}/loopbot-api${path}`, { method, headers, body }), options.deps ?? ctx.deps);
 }
 
@@ -95,15 +95,26 @@ async function createPlaylistVia(ctx: Ctx, name: string, trackIds: number[]): Pr
   return (await res.json()).id;
 }
 
-dbTest("answers 401 expired when initData is missing", async (ctx) => {
-  const res = await call(ctx, "GET", "/state", { initData: "" });
+// Auth failures must answer before any DB call, so these run without LOOPBOT_TEST_DATABASE_URL.
+const untouchedDb = {} as Db;
+
+function authOnlyDeps(): Deps {
+  return depsWith(untouchedDb);
+}
+
+Deno.test("answers 401 expired when initData is missing", async () => {
+  const req = new Request(`${ORIGIN}/loopbot-api/state`, { headers: { "x-telegram-init-data": "" } });
+  const res = await handle(req, authOnlyDeps());
 
   assertEquals(res.status, 401);
   assertEquals(await res.json(), { error: "expired" });
 });
 
-dbTest("answers 403 forbidden for a user outside the allowed set", async (ctx) => {
-  const res = await call(ctx, "GET", "/state", { userId: STRANGER });
+Deno.test("answers 403 forbidden for a user outside the allowed set", async () => {
+  const req = new Request(`${ORIGIN}/loopbot-api/state`, {
+    headers: { "x-telegram-init-data": await signFor(STRANGER) },
+  });
+  const res = await handle(req, authOnlyDeps());
 
   assertEquals(res.status, 403);
   assertEquals(await res.json(), { error: "forbidden" });
@@ -295,4 +306,49 @@ dbTest("upstream failure answers 502 and logs the message without the bot token"
   }
   assertEquals(logged.length, 1);
   assertEquals(logged[0].includes(BOT_TOKEN), false);
+});
+
+dbTest("PUT /active sets the active playlist to the given one", async (ctx) => {
+  const p1 = await createPlaylistVia(ctx, "one", []);
+  await createPlaylistVia(ctx, "two", []);
+
+  const res = await call(ctx, "PUT", "/active", { body: { playlist_id: p1 } });
+
+  assertEquals(res.status, 200);
+  assertEquals(await res.json(), { active_id: p1 });
+  assertEquals((await ctx.db.state(ALLOWED_USER)).active_id, p1);
+});
+
+dbTest("PUT /active answers 404 for another user's playlist and keeps the active one", async (ctx) => {
+  const mine = await createPlaylistVia(ctx, "mine", []);
+  const theirs = await ctx.db.createPlaylist(OTHER_USER, "theirs", []);
+
+  const res = await call(ctx, "PUT", "/active", { body: { playlist_id: theirs.id } });
+
+  assertEquals(res.status, 404);
+  assertEquals(await res.json(), { error: "not_found" });
+  assertEquals((await ctx.db.state(ALLOWED_USER)).active_id, mine);
+});
+
+dbTest("POST /playlists and PUT /active answer 400 for a body that is not JSON", async (ctx) => {
+  const id = await createPlaylistVia(ctx, "p", []);
+
+  for (const [method, path] of [["POST", "/playlists"], ["PUT", "/active"]] as const) {
+    const res = await call(ctx, method, path, { rawBody: "{not json" });
+
+    assertEquals(res.status, 400);
+    assertEquals(await res.json(), { error: "bad_request" });
+  }
+  assertEquals((await ctx.db.state(ALLOWED_USER)).active_id, id);
+});
+
+dbTest("POST /playlists and PUT /active answer 400 for a JSON body that is not an object", async (ctx) => {
+  for (const rawBody of ["[]", "null", "42", "\"text\""]) {
+    for (const [method, path] of [["POST", "/playlists"], ["PUT", "/active"]] as const) {
+      const res = await call(ctx, method, path, { rawBody });
+
+      assertEquals(res.status, 400);
+      assertEquals(await res.json(), { error: "bad_request" });
+    }
+  }
 });
