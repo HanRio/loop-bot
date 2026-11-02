@@ -1,0 +1,16 @@
+[Unit]
+Description=loop-bot file server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/loop-bot
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+ExecStart=/home/ubuntu/loop-bot/.venv/bin/python -m loopbot.files
+Restart=always
+RestartSec=5
+MemoryMax=256M
+
+[Install]
+WantedBy=multi-user.target
