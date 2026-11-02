@@ -1,6 +1,6 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 import postgres from "postgres";
-import { handle, parseUsernames, type Deps } from "./app.ts";
+import { handle, parseUsernames, youtubeId, type Deps } from "./app.ts";
 import { createDb, type Db } from "./db.ts";
 
 const dsn = Deno.env.get("LOOPBOT_TEST_DATABASE_URL") ?? "";
@@ -43,6 +43,7 @@ function depsWith(db: Db, overrides: Partial<Deps> = {}): Deps {
     botToken: BOT_TOKEN,
     allowed: new Set([ALLOWED_USER, OTHER_USER]),
     allowedUsernames: new Set(),
+    admins: new Set([ALLOWED_USER]),
     db,
     fetch: unexpectedFetch,
     now: () => NOW,
@@ -225,7 +226,7 @@ dbTest("PUT /playlists/:id answers 404 for another user's playlist and leaves it
 
   assertEquals(res.status, 404);
   assertEquals(await res.json(), { error: "not_found" });
-  assertEquals((await ctx.db.state(OTHER_USER)).playlists[0], foreignPlaylist);
+  assertEquals((await ctx.db.state(OTHER_USER)).playlists[0], { ...foreignPlaylist, shared: false });
 });
 
 dbTest("PUT /playlists/:id and POST /playlists reject non-array track_ids and boolean entries", async (ctx) => {
@@ -451,4 +452,368 @@ dbTest("POST /playlists and PUT /active answer 400 for a JSON body that is not a
       assertEquals(await res.json(), { error: "bad_request" });
     }
   }
+});
+
+const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0]);
+const MAX_SHEET_BYTES = 10 * 1024 * 1024;
+
+interface SentCall {
+  url: string;
+  body: unknown;
+}
+
+// Fake Telegram: records every call. sendDocument answers with fileId (null means no file_id).
+function telegramStub(fileId: string | null = "sheet-file-1", calls: SentCall[] = []): typeof fetch {
+  return (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    calls.push({ url, body: init?.body });
+    if (url.includes("/sendDocument")) {
+      const document = fileId === null ? undefined : { file_id: fileId };
+      return Response.json({ ok: true, result: { message_id: 77, document } });
+    }
+    if (url.includes("/deleteMessage")) return Response.json({ ok: true, result: true });
+    if (url.includes("/getFile")) return Response.json({ ok: true, result: { file_path: "music/x.mp3" } });
+    return new Response("BYTES");
+  }) as typeof fetch;
+}
+
+async function uploadSheet(
+  ctx: Ctx,
+  trackId: number,
+  bytes: Uint8Array<ArrayBuffer>,
+  fetchStub: typeof fetch,
+  options: { userId?: number; contentType?: string } = {},
+): Promise<Response> {
+  const req = new Request(`${ORIGIN}/loopbot-api/tracks/${trackId}/sheet`, {
+    method: "PUT",
+    headers: {
+      "x-telegram-init-data": await signFor(options.userId ?? ALLOWED_USER),
+      "content-type": options.contentType ?? "image/jpeg",
+    },
+    body: bytes,
+  });
+  return handle(req, depsWith(ctx.db, { fetch: fetchStub }));
+}
+
+// ALLOWED_USER is the admin; this playlist is shared with every member.
+async function sharedPlaylistWith(ctx: Ctx, title: string): Promise<{ playlistId: number; trackId: number }> {
+  const trackId = await insertTrack(ctx, ALLOWED_USER, title);
+  const playlistId = await createPlaylistVia(ctx, "shared", [trackId]);
+  const res = await call(ctx, "PUT", `/playlists/${playlistId}/shared`, { body: { shared: true } });
+  assertEquals(res.status, 200);
+  return { playlistId, trackId };
+}
+
+dbTest("admin-only routes answer 403 to a member", async (ctx) => {
+  const t = await insertTrack(ctx, ALLOWED_USER, "song");
+  const p = await createPlaylistVia(ctx, "p", [t]);
+  const cases: [string, string, unknown][] = [
+    ["PUT", `/playlists/${p}/shared`, { shared: true }],
+    ["PUT", `/tracks/${t}/sheet`, {}],
+    ["DELETE", `/tracks/${t}/sheet`, undefined],
+    ["PUT", `/tracks/${t}/video`, { url: "https://youtu.be/aaaaaaaaaaa" }],
+  ];
+
+  for (const [method, path, body] of cases) {
+    const res = await call(ctx, method, path, { userId: OTHER_USER, body });
+
+    assertEquals(res.status, 403);
+    assertEquals(await res.json(), { error: "forbidden" });
+  }
+});
+
+dbTest("a username never grants admin rights", async (ctx) => {
+  const t = await insertTrack(ctx, ALLOWED_USER, "song");
+  const deps = depsWith(ctx.db, { allowedUsernames: new Set(["some_user"]) });
+  const initData = await signFor(STRANGER, "some_user");
+
+  const res = await call(ctx, "DELETE", `/tracks/${t}/sheet`, { initData, deps });
+
+  assertEquals(res.status, 403);
+  assertEquals(await res.json(), { error: "forbidden" });
+});
+
+dbTest("a member's state shows the shared playlist, its tracks and media until unshared", async (ctx) => {
+  const { playlistId, trackId } = await sharedPlaylistWith(ctx, "shared-song");
+  await ctx.db.saveVideo(ALLOWED_USER, trackId, "aaaaaaaaaaa");
+
+  const adminState = await (await call(ctx, "GET", "/state")).json();
+  assertEquals(adminState.is_admin, true);
+  assertEquals(adminState.playlists[0].shared, true);
+  assertEquals(adminState.shared_playlists, []);
+
+  const memberState = await (await call(ctx, "GET", "/state", { userId: OTHER_USER })).json();
+  assertEquals(memberState.is_admin, false);
+  assertEquals(memberState.shared_playlists, [{ id: playlistId, name: "shared", track_ids: [trackId] }]);
+  assertEquals(memberState.shared_tracks.map((t: { id: number }) => t.id), [trackId]);
+  assertEquals(memberState.shared_tracks[0].title, "shared-song");
+  assertEquals(memberState.media, { [trackId]: { sheet_version: null, video_id: "aaaaaaaaaaa" } });
+
+  await call(ctx, "PUT", `/playlists/${playlistId}/shared`, { body: { shared: false } });
+  const unshared = await (await call(ctx, "GET", "/state", { userId: OTHER_USER })).json();
+  assertEquals(unshared.shared_playlists, []);
+  assertEquals(unshared.shared_tracks, []);
+  assertEquals(unshared.media, {});
+});
+
+dbTest("a member reads a shared track's audio and sheet only while the playlist is shared", async (ctx) => {
+  const { playlistId, trackId } = await sharedPlaylistWith(ctx, "s");
+  const hidden = await insertTrack(ctx, ALLOWED_USER, "hidden");
+  await ctx.db.saveSheet(ALLOWED_USER, trackId, "sheet-1");
+  await ctx.db.saveSheet(ALLOWED_USER, hidden, "sheet-h");
+  const deps = depsWith(ctx.db, { fetch: telegramStub() });
+
+  const file = await call(ctx, "GET", `/tracks/${trackId}/file`, { userId: OTHER_USER, deps });
+  const sheet = await call(ctx, "GET", `/tracks/${trackId}/sheet`, { userId: OTHER_USER, deps });
+
+  assertEquals(file.status, 200);
+  assertEquals(sheet.status, 200);
+  assertEquals(sheet.headers.get("content-type"), "image/jpeg");
+
+  await call(ctx, "PUT", `/playlists/${playlistId}/shared`, { body: { shared: false } });
+
+  assertEquals((await call(ctx, "GET", `/tracks/${trackId}/file`, { userId: OTHER_USER, deps })).status, 404);
+  assertEquals((await call(ctx, "GET", `/tracks/${trackId}/sheet`, { userId: OTHER_USER, deps })).status, 404);
+  assertEquals((await call(ctx, "GET", `/tracks/${hidden}/file`, { userId: OTHER_USER, deps })).status, 404);
+  assertEquals((await call(ctx, "GET", `/tracks/${hidden}/sheet`, { userId: OTHER_USER, deps })).status, 404);
+});
+
+dbTest("a member gets 404 for playlist writes on the admin's shared playlist", async (ctx) => {
+  const { playlistId } = await sharedPlaylistWith(ctx, "s");
+
+  const put = await call(ctx, "PUT", `/playlists/${playlistId}`, {
+    userId: OTHER_USER,
+    body: { name: "hijack", track_ids: [] },
+  });
+  const del = await call(ctx, "DELETE", `/playlists/${playlistId}`, { userId: OTHER_USER });
+  const active = await call(ctx, "PUT", "/active", { userId: OTHER_USER, body: { playlist_id: playlistId } });
+
+  for (const res of [put, del, active]) {
+    assertEquals(res.status, 404);
+    assertEquals(await res.json(), { error: "not_found" });
+  }
+  assertEquals((await ctx.db.state(ALLOWED_USER)).playlists.map((p) => p.name), ["shared"]);
+});
+
+dbTest("notes are per user, only for readable tracks, and blank notes delete", async (ctx) => {
+  const { playlistId, trackId } = await sharedPlaylistWith(ctx, "s");
+  const hidden = await insertTrack(ctx, ALLOWED_USER, "hidden");
+
+  assertEquals((await call(ctx, "PUT", `/tracks/${trackId}/note`, { body: { body: "admin thoughts" } })).status, 204);
+  assertEquals(
+    (await call(ctx, "PUT", `/tracks/${trackId}/note`, { userId: OTHER_USER, body: { body: "member thoughts" } })).status,
+    204,
+  );
+  const adminNotes = (await (await call(ctx, "GET", "/state")).json()).notes;
+  const memberNotes = (await (await call(ctx, "GET", "/state", { userId: OTHER_USER })).json()).notes;
+  assertEquals(adminNotes, { [trackId]: "admin thoughts" });
+  assertEquals(memberNotes, { [trackId]: "member thoughts" });
+
+  const hiddenNote = await call(ctx, "PUT", `/tracks/${hidden}/note`, { userId: OTHER_USER, body: { body: "x" } });
+  assertEquals(hiddenNote.status, 404);
+
+  await call(ctx, "PUT", `/tracks/${trackId}/note`, { userId: OTHER_USER, body: { body: "" } });
+  assertEquals((await (await call(ctx, "GET", "/state", { userId: OTHER_USER })).json()).notes, {});
+
+  const tooLong = await call(ctx, "PUT", `/tracks/${trackId}/note`, { body: { body: "가".repeat(10001) } });
+  assertEquals(tooLong.status, 400);
+  assertEquals(await tooLong.json(), { error: "bad_request" });
+
+  await call(ctx, "PUT", `/playlists/${playlistId}/shared`, { body: { shared: false } });
+  assertEquals((await (await call(ctx, "GET", "/state")).json()).notes, { [trackId]: "admin thoughts" });
+  assertEquals((await call(ctx, "PUT", `/tracks/${trackId}/note`, { userId: OTHER_USER, body: { body: "x" } })).status, 404);
+});
+
+dbTest("PUT /tracks/:id renames the owner's track, rejects blank titles, and hides others'", async (ctx) => {
+  const t = await insertTrack(ctx, ALLOWED_USER, "old");
+  const theirs = await insertTrack(ctx, OTHER_USER, "theirs");
+
+  const renamed = await call(ctx, "PUT", `/tracks/${t}`, { body: { title: "  새 제목  " } });
+  assertEquals(renamed.status, 200);
+  assertEquals(await renamed.json(), { id: t, title: "새 제목" });
+
+  const blank = await call(ctx, "PUT", `/tracks/${t}`, { body: { title: "   " } });
+  assertEquals(blank.status, 400);
+  assertEquals(await blank.json(), { error: "bad_request" });
+
+  assertEquals((await call(ctx, "PUT", `/tracks/${theirs}`, { body: { title: "x" } })).status, 404);
+
+  const long = await (await call(ctx, "PUT", `/tracks/${t}`, { body: { title: "가".repeat(201) } })).json();
+  assertEquals(long.title, "가".repeat(200));
+});
+
+dbTest("PUT /tracks/:id/sheet stores the Telegram file id and bumps the version", async (ctx) => {
+  const t = await insertTrack(ctx, ALLOWED_USER, "song");
+
+  const first = await uploadSheet(ctx, t, JPEG, telegramStub("sheet-1"));
+  assertEquals(first.status, 200);
+  assertEquals(await first.json(), { version: 1 });
+
+  const second = await uploadSheet(ctx, t, JPEG, telegramStub("sheet-2"));
+  assertEquals(await second.json(), { version: 2 });
+  assertEquals(await ctx.db.sheetFileId(ALLOWED_USER, t), "sheet-2");
+});
+
+dbTest("sheet upload sends a silent JPEG document to the admin chat, then deletes that message", async (ctx) => {
+  const t = await insertTrack(ctx, ALLOWED_USER, "song");
+  const calls: SentCall[] = [];
+
+  const res = await uploadSheet(ctx, t, JPEG, telegramStub("sheet-1", calls));
+
+  assertEquals(res.status, 200);
+  const form = calls.find((c) => c.url.includes("/sendDocument"))!.body as FormData;
+  assertEquals(form.get("chat_id"), String(ALLOWED_USER));
+  assertEquals(form.get("disable_notification"), "true");
+  assertEquals((form.get("document") as File).name, "sheet.jpg");
+  const deleted = calls.find((c) => c.url.includes("/deleteMessage"))!.body;
+  assertEquals(JSON.parse(deleted as string), { chat_id: ALLOWED_USER, message_id: 77 });
+});
+
+dbTest("a sheet upload without a file id answers 502 and keeps the old sheet", async (ctx) => {
+  const t = await insertTrack(ctx, ALLOWED_USER, "song");
+  await uploadSheet(ctx, t, JPEG, telegramStub("sheet-1"));
+  const originalError = console.error;
+  console.error = () => {};
+  try {
+    const broken = await uploadSheet(ctx, t, JPEG, telegramStub(null));
+
+    assertEquals(broken.status, 502);
+    assertEquals(await broken.json(), { error: "upstream" });
+  } finally {
+    console.error = originalError;
+  }
+  assertEquals(await ctx.db.sheetFileId(ALLOWED_USER, t), "sheet-1");
+  assertEquals((await ctx.db.state(ALLOWED_USER)).media[t].sheet_version, 1);
+});
+
+dbTest("PUT /tracks/:id/sheet answers 413 over 10MB, 400 for another type, and 404 for another's track without Telegram", async (ctx) => {
+  const t = await insertTrack(ctx, ALLOWED_USER, "song");
+  const theirs = await insertTrack(ctx, OTHER_USER, "theirs");
+  const calls: SentCall[] = [];
+  const stub = telegramStub("x", calls);
+
+  const tooBig = await uploadSheet(ctx, t, new Uint8Array(MAX_SHEET_BYTES + 1), stub);
+  assertEquals(tooBig.status, 413);
+  assertEquals(await tooBig.json(), { error: "too_big" });
+
+  const png = await uploadSheet(ctx, t, JPEG, stub, { contentType: "image/png" });
+  assertEquals(png.status, 400);
+  assertEquals(await png.json(), { error: "bad_request" });
+
+  const foreign = await uploadSheet(ctx, theirs, JPEG, stub);
+  assertEquals(foreign.status, 404);
+  assertEquals(calls.length, 0);
+});
+
+dbTest("PUT /tracks/:id/sheet stops reading a chunked body past 10MB and answers 413", async (ctx) => {
+  const t = await insertTrack(ctx, ALLOWED_USER, "song");
+  const CHUNK_BYTES = 1024 * 1024;
+  const CHUNK_COUNT = 20;
+  let pulled = 0;
+  const body = new ReadableStream<Uint8Array<ArrayBuffer>>({
+    pull(controller) {
+      if (pulled === CHUNK_COUNT) {
+        controller.close();
+        return;
+      }
+      pulled += 1;
+      controller.enqueue(new Uint8Array(CHUNK_BYTES));
+    },
+  });
+  const req = new Request(`${ORIGIN}/loopbot-api/tracks/${t}/sheet`, {
+    method: "PUT",
+    headers: { "x-telegram-init-data": await signFor(ALLOWED_USER), "content-type": "image/jpeg" },
+    body,
+  });
+
+  const res = await handle(req, depsWith(ctx.db, { fetch: telegramStub() }));
+
+  assertEquals(res.status, 413);
+  assertEquals(await res.json(), { error: "too_big" });
+  assertEquals(pulled < CHUNK_COUNT, true);
+});
+
+dbTest("PUT /tracks/:id/sheet answers 400 when the request has no body", async (ctx) => {
+  const t = await insertTrack(ctx, ALLOWED_USER, "song");
+  const req = new Request(`${ORIGIN}/loopbot-api/tracks/${t}/sheet`, {
+    method: "PUT",
+    headers: { "x-telegram-init-data": await signFor(ALLOWED_USER), "content-type": "image/jpeg" },
+  });
+
+  const res = await handle(req, depsWith(ctx.db));
+
+  assertEquals(res.status, 400);
+  assertEquals(await res.json(), { error: "bad_request" });
+});
+
+dbTest("DELETE /tracks/:id/sheet clears the photo, keeps the version, and answers 204", async (ctx) => {
+  const t = await insertTrack(ctx, ALLOWED_USER, "song");
+  await ctx.db.saveSheet(ALLOWED_USER, t, "sheet-1");
+
+  const res = await call(ctx, "DELETE", `/tracks/${t}/sheet`);
+
+  assertEquals(res.status, 204);
+  assertEquals(await ctx.db.sheetFileId(ALLOWED_USER, t), null);
+  assertEquals((await ctx.db.state(ALLOWED_USER)).media[t].sheet_version, null);
+  assertEquals(await ctx.db.saveSheet(ALLOWED_USER, t, "sheet-2"), 2);
+});
+
+dbTest("PUT /tracks/:id/video stores only the YouTube id, clears on blank, and rejects other links", async (ctx) => {
+  const t = await insertTrack(ctx, ALLOWED_USER, "song");
+  const theirs = await insertTrack(ctx, OTHER_USER, "theirs");
+
+  const saved = await call(ctx, "PUT", `/tracks/${t}/video`, { body: { url: "https://youtu.be/aaaaaaaaaaa" } });
+  assertEquals(await saved.json(), { video_id: "aaaaaaaaaaa" });
+  assertEquals((await ctx.db.state(ALLOWED_USER)).media[t].video_id, "aaaaaaaaaaa");
+
+  const rejected = await call(ctx, "PUT", `/tracks/${t}/video`, { body: { url: "https://evil.com/watch?v=aaaaaaaaaaa" } });
+  assertEquals(rejected.status, 400);
+  assertEquals(await rejected.json(), { error: "bad_request" });
+
+  const cleared = await call(ctx, "PUT", `/tracks/${t}/video`, { body: { url: "   " } });
+  assertEquals(await cleared.json(), { video_id: null });
+  assertEquals((await ctx.db.state(ALLOWED_USER)).media[t].video_id, null);
+
+  const foreign = await call(ctx, "PUT", `/tracks/${theirs}/video`, { body: { url: "https://youtu.be/aaaaaaaaaaa" } });
+  assertEquals(foreign.status, 404);
+});
+
+dbTest("deleting a track also removes its media and every user's notes", async (ctx) => {
+  const { trackId } = await sharedPlaylistWith(ctx, "s");
+  await ctx.db.saveSheet(ALLOWED_USER, trackId, "sheet-1");
+  await call(ctx, "PUT", `/tracks/${trackId}/note`, { userId: OTHER_USER, body: { body: "memo" } });
+
+  const res = await call(ctx, "DELETE", `/tracks/${trackId}`);
+
+  assertEquals(res.status, 204);
+  const [media] = await ctx.sql`select count(*)::int as n from loopbot_test.track_media where track_id = ${trackId}`;
+  const [notes] = await ctx.sql`select count(*)::int as n from loopbot_test.track_notes where track_id = ${trackId}`;
+  assertEquals(media.n, 0);
+  assertEquals(notes.n, 0);
+});
+
+Deno.test("youtubeId accepts each YouTube link form and rejects everything else", () => {
+  const id = "aaaaaaaaaaa";
+  const accepted = [
+    `https://www.youtube.com/watch?v=${id}`,
+    `https://youtube.com/watch?v=${id}&t=10`,
+    `http://m.youtube.com/watch?v=${id}`,
+    `https://music.youtube.com/watch?v=${id}`,
+    `https://www.youtube.com/shorts/${id}`,
+    `https://www.youtube.com/embed/${id}`,
+    `https://www.youtube.com/live/${id}`,
+    `https://youtu.be/${id}?si=x`,
+  ];
+  const rejected = [
+    "https://evil.com/watch?v=aaaaaaaaaaa",
+    `https://www.youtube.com/watch?v=${"a".repeat(10)}`,
+    `https://www.youtube.com/watch?v=${"a".repeat(12)}`,
+    "https://www.youtube.com/watch?v=aaaaaaaaaa!",
+    "javascript:alert(1)",
+    `ftp://youtu.be/${id}`,
+    "not a url",
+  ];
+
+  for (const url of accepted) assertEquals(youtubeId(url), id, url);
+  for (const url of rejected) assertEquals(youtubeId(url), null, url);
 });

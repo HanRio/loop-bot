@@ -125,6 +125,18 @@ async def _send(context: ContextTypes.DEFAULT_TYPE, chat: Chat, text: str) -> No
         await context.bot.send_message(chat.id, text)
 
 
+# Shown by Telegram in an empty chat, before Start. A bot cannot message anyone who has not started it.
+BOT_DESCRIPTION = "유튜브 링크나 음원 파일을 플레이리스트에 담아 반복해서 들어요. 아래 시작 버튼을 누르면 사용법을 알려드려요."
+START_TEXT = (
+    "사용법이에요.\n\n"
+    "1. 유튜브 링크나 음원 파일을 이 채팅에 보내요. 라이브러리와 지금 플레이리스트에 추가돼요.\n"
+    "2. 왼쪽 아래 🎵 플레이어 버튼으로 플레이어를 열어요.\n"
+    "3. 곡을 누르면 재생돼요. 화면을 꺼도 다음 곡으로 이어져요.\n"
+    "4. 플레이어에서 곡 순서를 바꾸고, 플레이리스트를 만들거나 지울 수 있어요.\n\n"
+    "긴 곡은 플레이어에서 재생되지 않을 수 있어요. 그럴 때는 채팅에서 /play로 들어요."
+)
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if update.effective_chat.type != Chat.PRIVATE:
         await _reply(update, context, GROUP_START_TEXT)
@@ -135,12 +147,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         context.bot.set_chat_menu_button(chat_id=update.effective_chat.id, menu_button=_menu(cfg)),
         "menu button",
     )
-    await _reply(
-        update,
-        context,
-        "링크나 음원 파일을 보내면 라이브러리와 지금 플레이리스트에 추가돼요. "
-        "왼쪽 아래 메뉴 버튼으로 플레이어를 열어요.",
-    )
+    await _reply(update, context, START_TEXT)
 
 
 async def list_tracks(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -288,6 +295,11 @@ async def _set_menu_button(app: Application) -> None:
             logging.exception("menu button failed for user %s", user_id)
 
 
+async def _on_startup(app: Application) -> None:
+    await _best_effort(app.bot.set_my_description(BOT_DESCRIPTION), "bot description")
+    await _set_menu_button(app)
+
+
 class _AllowedUser(filters.UpdateFilter):
     def __init__(self, cfg: Config) -> None:
         super().__init__(name="allowed user")
@@ -304,7 +316,7 @@ def build_app(cfg: Config, store: Store) -> Application:
         .token(cfg.bot_token)
         .concurrent_updates(True)
         .media_write_timeout(120)
-        .post_init(_set_menu_button)
+        .post_init(_on_startup)
         .build()
     )
     app.bot_data.update(cfg=cfg, store=store, lock=asyncio.Lock())

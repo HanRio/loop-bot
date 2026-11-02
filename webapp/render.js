@@ -31,17 +31,36 @@ function iconButton(name, label, onClick, disabled = false) {
   return button;
 }
 
-export function renderPicker(playlists, viewedId, newValue) {
+// shared: 남이 공유한 목록. 내 목록 뒤에 '공유' 묶음으로 보여 준다.
+export function renderPicker(playlists, shared, viewedId, newValue) {
   const picker = $('picker');
+  const group = el('optgroup');
+  group.label = '공유';
+  group.append(...shared.map((p) => new Option(p.name, String(p.id))));
   picker.replaceChildren(
     ...playlists.map((p) => new Option(p.name, String(p.id))),
     new Option('+ 새 플레이리스트', newValue),
+    ...(shared.length > 0 ? [group] : []),
   );
   picker.value = String(viewedId);
 }
 
-// titles: Map(곡 id → 제목). handlers: {onPlay(id), onRemove(id)}
-export function renderQueue(ids, { titles, currentId, unplayable }, handlers) {
+// 관리자의 자기 목록에만 공유 토글을 보인다. aria-pressed로 켜짐을 알린다.
+export function renderShare({ visible, shared }) {
+  setVisible('share-playlist', visible);
+  $('share-playlist').setAttribute('aria-pressed', String(shared));
+  $('share-playlist').setAttribute('aria-label', shared ? '공유 끄기' : '공유하기');
+}
+
+// mode: 'list' | 'lyrics'. 현재 보기 칸에 aria-selected를 준다.
+export function renderViewSwitch({ visible, mode }) {
+  setVisible('view-switch', visible);
+  $('view-list').setAttribute('aria-selected', String(mode === 'list'));
+  $('view-lyrics').setAttribute('aria-selected', String(mode === 'lyrics'));
+}
+
+// titles: Map(곡 id → 제목). handlers: {onPlay(id), onRemove(id)}. readOnly면 끌기 손잡이와 빼기 버튼이 없다.
+export function renderQueue(ids, { titles, currentId, unplayable }, handlers, { readOnly = false } = {}) {
   $('queue').replaceChildren(
     ...ids.map((id) => {
       const li = el('li');
@@ -49,25 +68,28 @@ export function renderQueue(ids, { titles, currentId, unplayable }, handlers) {
       li.classList.toggle('current', id === currentId);
       li.classList.toggle('unplayable', unplayable.has(id));
 
-      const handle = el('span', 'icon handle');
-      handle.append(icon('grip'));
-      handle.setAttribute('role', 'img');
-      handle.setAttribute('aria-label', '끌어서 순서 바꾸기');
-
       const title = el('button', 'title', titles.get(id) ?? '');
       title.type = 'button';
       title.addEventListener('click', () => handlers.onPlay(id));
 
-      li.append(handle, title);
+      if (readOnly) {
+        li.append(title);
+      } else {
+        const handle = el('span', 'icon handle');
+        handle.append(icon('grip'));
+        handle.setAttribute('role', 'img');
+        handle.setAttribute('aria-label', '끌어서 순서 바꾸기');
+        li.append(handle, title);
+      }
       if (unplayable.has(id)) li.append(el('span', 'note', '채팅 재생만 가능'));
-      li.append(iconButton('x', '목록에서 빼기', () => handlers.onRemove(id)));
+      if (!readOnly) li.append(iconButton('x', '목록에서 빼기', () => handlers.onRemove(id)));
       return li;
     }),
   );
   $('queue-empty').hidden = ids.length > 0;
 }
 
-// library: [{id, title}]. inQueue: 현재 목록에 든 곡 id 집합. handlers: {onAdd(id), onDelete(id)}
+// library: [{id, title}]. inQueue: 현재 목록에 든 곡 id 집합. handlers: {onAdd(id), onDelete(id), onRename(id)}
 export function renderLibrary(library, inQueue, handlers) {
   $('library').replaceChildren(
     ...library.map((track) => {
@@ -75,6 +97,7 @@ export function renderLibrary(library, inQueue, handlers) {
       li.dataset.id = String(track.id);
       li.append(
         el('span', 'title', track.title),
+        iconButton('pencil', '제목 바꾸기', () => handlers.onRename(track.id)),
         iconButton('plus', '목록에 넣기', () => handlers.onAdd(track.id), inQueue.has(track.id)),
         iconButton('trash', '라이브러리에서 지우기', () => handlers.onDelete(track.id)),
       );
@@ -108,8 +131,9 @@ export function setVisible(id, visible) {
 }
 
 // 이름 입력줄. 새로 만들 때와 이름을 바꿀 때 같이 쓴다. value는 처음 넣어 둘 이름, submitLabel은 확인 버튼 글자.
-export function openNameForm({ value, submitLabel }) {
+export function openNameForm({ value, submitLabel, maxLength = 20 }) {
   $('new-name').value = value;
+  $('new-name').maxLength = maxLength;
   $('new-submit').textContent = submitLabel;
   setVisible('new-form', true);
   $('new-name').focus();

@@ -1,6 +1,6 @@
 // 재생 한 곳. <audio> 하나를 계속 쓰고 src만 바꾼다. 화면이 꺼진 상태에서도 다음 곡으로 넘어가야 하기 때문이다.
 
-const CACHE_NAME = 'loopbot-tracks';
+export const CACHE_NAME = 'loopbot-tracks';
 const cacheKey = (id) => `track-${id}`;
 
 async function openCache() {

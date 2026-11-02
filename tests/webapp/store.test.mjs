@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanName, createActiveSender, mergeOrder } from '../../webapp/store.js';
+import { cleanName, cleanTitle, createActiveSender, mergeOrder } from '../../webapp/store.js';
 
 // 저장소 쪽 Promise 연쇄를 한 바퀴 돌린다. 가짜 타이머는 setTimeout만 막으므로 setImmediate는 그대로 돈다.
 const settle = () => new Promise((resolve) => setImmediate(resolve));
@@ -96,4 +96,10 @@ test('cleanName trims spaces and keeps at most 20 code points', () => {
   assert.equal(cleanName('   '), '');
   assert.equal(cleanName('가'.repeat(25)), '가'.repeat(20));
   assert.equal([...cleanName('😀'.repeat(25))].length, 20);
+});
+
+test('cleanTitle trims spaces and keeps at most 200 code points', () => {
+  assert.equal(cleanTitle('  곡 이름  '), '곡 이름');
+  assert.equal(cleanTitle('   '), '');
+  assert.equal([...cleanTitle('😀'.repeat(250))].length, 200);
 });

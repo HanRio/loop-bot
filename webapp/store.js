@@ -20,6 +20,22 @@ export const writeLocal = (key, value) => {
   }
 };
 
+export const removeLocal = (key) => {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // 지우지 못하면 다음에 다시 읽힐 뿐이다.
+  }
+};
+
+export const localKeys = (prefix) => {
+  try {
+    return Object.keys(localStorage).filter((key) => key.startsWith(prefix));
+  } catch {
+    return [];
+  }
+};
+
 // 플레이리스트마다 저장기 하나. save(value)는 {id, name, track_ids}를 서버에 보낸다.
 export function createSaves({ save, onError, onSaved }) {
   const savers = new Map();
@@ -58,8 +74,14 @@ export function createSaves({ save, onError, onSaved }) {
   };
 }
 
-// 플레이리스트 이름. 앞뒤 공백을 떼고 서버와 같게 코드포인트 20자까지만 쓴다.
-export const cleanName = (raw) => [...raw.trim()].slice(0, 20).join('');
+// 앞뒤 공백을 떼고 코드포인트 max자까지만 쓴다. 서버와 같은 규칙이다.
+const cutText = (raw, max) => [...raw.trim()].slice(0, max).join('');
+
+// 플레이리스트 이름. 코드포인트 20자까지.
+export const cleanName = (raw) => cutText(raw, 20);
+
+// 곡 제목. 코드포인트 200자까지.
+export const cleanTitle = (raw) => cutText(raw, 200);
 
 // 드래그로 정한 순서에 목록 밖에서 생긴 곡을 붙인다. 화면 DOM에 없던 곡(새로 받은 곡)은 뒤에 둔다.
 // 서버가 지운 곡은 current에 없으므로 빠진다.

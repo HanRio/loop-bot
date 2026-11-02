@@ -21,11 +21,13 @@ async function errorCode(res) {
 
 // 곡 한 개를 받는 시간 상한. 멈춘 요청이 같은 곡의 재시도를 막지 않게 한다. 본문을 읽는 동안도 걸린다.
 const FILE_TIMEOUT_MS = 120000;
+// 파일 서버가 처음 받는 곡은 텔레그램에서 다 받은 뒤 응답한다. 곡이 끊기지 않게 짧게 잡는다.
+const ORACLE_RESPONSE_MS = 15000;
 
-export function createApi(baseUrl, initData) {
+export function createApi(baseUrl, initData, fileBase = null) {
   async function request(method, path, body, extra = {}) {
-    const headers = { 'X-Telegram-Init-Data': initData };
-    const init = { method, headers, ...extra };
+    const headers = { 'X-Telegram-Init-Data': initData, ...extra.headers };
+    const init = { method, ...extra, headers };
     if (body !== undefined) {
       headers['Content-Type'] = 'application/json';
       init.body = JSON.stringify(body);
@@ -37,6 +39,40 @@ export function createApi(baseUrl, initData) {
 
   const json = async (method, path, body) => (await request(method, path, body)).json();
 
+  // 응답 머리가 늦으면 서버가 멈춘 것으로 보고 끊는다. 본문을 받는 동안은 전체 상한만 걸린다.
+  async function fromOracle(path) {
+    const controller = new AbortController();
+    const noResponse = setTimeout(() => controller.abort(), ORACLE_RESPONSE_MS);
+    const tooLong = setTimeout(() => controller.abort(), FILE_TIMEOUT_MS);
+    try {
+      const res = await fetch(`${fileBase}${path}`, {
+        headers: { 'X-Telegram-Init-Data': initData },
+        signal: controller.signal,
+      });
+      clearTimeout(noResponse);
+      if (res.ok) return await res.blob();
+      if (res.status < 500) throw new ApiError(await errorCode(res), res.status);
+      return null;
+    } finally {
+      clearTimeout(noResponse);
+      clearTimeout(tooLong);
+    }
+  }
+
+  // 곡과 사진 받기. 파일 서버(Oracle)를 먼저 쓰고, 5xx나 네트워크 오류면 함수로 받는다.
+  // AbortSignal.timeout이 없는 오래된 웹뷰에서는 시간 상한 없이 받는다. 권한·없는 곡 응답은 그대로 오류다.
+  async function fetchFile(path) {
+    if (fileBase) {
+      try {
+        const res = await fromOracle(path);
+        if (res) return res;
+      } catch (err) {
+        if (err instanceof ApiError) throw err;
+      }
+    }
+    return (await request('GET', path, undefined, { signal: AbortSignal.timeout?.(FILE_TIMEOUT_MS) })).blob();
+  }
+
   return {
     state: () => json('GET', '/state'),
     createPlaylist: (name, ids) => json('POST', '/playlists', { name, track_ids: ids }),
@@ -46,8 +82,19 @@ export function createApi(baseUrl, initData) {
     deleteTrack: async (id) => {
       await request('DELETE', `/tracks/${id}`);
     },
-    // AbortSignal.timeout이 없는 오래된 웹뷰에서는 시간 상한 없이 받는다.
-    file: async (id) =>
-      (await request('GET', `/tracks/${id}/file`, undefined, { signal: AbortSignal.timeout?.(FILE_TIMEOUT_MS) })).blob(),
+    renameTrack: (id, title) => json('PUT', `/tracks/${id}`, { title }),
+    setShared: (id, shared) => json('PUT', `/playlists/${id}/shared`, { shared }),
+    file: (id) => fetchFile(`/tracks/${id}/file`),
+    sheet: (id) => fetchFile(`/tracks/${id}/sheet`),
+    // 사진은 JPEG 바이트 그대로 보낸다. 응답은 {version}.
+    uploadSheet: (id, blob) =>
+      request('PUT', `/tracks/${id}/sheet`, undefined, { body: blob, headers: { 'Content-Type': 'image/jpeg' } }).then((res) => res.json()),
+    deleteSheet: async (id) => {
+      await request('DELETE', `/tracks/${id}/sheet`);
+    },
+    saveVideo: (id, url) => json('PUT', `/tracks/${id}/video`, { url }),
+    saveNote: async (id, body) => {
+      await request('PUT', `/tracks/${id}/note`, { body });
+    },
   };
 }
