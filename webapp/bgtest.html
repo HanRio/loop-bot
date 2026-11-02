@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>백그라운드 재생 시험</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  body { margin: 0; padding: 16px; background: var(--tg-theme-bg-color, #fff); color: var(--tg-theme-text-color, #000);
+         font: 16px/1.5 -apple-system, "Apple SD Gothic Neo", sans-serif; }
+  button { width: 100%; min-height: 48px; margin: 6px 0; border: 0; border-radius: 10px; font-size: 16px;
+           background: var(--tg-theme-button-color, #2481cc); color: var(--tg-theme-button-text-color, #fff); }
+  #result { margin: 12px 0; padding: 12px; border-radius: 10px; background: var(--tg-theme-secondary-bg-color, #f2f2f2); }
+  #log { font: 13px/1.4 ui-monospace, monospace; white-space: pre-wrap; color: var(--tg-theme-hint-color, #888); }
+</style>
+</head>
+<body>
+<p>1. 아래 버튼으로 소리를 켜요(3분짜리 삐 소리).<br>2. 화면을 끄거나 홈으로 나가서 30초쯤 기다려요.<br>3. 돌아와서 결과를 봐요.</p>
+<button id="start">▶ 소리 켜기</button>
+<div id="result">아직 시작하지 않았어요</div>
+<div id="log"></div>
+<script>
+const audio = new Audio("bgtest.mp3");
+const log = (m) => { document.getElementById("log").textContent += new Date().toLocaleTimeString() + " " + m + "\n"; };
+let hiddenAt = null, hiddenPos = null;
+
+if ("mediaSession" in navigator) {
+  navigator.mediaSession.metadata = new MediaMetadata({ title: "백그라운드 시험", artist: "loop-bot" });
+}
+["play", "pause", "ended", "stalled", "suspend"].forEach((e) => audio.addEventListener(e, () => log(e + " @" + audio.currentTime.toFixed(1) + "s")));
+
+document.getElementById("start").addEventListener("click", () => {
+  audio.currentTime = 0;
+  audio.play().then(() => log("재생 시작")).catch((e) => log("재생 실패: " + e.message));
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    if (audio.paused) return;
+    hiddenAt = Date.now(); hiddenPos = audio.currentTime;
+    log("화면 벗어남 @" + hiddenPos.toFixed(1) + "s");
+    return;
+  }
+  if (hiddenAt === null) return;
+  const away = (Date.now() - hiddenAt) / 1000, played = audio.currentTime - hiddenPos;
+  log("돌아옴: " + away.toFixed(0) + "초 동안 " + played.toFixed(0) + "초 재생");
+  hiddenAt = null;
+  if (away < 10 || audio.ended) return;
+  document.getElementById("result").textContent = played >= away * 0.8
+    ? "✅ 백그라운드에서 계속 재생됐어요 (" + away.toFixed(0) + "초 중 " + played.toFixed(0) + "초)"
+    : "❌ 백그라운드에서 멈췄어요 (" + away.toFixed(0) + "초 중 " + played.toFixed(0) + "초만 재생)";
+});
+Telegram.WebApp.ready();
+log("열림: " + Telegram.WebApp.platform + " / Bot API " + Telegram.WebApp.version);
+</script>
+</body>
+</html>
