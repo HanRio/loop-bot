@@ -29,10 +29,11 @@
 ```sql
 alter table playlists add column shared boolean not null default false;
 
-create table track_sheets (
+create table track_media (
   track_id bigint primary key references tracks (id) on delete cascade,
-  file_id text not null,
-  version integer not null default 1  -- 사진을 바꾸면 올려서 캐시를 무효화한다
+  sheet_file_id text,
+  sheet_version integer not null default 0,  -- 사진을 바꾸면 올려서 캐시를 무효화한다
+  video_id text
 );
 
 create table track_notes (
@@ -58,7 +59,7 @@ create table track_notes (
   // 기존: library, playlists(본인 것, shared 포함), active_id
   shared_playlists: [{id, name, track_ids}], // 남이 공유한 목록. 읽기 전용
   shared_tracks: [{id, title, duration}],    // 그 곡들. 내 라이브러리와 별개
-  sheets: {[trackId]: version},              // 읽을 수 있는 곡 중 사진 있는 것
+  media: {[trackId]: {sheet_version, video_id}}, // 읽을 수 있는 곡 중 사진이나 영상이 있는 것
   notes: {[trackId]: body},                  // 내 느낀점
   is_admin,
 }
@@ -72,6 +73,8 @@ create table track_notes (
 | `DELETE /tracks/:id/sheet` | 관리자, 자기 곡 | 사진 삭제 |
 | `PUT /tracks/:id/note` | 읽을 수 있는 사람 | `{body}` 저장. 비면 행 삭제. 10,000자 초과는 400 |
 | `PUT /playlists/:id/shared` | 관리자, 자기 목록 | `{shared}` |
+| `PUT /tracks/:id` | 곡 주인 | `{title}` 제목 바꾸기 |
+| `PUT /tracks/:id/video` | 관리자, 자기 곡 | `{url}` 유튜브 링크에서 id만 저장 |
 
 - 기존 `PUT /playlists/:id`, `DELETE /playlists/:id`, `PUT /active`, `DELETE /tracks/:id`는 소유자만 된다는 지금 규칙을 유지한다. 멤버가 공유 목록에 보내면 404다.
 - `PUT .../sheet`: 함수가 관리자 채팅에 `sendDocument`로 보내 `file_id`를 받고 그 메시지를 바로 지운다. `sendPhoto`는 다시 압축해 가사가 뭉개질 수 있어 쓰지 않는다. 본문은 `image/jpeg`이고 10MB 초과는 413이다.
@@ -114,14 +117,14 @@ create table track_notes (
 1. **DB와 함수.** 마이그레이션. Deno 테스트로 읽기 조건, 멤버의 쓰기 거부, 남의 느낀점 접근 불가, username 사용자가 관리자 경로 거부, 공유 해제 후 접근 거부를 `loopbot_test`에 돌린다.
 2. **사진 경로.** 실제 텔레그램으로 사진을 올리고, 메시지 삭제 뒤 받아 본다.
 3. **미니앱.** 가짜 API로 관리자와 멤버 화면을 375px에서 확인한다. 재생 중 느낀점 쓰기와 임시 글 복구를 확인한다.
-4. **배포.** 사용자 승인 후 비밀값, 마이그레이션, 함수, 페이지 순서로 올린다. 모두 추가 작업이라 기존 사용자에게 영향이 없다.
+4. **배포.** 사용자 승인 후 비밀값, 마이그레이션, 함수, 파일 서버, 페이지 순서로 올린다. 마이그레이션 전에 새 코드를 올리면 목록 읽기가 실패한다. 모두 추가 작업이라 기존 사용자에게 영향이 없다.
 5. **휴대폰 확인.** 관리자와 멤버 한 명씩. 사진 확대, 복사, 화면 끈 재생.
 
 ## 다음 단계: 참고 영상
 
 가사를 보면서 가수의 동작과 표정을 참고한다. 가사집과 따로 만들어 위 일정에 영향을 주지 않는다. 시작 전에 텔레그램 웹뷰에서 유튜브 임베드가 재생되는지 휴대폰으로 시험한다. 안 되면 유튜브 앱으로 여는 링크로 대신한다.
 
-- 관리자가 곡마다 참고 영상 링크를 넣는다. 음원을 받은 영상과 다른 무대 영상을 고를 수 있어야 하기 때문이다. `track_sheets`에 `video_id`를 더하고, 유튜브 링크에서 뽑은 id만 저장한다.
+- 관리자가 곡마다 참고 영상 링크를 넣는다. 음원을 받은 영상과 다른 무대 영상을 고를 수 있어야 하기 때문이다. `track_media.video_id`에 유튜브 링크에서 뽑은 id만 저장한다.
 - 영상은 유튜브 임베드로 재생한다. 내려받지 않아 Supabase 전송량이 들지 않는다. 임베드를 막은 영상은 재생되지 않는다.
 - 구석의 작은 창이 아니라 화면 폭에 맞춰 맨 위에 고정한다. 작은 창으로는 표정과 동작이 잘 보이지 않는다. 그 아래에서 가사와 느낀점을 스크롤한다. 시스템 PIP는 임베드를 제어할 수 없어 쓰지 않는다.
 - 영상을 여는 동안 재생 바를 숨겨 세로 공간을 확보하고, 오디오는 멈춘다. 영상을 닫아도 오디오를 자동으로 다시 틀지 않는다.
