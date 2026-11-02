@@ -30,6 +30,7 @@ cp .env.example .env
 |---|---|
 | `BOT_TOKEN` | 텔레그램 @BotFather에서 `/newbot`으로 받은 토큰 |
 | `ALLOWED_USER_IDS` | 내 텔레그램 user id (@userinfobot에서 확인). 여러 명이면 쉼표로 구분 |
+| `ALLOWED_USERNAMES` | 선택. 추가로 허용할 텔레그램 username. 쉼표로 구분. username을 바꾸면 막히고, 그 이름을 다른 사람이 가져가면 그 사람이 쓸 수 있어요 |
 | `WEBAPP_URL` | `https://hanrio.github.io/loop-bot/webapp/` |
 | `YTDLP_COOKIES` | 선택. 유튜브가 막을 때 쓰는 cookies.txt 경로 |
 | `DATABASE_URL` | 필수. Supabase 풀러 주소 (세션 모드, 포트 5432) |
@@ -76,6 +77,7 @@ supabase functions deploy loopbot-api --no-verify-jwt --use-api --project-ref <r
 |---|---|
 | `LOOPBOT_BOT_TOKEN` | 봇 토큰. `initData` 서명 검사에 써요 |
 | `LOOPBOT_ALLOWED_USER_IDS` | 허용된 텔레그램 user id. 쉼표로 구분 |
+| `LOOPBOT_ALLOWED_USERNAMES` | 선택. 허용된 텔레그램 username. 쉼표로 구분. username을 바꾸면 막히고, 그 이름을 다른 사람이 가져가면 그 사람이 쓸 수 있어요 |
 | `LOOPBOT_DATABASE_URL` | 위의 세션 모드 풀러 주소 (`loopbot_app` 역할) |
 | `LOOPBOT_DB_SCHEMA` | 선택. 기본값 `loopbot` |
 

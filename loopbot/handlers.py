@@ -129,6 +129,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if update.effective_chat.type != Chat.PRIVATE:
         await _reply(update, context, GROUP_START_TEXT)
         return
+    # A username-allowed user has no known id until they message the bot, so the menu is set here, per chat.
+    cfg: Config = context.bot_data["cfg"]
+    await _best_effort(
+        context.bot.set_chat_menu_button(chat_id=update.effective_chat.id, menu_button=_menu(cfg)),
+        "menu button",
+    )
     await _reply(
         update,
         context,
@@ -266,9 +272,13 @@ async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
         logging.exception("error notice failed")
 
 
+def _menu(cfg: Config) -> MenuButtonWebApp:
+    return MenuButtonWebApp("🎵 플레이어", WebAppInfo(cfg.webapp_url))
+
+
 async def _set_menu_button(app: Application) -> None:
     cfg: Config = app.bot_data["cfg"]
-    menu = MenuButtonWebApp("🎵 플레이어", WebAppInfo(cfg.webapp_url))
+    menu = _menu(cfg)
     # Per chat: Telegram accepts a default web app button but getChatMenuButton keeps reporting "commands".
     for user_id in sorted(cfg.allowed_user_ids):
         try:
@@ -276,6 +286,16 @@ async def _set_menu_button(app: Application) -> None:
         except Exception:
             # A network blip here must not abort run_polling; the old button stays until the next start.
             logging.exception("menu button failed for user %s", user_id)
+
+
+class _AllowedUser(filters.UpdateFilter):
+    def __init__(self, cfg: Config) -> None:
+        super().__init__(name="allowed user")
+        self._cfg = cfg
+
+    def filter(self, update: Update) -> bool:
+        user = update.effective_user
+        return user is not None and self._cfg.is_allowed(user.id, user.username)
 
 
 def build_app(cfg: Config, store: Store) -> Application:
@@ -288,7 +308,7 @@ def build_app(cfg: Config, store: Store) -> Application:
         .build()
     )
     app.bot_data.update(cfg=cfg, store=store, lock=asyncio.Lock())
-    allowed = filters.User(user_id=cfg.allowed_user_ids)
+    allowed = _AllowedUser(cfg)
     is_audio = filters.AUDIO | filters.Document.Category("audio/")
     commands = allowed & filters.UpdateType.MESSAGE
     app.add_handler(CommandHandler("start", start, filters=commands))

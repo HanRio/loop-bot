@@ -8,9 +8,18 @@ REQUIRED_KEYS = ("BOT_TOKEN", "ALLOWED_USER_IDS", "WEBAPP_URL", "DATABASE_URL")
 class Config:
     bot_token: str
     allowed_user_ids: frozenset[int]
+    allowed_usernames: frozenset[str]
     webapp_url: str
     ytdlp_cookies: str | None
     database_url: str
+
+    def is_allowed(self, user_id: int, username: str | None) -> bool:
+        return user_id in self.allowed_user_ids or (username or "").lower() in self.allowed_usernames
+
+
+def _usernames(raw: str) -> frozenset[str]:
+    names = (part.strip().removeprefix("@").lower() for part in raw.split(","))
+    return frozenset(name for name in names if name)
 
 
 def load_config(env: Mapping[str, str]) -> Config:
@@ -23,6 +32,7 @@ def load_config(env: Mapping[str, str]) -> Config:
         allowed_user_ids=frozenset(
             int(part) for part in env["ALLOWED_USER_IDS"].split(",") if part.strip()
         ),
+        allowed_usernames=_usernames(env.get("ALLOWED_USERNAMES", "")),
         webapp_url=env["WEBAPP_URL"],
         ytdlp_cookies=env.get("YTDLP_COOKIES") or None,
         database_url=env["DATABASE_URL"],

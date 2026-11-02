@@ -4,6 +4,7 @@ import type { Db } from "./db.ts";
 export interface Deps {
   botToken: string;
   allowed: Set<number>;
+  allowedUsernames: Set<string>;
   db: Db;
   fetch: typeof fetch;
   now(): number;
@@ -28,6 +29,15 @@ class HttpError extends Error {
     this.status = status;
     this.code = code;
   }
+}
+
+// Usernames are compared lowercased; Telegram usernames are case-insensitive.
+export function parseUsernames(raw: string): Set<string> {
+  const names = raw
+    .split(",")
+    .map((part) => part.trim().replace(/^@/, "").toLowerCase())
+    .filter((name) => name !== "");
+  return new Set(names);
 }
 
 function json(body: unknown, status = 200): Response {
@@ -78,10 +88,11 @@ function playlistFields(body: Record<string, unknown>): { name: string; trackIds
 }
 
 async function authenticate(req: Request, deps: Deps): Promise<number> {
-  const userId = await verifyInitData(req.headers.get("x-telegram-init-data") ?? "", deps.botToken, deps.now());
-  if (userId === null) throw new HttpError(401, "expired");
-  if (!deps.allowed.has(userId)) throw new HttpError(403, "forbidden");
-  return userId;
+  const user = await verifyInitData(req.headers.get("x-telegram-init-data") ?? "", deps.botToken, deps.now());
+  if (user === null) throw new HttpError(401, "expired");
+  const byName = user.username !== null && deps.allowedUsernames.has(user.username.toLowerCase());
+  if (!deps.allowed.has(user.id) && !byName) throw new HttpError(403, "forbidden");
+  return user.id;
 }
 
 // Telegram's getFile refuses files over 20MB; the bot token lives in the download URL.

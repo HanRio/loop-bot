@@ -1,4 +1,4 @@
-import { handle } from "./app.ts";
+import { handle, parseUsernames } from "./app.ts";
 import { createDb, type Db } from "./db.ts";
 
 const DEFAULT_SCHEMA = "loopbot";
@@ -26,6 +26,11 @@ function allowedUserIds(raw: string): Set<number> {
   return new Set(ids);
 }
 
+// Optional: usernames allowed in addition to the ids. Unset or blank means ids only.
+function allowedUsernames(): Set<string> {
+  return parseUsernames(Deno.env.get("LOOPBOT_ALLOWED_USERNAMES") ?? "");
+}
+
 function connect(dsn: string, schema: string): Db {
   try {
     return createDb(dsn, schema);
@@ -41,6 +46,7 @@ const db = connect(required("LOOPBOT_DATABASE_URL"), schema);
 const deps = {
   botToken,
   allowed,
+  allowedUsernames: allowedUsernames(),
   db,
   fetch,
   now: () => Math.floor(Date.now() / 1000),

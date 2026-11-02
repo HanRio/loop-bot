@@ -414,3 +414,102 @@ def test_play_tracks_play_messages_per_chat(monkeypatch):
 
     _run_play(monkeypatch, Store(["A"]), _FakeBot())
     assert keys == [5, 5]
+
+
+def _private_start_update(replies, chat_id=7):
+    async def reply_text(text, **kw):
+        replies.append((text, kw.get("reply_markup")))
+
+    return SimpleNamespace(effective_message=SimpleNamespace(reply_text=reply_text),
+                           effective_user=SimpleNamespace(id=7), effective_chat=SimpleNamespace(id=chat_id, type="private"))
+
+
+def _private_start_context(calls, failing=False):
+    from telegram.error import TelegramError
+
+    async def set_chat_menu_button(chat_id=None, menu_button=None):
+        if failing:
+            raise TelegramError("chat menu refused")
+        calls.append((chat_id, menu_button))
+
+    cfg = SimpleNamespace(webapp_url="https://x.io/app/")
+    bot = SimpleNamespace(set_chat_menu_button=set_chat_menu_button)
+    return SimpleNamespace(bot_data={"cfg": cfg}, bot=bot)
+
+
+def test_private_start_sets_menu_button_for_that_chat_and_replies():
+    import asyncio
+
+    from telegram import MenuButtonWebApp, WebAppInfo
+
+    from loopbot import handlers
+
+    calls, replies = [], []
+    asyncio.run(handlers.start(_private_start_update(replies, chat_id=7), _private_start_context(calls)))
+    assert calls == [(7, MenuButtonWebApp("🎵 플레이어", WebAppInfo("https://x.io/app/")))]
+    assert len(replies) == 1
+
+
+def test_private_start_still_replies_when_menu_button_fails(caplog):
+    import asyncio
+
+    from loopbot import handlers
+
+    calls, replies = [], []
+    asyncio.run(handlers.start(_private_start_update(replies), _private_start_context(calls, failing=True)))
+    assert calls == []
+    assert len(replies) == 1
+    assert "chat menu refused" in caplog.text
+
+
+def test_group_start_does_not_set_menu_button():
+    import asyncio
+
+    from loopbot import handlers
+
+    calls, replies = [], []
+    context = _group_context()
+    context.bot.set_chat_menu_button = lambda **kw: calls.append(kw)
+    asyncio.run(handlers.start(_group_update(replies), context))
+    assert calls == []
+    assert len(replies) == 1
+
+
+def _filter_update(user_id, username):
+    from datetime import datetime, timezone
+
+    from telegram import Chat, Message, Update, User
+
+    user = User(id=user_id, first_name="t", is_bot=False, username=username)
+    chat = Chat(id=user_id, type=Chat.PRIVATE)
+    message = Message(message_id=1, date=datetime.now(timezone.utc), chat=chat, from_user=user, text="hi")
+    return Update(update_id=1, message=message)
+
+
+def test_allowed_user_filter_matches_by_id_or_username_case_insensitively():
+    from loopbot import handlers
+    from loopbot.config import load_config
+
+    cfg = load_config({**BASE_CONFIG, "ALLOWED_USER_IDS": "1", "ALLOWED_USERNAMES": "@Some_User"})
+    allowed = handlers._AllowedUser(cfg)
+
+    assert allowed.check_update(_filter_update(1, None))
+    assert allowed.check_update(_filter_update(99, "SOME_USER"))
+    assert not allowed.check_update(_filter_update(99, "stranger"))
+    assert not allowed.check_update(_filter_update(99, None))
+    assert (~allowed).check_update(_filter_update(99, "stranger"))
+
+
+def test_allowed_user_filter_rejects_blank_username():
+    from loopbot import handlers
+    from loopbot.config import load_config
+
+    cfg = load_config({**BASE_CONFIG, "ALLOWED_USER_IDS": "1", "ALLOWED_USERNAMES": " , "})
+    allowed = handlers._AllowedUser(cfg)
+
+    assert not allowed.check_update(_filter_update(99, ""))
+    assert not allowed.check_update(_filter_update(99, None))
+
+
+BASE_CONFIG = {"BOT_TOKEN": "t", "ALLOWED_USER_IDS": "1", "WEBAPP_URL": "https://x.io/app/",
+               "DATABASE_URL": "postgresql://u@h/db"}
