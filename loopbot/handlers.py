@@ -268,17 +268,14 @@ async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def _set_menu_button(app: Application) -> None:
     cfg: Config = app.bot_data["cfg"]
-    # A per-chat menu override would hide the default button, so clear any left by earlier runs.
+    menu = MenuButtonWebApp("🎵 플레이어", WebAppInfo(cfg.webapp_url))
+    # Per chat: Telegram accepts a default web app button but getChatMenuButton keeps reporting "commands".
     for user_id in sorted(cfg.allowed_user_ids):
         try:
-            await app.bot.set_chat_menu_button(chat_id=user_id)
+            await app.bot.set_chat_menu_button(chat_id=user_id, menu_button=menu)
         except Exception:
-            logging.exception("menu button reset failed for user %s", user_id)
-    try:
-        await app.bot.set_chat_menu_button(menu_button=MenuButtonWebApp("🎵 플레이어", WebAppInfo(cfg.webapp_url)))
-    except Exception:
-        # A network blip here must not abort run_polling; the old default button stays until the next start.
-        logging.exception("default menu button failed")
+            # A network blip here must not abort run_polling; the old button stays until the next start.
+            logging.exception("menu button failed for user %s", user_id)
 
 
 def build_app(cfg: Config, store: Store) -> Application:

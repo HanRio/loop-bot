@@ -153,7 +153,7 @@ def _menu_app(calls, failing_chats=(), allowed=frozenset({1})):
 
     async def set_chat_menu_button(chat_id=None, menu_button=None):
         if chat_id in failing_chats:
-            raise TelegramError("chat menu reset refused")
+            raise TelegramError("chat menu refused")
         calls.append((chat_id, menu_button))
 
     async def send_message(*a, **kw):
@@ -164,7 +164,7 @@ def _menu_app(calls, failing_chats=(), allowed=frozenset({1})):
     return SimpleNamespace(bot_data={"cfg": cfg}, bot=bot)
 
 
-def test_set_menu_button_resets_user_chats_then_sets_default_webapp_menu(caplog):
+def test_set_menu_button_sets_webapp_menu_for_each_allowed_user():
     import asyncio
 
     from telegram import MenuButtonWebApp, WebAppInfo
@@ -174,14 +174,11 @@ def test_set_menu_button_resets_user_chats_then_sets_default_webapp_menu(caplog)
     calls = []
     app = _menu_app(calls, allowed=frozenset({1, 2}))
     asyncio.run(handlers._set_menu_button(app))
-    assert calls == [
-        (1, None),
-        (2, None),
-        (None, MenuButtonWebApp("🎵 플레이어", WebAppInfo("https://x.io/app/"))),
-    ]
+    menu = MenuButtonWebApp("🎵 플레이어", WebAppInfo("https://x.io/app/"))
+    assert calls == [(1, menu), (2, menu)]
 
 
-def test_set_menu_button_logs_failed_chat_reset_and_still_sets_default(caplog):
+def test_set_menu_button_failure_logs_and_continues_with_next_user(caplog):
     import asyncio
 
     from telegram import MenuButtonWebApp, WebAppInfo
@@ -191,28 +188,8 @@ def test_set_menu_button_logs_failed_chat_reset_and_still_sets_default(caplog):
     calls = []
     app = _menu_app(calls, failing_chats={1}, allowed=frozenset({1, 2}))
     asyncio.run(handlers._set_menu_button(app))
-    assert calls == [
-        (2, None),
-        (None, MenuButtonWebApp("🎵 플레이어", WebAppInfo("https://x.io/app/"))),
-    ]
-    assert "chat menu reset refused" in caplog.text
-
-
-def test_set_menu_button_returns_and_logs_when_default_menu_call_fails(caplog):
-    import asyncio
-
-    from telegram.error import NetworkError
-
-    from loopbot import handlers
-
-    async def set_chat_menu_button(chat_id=None, menu_button=None):
-        if menu_button is not None:
-            raise NetworkError("default menu refused")
-
-    cfg = SimpleNamespace(allowed_user_ids=frozenset({1}), webapp_url="https://x.io/app/")
-    app = SimpleNamespace(bot_data={"cfg": cfg}, bot=SimpleNamespace(set_chat_menu_button=set_chat_menu_button))
-    asyncio.run(handlers._set_menu_button(app))
-    assert "default menu refused" in caplog.text
+    assert calls == [(2, MenuButtonWebApp("🎵 플레이어", WebAppInfo("https://x.io/app/")))]
+    assert "chat menu refused" in caplog.text
 
 
 class _FakeStore:
