@@ -6,7 +6,10 @@ from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
 
-from telegram import Bot, KeyboardButton, Message, ReplyKeyboardMarkup, Update, WebAppInfo
+from telegram import (
+    Bot, Chat, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, Message, ReplyKeyboardMarkup, Update,
+    WebAppInfo,
+)
 from telegram.error import BadRequest, RetryAfter, TelegramError, TimedOut
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
@@ -24,6 +27,11 @@ NO_TITLE = "제목 없음"
 NOT_AUDIO_TEXT = "음원 파일로 보내주세요 (mp3·m4a)"
 TIMED_OUT_REASON = "텔레그램 응답이 늦어요. 잠시 뒤 다시 보내주세요"
 UNKNOWN_REASON = "알 수 없는 오류"
+GROUP_START_TEXT = (
+    "그룹에서는 텔레그램 규칙상 플레이리스트 앱을 바로 열 수 없어요. "
+    "아래 버튼을 누르면 봇과의 개인 채팅이 열리고, 거기 있는 🎵 버튼으로 플레이리스트를 만들 수 있어요. "
+    "그룹에서는 /play로 지금 플레이리스트를 이 방에 재생해요."
+)
 
 
 @dataclass(frozen=True)
@@ -78,11 +86,19 @@ def _keyboard(bot_data: dict, user_id: int) -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup([[button]], resize_keyboard=True, is_persistent=True)
 
 
+def _markup(context: ContextTypes.DEFAULT_TYPE, chat: Chat, user_id: int) -> ReplyKeyboardMarkup | InlineKeyboardMarkup:
+    if chat.type == Chat.PRIVATE:
+        return _keyboard(context.bot_data, user_id)
+    # Web app buttons work only in private chats, so a group gets a link that opens the private chat.
+    url = f"https://t.me/{context.bot.username}?start=playlist"
+    return InlineKeyboardMarkup([[InlineKeyboardButton("🎵 플레이리스트 열기 (개인 채팅)", url=url)]])
+
+
 async def _reply(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str) -> None:
-    """Reply with the up-to-date playlist keyboard attached."""
+    """Reply with the playlist button attached."""
     msg = update.effective_message
     try:
-        await msg.reply_text(text, reply_markup=_keyboard(context.bot_data, update.effective_user.id))
+        await msg.reply_text(text, reply_markup=_markup(context, update.effective_chat, update.effective_user.id))
     except BadRequest:
         logging.exception("reply with keyboard rejected; resending without it")
         await msg.reply_text(text)
@@ -109,16 +125,19 @@ async def _delete_messages(bot: Bot, chat_id: int, message_ids: Sequence[int]) -
         await _best_effort(bot.delete_messages(chat_id, message_ids[start:start + DELETE_CHUNK]), "delete messages")
 
 
-async def _send(context: ContextTypes.DEFAULT_TYPE, chat_id: int, user_id: int, text: str) -> None:
-    """Send to the chat with the up-to-date playlist keyboard attached."""
+async def _send(context: ContextTypes.DEFAULT_TYPE, chat: Chat, user_id: int, text: str) -> None:
+    """Send to the chat with the playlist button attached."""
     try:
-        await context.bot.send_message(chat_id, text, reply_markup=_keyboard(context.bot_data, user_id))
+        await context.bot.send_message(chat.id, text, reply_markup=_markup(context, chat, user_id))
     except BadRequest:
         logging.exception("send with keyboard rejected; resending without it")
-        await context.bot.send_message(chat_id, text)
+        await context.bot.send_message(chat.id, text)
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.effective_chat.type != Chat.PRIVATE:
+        await _reply(update, context, GROUP_START_TEXT)
+        return
     await _reply(
         update,
         context,
@@ -141,7 +160,8 @@ async def play(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.effective_message.reply_text(EMPTY_TEXT)
         return
     chat_id = update.effective_chat.id
-    await _delete_messages(context.bot, chat_id, store.play_messages(user_id))
+    # Keyed by chat: message ids are per chat, and in a private chat the chat id is the user id.
+    await _delete_messages(context.bot, chat_id, store.play_messages(chat_id))
     sent_ids: list[int] = []
     for i, track in enumerate(tracks):
         if i:
@@ -156,7 +176,7 @@ async def play(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 )
             except TelegramError:
                 logging.exception("failed to send playback failure notice: %s", track.title)
-    store.set_play_messages(user_id, sent_ids)
+    store.set_play_messages(chat_id, sent_ids)
 
 
 async def _fetch_one(msg: Message, context: ContextTypes.DEFAULT_TYPE, user_id: int, url: str) -> Outcome:
@@ -233,7 +253,7 @@ async def on_audio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = update.effective_user.id
     context.bot_data["store"].add_track(user_id, title, media.file_id, duration, None)
     await _best_effort(msg.delete(), "audio delete")
-    await _send(context, update.effective_chat.id, user_id, f"✅ 추가됨: {title}")
+    await _send(context, update.effective_chat, user_id, f"✅ 추가됨: {title}")
 
 
 async def on_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

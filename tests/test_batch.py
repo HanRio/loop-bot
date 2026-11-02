@@ -67,7 +67,7 @@ def env(tmp_path, monkeypatch):
 
 def _update(msg):
     return SimpleNamespace(effective_message=msg, effective_user=SimpleNamespace(id=USER),
-                           effective_chat=SimpleNamespace(id=USER))
+                           effective_chat=SimpleNamespace(id=USER, type="private"))
 
 
 def _active_titles(store):

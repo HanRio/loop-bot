@@ -70,6 +70,9 @@ def test_on_audio_rejects_audio_document():
     assert replies == ["음원 파일로 보내주세요 (mp3·m4a)"]
 
 
+_PRIVATE = SimpleNamespace(id=1, type="private")
+
+
 def test_reply_falls_back_without_keyboard_on_bad_request(monkeypatch):
     import asyncio
     from types import SimpleNamespace
@@ -87,7 +90,7 @@ def test_reply_falls_back_without_keyboard_on_bad_request(monkeypatch):
             raise BadRequest("too big")
 
     update = SimpleNamespace(effective_message=SimpleNamespace(reply_text=reply_text),
-                             effective_user=SimpleNamespace(id=1))
+                             effective_user=SimpleNamespace(id=1), effective_chat=_PRIVATE)
     asyncio.run(handlers._reply(update, SimpleNamespace(bot_data={}), "hi"))
     assert calls == [{"reply_markup": "KB"}, {}]
 
@@ -266,7 +269,7 @@ def test_on_audio_deletes_user_message_and_confirms_with_send_message(monkeypatc
 
     media = SimpleNamespace(file_id="F", title="곡", performer=None, file_name="a.mp3", duration=7)
     update = SimpleNamespace(effective_message=SimpleNamespace(audio=media, delete=delete),
-                             effective_user=SimpleNamespace(id=1), effective_chat=SimpleNamespace(id=5))
+                             effective_user=SimpleNamespace(id=1), effective_chat=SimpleNamespace(id=5, type="private"))
     context = SimpleNamespace(bot_data={"store": Store()}, bot=SimpleNamespace(send_message=send_message))
     asyncio.run(handlers.on_audio(update, context))
     assert events == [
@@ -328,3 +331,62 @@ def test_build_app_refreshes_keyboards_on_startup():
     from loopbot import handlers
 
     assert _app().post_init is handlers._refresh_keyboards
+
+
+def _group_update(replies):
+    async def reply_text(text, **kw):
+        replies.append((text, kw.get("reply_markup")))
+
+    return SimpleNamespace(effective_message=SimpleNamespace(reply_text=reply_text),
+                           effective_user=SimpleNamespace(id=1), effective_chat=SimpleNamespace(id=-100, type="group"))
+
+
+def _group_context():
+    def no_keyboard(*a):
+        raise AssertionError("web app keyboard must not be built for a group")
+
+    return SimpleNamespace(bot_data={}, bot=SimpleNamespace(username="loopbot_test_bot")), no_keyboard
+
+
+def test_reply_in_group_uses_link_button_to_private_chat(monkeypatch):
+    import asyncio
+
+    from loopbot import handlers
+
+    context, no_keyboard = _group_context()
+    monkeypatch.setattr(handlers, "_keyboard", no_keyboard)
+    replies = []
+    asyncio.run(handlers._reply(_group_update(replies), context, "hi"))
+    [(text, markup)] = replies
+    [[button]] = markup.inline_keyboard
+    assert text == "hi"
+    assert button.url == "https://t.me/loopbot_test_bot?start=playlist"
+
+
+def test_start_in_group_explains_why_the_app_opens_in_private_chat(monkeypatch):
+    import asyncio
+
+    from loopbot import handlers
+
+    context, no_keyboard = _group_context()
+    monkeypatch.setattr(handlers, "_keyboard", no_keyboard)
+    replies = []
+    asyncio.run(handlers.start(_group_update(replies), context))
+    [(text, markup)] = replies
+    assert "개인 채팅" in text
+    assert markup.inline_keyboard[0][0].url.endswith("?start=playlist")
+
+
+def test_play_tracks_play_messages_per_chat(monkeypatch):
+    keys = []
+
+    class Store(_FakeStore):
+        def play_messages(self, key):
+            keys.append(key)
+            return []
+
+        def set_play_messages(self, key, message_ids):
+            keys.append(key)
+
+    _run_play(monkeypatch, Store(["A"]), _FakeBot())
+    assert keys == [5, 5]
