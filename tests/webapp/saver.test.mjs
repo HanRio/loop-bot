@@ -165,6 +165,35 @@ test('createSaver keeps retrying when onError throws', async (t) => {
   assert.equal(calls[1].value, 7);
 });
 
+test('createSaver cancel drops the pending value and its scheduled save', () => {
+  const timers = fakeTimers();
+  const { save, calls } = controlledSave();
+  const saver = createSaver(save, timers);
+
+  saver.update(1);
+  saver.cancel();
+  assert.equal(saver.pending(), false);
+  assert.equal(timers.count(), 0);
+  assert.equal(calls.length, 0);
+});
+
+test('createSaver cancel during an in-flight failure schedules no retry and reports no error', async () => {
+  const timers = fakeTimers();
+  const { save, calls } = controlledSave();
+  const errors = [];
+  const saver = createSaver(save, { ...timers, onError: (err) => errors.push(err) });
+
+  saver.update(1);
+  timers.fire();
+  saver.cancel();
+  calls[0].reject(new Error('404'));
+  await settle();
+
+  assert.equal(timers.count(), 0);
+  assert.equal(errors.length, 0);
+  assert.equal(saver.pending(), false);
+});
+
 test('createSaver treats a synchronous throw from save like a failed save', async () => {
   const timers = fakeTimers();
   const errors = [];

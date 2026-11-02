@@ -33,7 +33,7 @@ export function createPlayer({
   let token = 0;
   let blobUrl = null;
 
-  async function getBlob(id) {
+  async function fetchBlob(id) {
     const cache = await openCache();
     const hit = cache && (await readCached(cache, id));
     if (hit) return hit.blob();
@@ -41,6 +41,18 @@ export function createPlayer({
     // 저장 공간이 모자라도 이 곡은 지금 재생한다. 다음에 다시 받을 뿐이다.
     if (cache) await cache.put(cacheKey(id), new Response(blob)).catch(() => {});
     return blob;
+  }
+
+  // 같은 곡을 동시에 달라고 하면 한 번만 받는다(미리 받기와 재생이 겹치는 경우). 끝나면 목록에서 뺀다.
+  const downloads = new Map();
+  function getBlob(id) {
+    if (!downloads.has(id)) {
+      const pending = fetchBlob(id);
+      downloads.set(id, pending);
+      const done = () => downloads.delete(id);
+      pending.then(done, done);
+    }
+    return downloads.get(id);
   }
 
   function syncSession() {
@@ -142,6 +154,10 @@ export function createPlayer({
     play,
     prefetch,
     forget,
+    // 받는 중인 곡이 있으면 버린다. 멈춘 뒤에 늦게 도착한 곡이 재생되지 않게 한다.
+    cancel() {
+      token += 1;
+    },
     toggle() {
       if (audio.paused) return resume();
       audio.pause();

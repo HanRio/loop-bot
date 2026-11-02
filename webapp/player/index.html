@@ -31,13 +31,14 @@
   .handle { cursor: grab; user-select: none; touch-action: none; }
   .title {
     flex: 1; min-width: 0; min-height: 44px; padding: 0; border: 0; background: none; font: inherit;
-    color: inherit; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    line-height: 44px; color: inherit; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .note { flex: none; font-size: 12px; color: var(--tg-theme-hint-color, #888); }
   .ghost { opacity: .4; }
   .empty { color: var(--tg-theme-hint-color, #888); padding: 12px 0; margin: 0; }
-  .notice { color: #d33; min-height: 1.4em; margin: 8px 0 0; }
-  select {
+  .notice { color: #d33; margin: 0; }
+  .notice:empty { display: none; }
+  select, #new-name {
     width: 100%; min-height: 44px; padding: 10px; font: inherit; margin-top: 8px;
     background: var(--tg-theme-secondary-bg-color, #f2f2f2); color: inherit;
     border: 0; border-radius: 8px;
@@ -47,6 +48,7 @@
     flex: 1; min-height: 44px; border: 0; border-radius: 8px; font: inherit; font-weight: 600;
     background: var(--tg-theme-secondary-bg-color, #f2f2f2); color: var(--tg-theme-text-color, #000);
   }
+  .buttons button.primary { background: var(--tg-theme-button-color, #2481cc); color: var(--tg-theme-button-text-color, #fff); }
   .buttons button.danger { color: #d33; flex-basis: 100%; }
   button:disabled { opacity: .5; }
 
@@ -77,16 +79,23 @@
 <p id="fatal" class="empty" hidden></p>
 <main id="app" hidden>
   <select id="picker" aria-label="플레이리스트 고르기"></select>
+  <form id="new-form" hidden>
+    <input id="new-name" maxlength="20" placeholder="플레이리스트 이름" aria-label="플레이리스트 이름" autocomplete="off">
+    <div class="buttons">
+      <button type="submit" class="primary">만들기</button>
+      <button id="new-cancel" type="button">취소</button>
+    </div>
+  </form>
   <div id="save-notice" class="notice" role="alert"></div>
-  <div class="buttons">
-    <button id="remove-playlist" class="danger" type="button">목록 삭제</button>
-  </div>
   <h2>재생 순서</h2>
   <ul id="queue"></ul>
   <p id="queue-empty" class="empty" hidden>아직 곡이 없어요. 아래 라이브러리에서 넣어보세요</p>
   <h2>라이브러리</h2>
   <ul id="library"></ul>
   <p id="library-empty" class="empty" hidden>라이브러리가 비었어요. 링크나 음원을 보내주세요</p>
+  <div class="buttons">
+    <button id="remove-playlist" class="danger" type="button">목록 삭제</button>
+  </div>
   <p class="empty">링크는 채팅에 붙여넣으면 추가돼요. 긴 곡은 채팅에서 /play로 들어요</p>
 </main>
 <footer id="bar" hidden>

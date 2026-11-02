@@ -93,6 +93,12 @@ export function setVisible(id, visible) {
   $(id).hidden = !visible;
 }
 
+// SortableJS가 없으면(CDN 실패) 순서만 못 바꾼다. 나머지 화면은 그대로 동작한다.
+export function enableQueueSort({ onStart, onEnd }) {
+  if (!window.Sortable) return;
+  window.Sortable.create($('queue'), { handle: '.handle', animation: 150, ghostClass: 'ghost', onStart, onEnd });
+}
+
 function formatTime(seconds) {
   const whole = Math.floor(Number.isFinite(seconds) ? seconds : 0);
   return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;

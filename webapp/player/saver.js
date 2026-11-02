@@ -20,6 +20,8 @@ export function createSaver(
   let retrying = false;
   let inFlight = null;
   let timer = null;
+  // cancel할 때마다 올린다. 옛 요청이 끝나도 그 결과는 상태를 건드리지 않는다.
+  let generation = 0;
 
   function cancelScheduled() {
     if (timer !== null) {
@@ -39,17 +41,20 @@ export function createSaver(
   // 결과는 항상 resolve된다. true면 저장 성공, false면 실패(값은 dirty로 남는다).
   function attempt() {
     const value = latest;
+    const mine = generation;
     dirty = false;
     retrying = false;
     // Promise executor 안에서 부르면 save의 동기 throw도 거부로 바뀐다.
     inFlight = new Promise((resolve) => resolve(save(value))).then(
       () => {
+        if (mine !== generation) return true;
         inFlight = null;
         if (dirty) schedule(delayMs);
         notify(onSaved, value);
         return true;
       },
       (err) => {
+        if (mine !== generation) return false;
         inFlight = null;
         // 실패한 값은 버리지 않는다. 대기 중 update가 오면 그 값으로 바뀐다.
         dirty = true;
@@ -84,9 +89,20 @@ export function createSaver(
     }
   }
 
+  // 대기 중인 값과 재시도를 모두 버린다. 이미 나간 요청은 끝나도 무시한다.
+  function cancel() {
+    generation += 1;
+    cancelScheduled();
+    latest = undefined;
+    dirty = false;
+    retrying = false;
+    inFlight = null;
+  }
+
   return {
     update,
     flush,
+    cancel,
     pending: () => dirty || inFlight !== null,
   };
 }

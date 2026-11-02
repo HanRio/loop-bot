@@ -14,9 +14,14 @@ export function createApi() {
   ];
   let activeId = 1;
   let failedSaves = 0;
+  // 지운 id를 다시 쓰지 않도록 올라가기만 한다.
+  let lastId = 2;
 
   const copy = (value) => structuredClone(value);
-  const nextId = () => Math.max(0, ...playlists.map((p) => p.id)) + 1;
+  const nextId = () => {
+    lastId += 1;
+    return lastId;
+  };
   const find = (id) => {
     const playlist = playlists.find((p) => p.id === id);
     if (!playlist) throw new ApiError('not_found', 404);
@@ -46,7 +51,9 @@ export function createApi() {
     async deletePlaylist(id) {
       find(id);
       playlists = playlists.filter((p) => p.id !== id);
-      if (activeId === id) activeId = playlists.at(-1)?.id ?? null;
+      // 서버와 같다: 목록이 하나도 없으면 기본을 새로 만들고, 활성은 가장 최근 목록이다.
+      if (playlists.length === 0) playlists = [{ id: nextId(), name: '기본', track_ids: [] }];
+      if (activeId === id) activeId = playlists.at(-1).id;
       return { active_id: activeId };
     },
     async setActive(id) {
