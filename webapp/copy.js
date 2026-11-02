@@ -11,5 +11,4 @@ export const COPY = {
   deleteTrackConfirm: '라이브러리에서 지울까요? 모든 플레이리스트에서 빠져요',
   create: '만들기',
   rename: '바꾸기',
-  renamePrompt: '이름 바꾸기',
 };

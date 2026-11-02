@@ -81,6 +81,7 @@
   }
   li + li { margin-top: 4px; }
   li.current { box-shadow: var(--press); }
+  #library .title { padding-left: 8px; }
   li.current .title { color: var(--accent); font-weight: 700; }
   li.unplayable .title { color: var(--hint); }
 
@@ -111,7 +112,7 @@
     box-shadow: 0 -6px 16px var(--dark);
     padding: 14px 20px calc(10px + env(safe-area-inset-bottom, 0px));
   }
-  #bar-top { display: flex; gap: 12px; }
+  #bar-top { display: flex; align-items: center; gap: 12px; }
   #now { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
   #time { flex: none; font-size: 13px; color: var(--hint); font-variant-numeric: tabular-nums; }
 
@@ -137,7 +138,7 @@
     background: var(--surface); box-shadow: var(--raise-sm);
   }
 
-  #controls { display: flex; justify-content: space-between; align-items: center; }
+  #controls { display: flex; justify-content: center; align-items: center; gap: 28px; }
   #controls button {
     min-width: 48px; min-height: 48px; border: 0; border-radius: 50%;
     background: var(--surface); color: var(--text);
@@ -148,8 +149,7 @@
   #controls #toggle:active, #controls #toggle[aria-pressed="true"] { box-shadow: var(--press); }
   #controls #toggle .i { width: 30px; height: 30px; }
   #toggle[aria-pressed="true"] .play-icon, #toggle[aria-pressed="false"] .pause-icon { display: none; }
-  .spacer { width: 48px; }
-  #repeat { position: relative; }
+  #repeat { position: relative; width: 44px; height: 44px; }
   #repeat[data-mode="off"] { color: var(--hint); }
   #repeat[data-mode="all"], #repeat[data-mode="one"] { color: var(--accent); box-shadow: var(--press); }
   #repeat[data-mode="one"]::after {
@@ -210,17 +210,16 @@
   <div id="bar-top">
     <span id="now"></span>
     <span id="time">0:00 / 0:00</span>
+    <button id="repeat" class="round" type="button" aria-label="전체 반복"><svg class="i" aria-hidden="true"><use href="#i-repeat"/></svg></button>
   </div>
   <input id="seek" type="range" min="0" max="0" step="0.1" value="0" aria-label="재생 위치">
   <div id="controls">
-    <button id="repeat" type="button" aria-label="전체 반복"><svg class="i" aria-hidden="true"><use href="#i-repeat"/></svg></button>
     <button id="prev" type="button" aria-label="이전 곡"><svg class="i" aria-hidden="true"><use href="#i-prev"/></svg></button>
     <button id="toggle" type="button" aria-label="재생">
       <svg class="i play-icon" aria-hidden="true"><use href="#i-play"/></svg>
       <svg class="i pause-icon" aria-hidden="true"><use href="#i-pause"/></svg>
     </button>
     <button id="next" type="button" aria-label="다음 곡"><svg class="i" aria-hidden="true"><use href="#i-next"/></svg></button>
-    <span class="spacer"></span>
   </div>
   <p id="play-notice" role="alert"></p>
 </footer>
