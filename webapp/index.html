@@ -120,8 +120,9 @@
     box-shadow: 0 -4px 12px var(--dark);
     padding: 4px 16px calc(6px + env(safe-area-inset-bottom, 0px));
   }
-  #bar-row { display: flex; align-items: center; gap: 8px; }
-  #bar-top { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
+  /* 양쪽 칸 폭을 같게 해 이전·재생·다음이 항상 정가운데에 온다. 반복은 오른쪽 칸 끝에 붙인다. */
+  #bar-row { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 8px; }
+  #bar-top { min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
   #now { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; }
   #time { font-size: 12px; color: var(--hint); font-variant-numeric: tabular-nums; }
 
@@ -147,7 +148,7 @@
     background: var(--surface); box-shadow: var(--raise-sm);
   }
 
-  #controls { flex: none; display: flex; align-items: center; gap: 4px; }
+  #controls { display: flex; align-items: center; gap: 12px; }
   #controls button {
     width: 44px; height: 44px; padding: 0; border: 0; border-radius: 50%;
     background: var(--surface); color: var(--text);
@@ -165,7 +166,7 @@
     animation: spin 900ms linear infinite;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
-  #controls #repeat { position: relative; }
+  #controls #repeat { position: absolute; top: 0; bottom: 0; right: 0; margin-block: auto; }
   #controls #repeat[data-mode="off"] { color: var(--hint); }
   #controls #repeat[data-mode="all"], #controls #repeat[data-mode="one"] { color: var(--accent); box-shadow: var(--press); }
   #repeat[data-mode="one"]::after {
@@ -285,6 +286,7 @@
 
   /* 넓은 화면: 목록은 재생 순서와 라이브러리를 나란히, 가사집은 왼쪽 사진과 오른쪽 느낀점을 나란히 둔다. */
   @media (min-width: 900px) {
+    #controls { gap: 24px; }
     #app { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 24px; align-items: start; }
     #app > * { grid-column: 1 / -1; }
     #app > #queue-card { grid-column: 1; }
