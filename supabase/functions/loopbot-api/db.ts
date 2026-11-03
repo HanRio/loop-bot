@@ -1,6 +1,7 @@
 import postgres from "postgres";
 
 const DEFAULT_PLAYLIST_NAME = "기본";
+export const SHEET_MAX_PAGES = 20;
 
 export interface Playlist {
   id: number;
@@ -23,7 +24,13 @@ export interface LibraryTrack {
 // sheet_version is null when there is no photo; video_id is null when there is no reference video.
 export interface TrackMedia {
   sheet_version: number | null;
+  sheet_count: number;
   video_id: string | null;
+}
+
+export interface SheetPages {
+  version: number;
+  count: number;
 }
 
 export interface State {
@@ -47,9 +54,9 @@ export interface Db {
   setShared(userId: number, id: number, shared: boolean): Promise<boolean>;
   renameTrack(userId: number, id: number, title: string): Promise<boolean>;
   ownsTrack(userId: number, id: number): Promise<boolean>;
-  sheetFileId(userId: number, id: number): Promise<string | null>;
-  saveSheet(userId: number, id: number, fileId: string): Promise<number | null>;
-  deleteSheet(userId: number, id: number): Promise<boolean>;
+  sheetFileId(userId: number, id: number, page: number): Promise<string | null>;
+  saveSheet(userId: number, id: number, fileId: string): Promise<SheetPages | "full" | null>;
+  deleteSheet(userId: number, id: number, page: number): Promise<SheetPages | null>;
   saveVideo(userId: number, id: number, videoId: string | null): Promise<boolean>;
   saveNote(userId: number, id: number, body: string): Promise<boolean>;
   close(): Promise<void>;
@@ -175,15 +182,19 @@ export function createDb(dsn: string, schema: string): Db {
           order by t.id`;
 
         const mediaRows = await tx<
-          { track_id: number; sheet_file_id: string | null; sheet_version: number; video_id: string | null }[]
+          { track_id: number; sheet_version: number; sheet_count: number; video_id: string | null }[]
         >`
-          select tm.track_id, tm.sheet_file_id, tm.sheet_version, tm.video_id
+          select tm.track_id, tm.sheet_version, cardinality(tm.sheet_file_ids) as sheet_count, tm.video_id
           from track_media tm join tracks t on t.id = tm.track_id
           where ${readableFilter(tx, userId)}`;
         const media = Object.fromEntries(
           mediaRows.map((m) => [
             m.track_id,
-            { sheet_version: m.sheet_file_id === null ? null : m.sheet_version, video_id: m.video_id },
+            {
+              sheet_version: m.sheet_count === 0 ? null : m.sheet_version,
+              sheet_count: m.sheet_count,
+              video_id: m.video_id,
+            },
           ]),
         );
 
@@ -263,31 +274,42 @@ export function createDb(dsn: string, schema: string): Db {
 
     ownsTrack: (userId, id) => inSchema((tx) => ownsTrackIn(tx, userId, id)),
 
-    sheetFileId: (userId, id) =>
+    // page is 0-based; an out-of-range page gives null (the array subscript is past the end).
+    sheetFileId: (userId, id, page) =>
       inSchema(async (tx) => {
         const [row] = await tx<{ sheet_file_id: string | null }[]>`
-          select tm.sheet_file_id from track_media tm join tracks t on t.id = tm.track_id
+          select tm.sheet_file_ids[${page + 1}::int] as sheet_file_id
+          from track_media tm join tracks t on t.id = tm.track_id
           where tm.track_id = ${id} and ${readableFilter(tx, userId)}`;
         return row?.sheet_file_id ?? null;
       }),
 
+    // Pages are appended in order. The version bump and the cap are checked in the same statement, so a race cannot exceed the cap.
     saveSheet: (userId, id, fileId) =>
       inSchema(async (tx) => {
         if (!(await ownsTrackIn(tx, userId, id))) return null;
-        const [row] = await tx<{ sheet_version: number }[]>`
-          insert into track_media (track_id, sheet_file_id, sheet_version) values (${id}, ${fileId}, 1)
+        const [row] = await tx<SheetPages[]>`
+          insert into track_media (track_id, sheet_file_ids, sheet_version)
+          values (${id}, array[${fileId}]::text[], 1)
           on conflict (track_id) do update
-            set sheet_file_id = excluded.sheet_file_id, sheet_version = track_media.sheet_version + 1
-          returning sheet_version`;
-        return row.sheet_version;
+            set sheet_file_ids = array_append(track_media.sheet_file_ids, ${fileId}::text),
+                sheet_version = track_media.sheet_version + 1
+            where cardinality(track_media.sheet_file_ids) < ${SHEET_MAX_PAGES}::int
+          returning sheet_version as version, cardinality(sheet_file_ids) as count`;
+        return row ?? "full";
       }),
 
-    deleteSheet: (userId, id) =>
+    // Later pages move down one slot, so the version changes too. Deleting the last page leaves count 0 and keeps the version.
+    deleteSheet: (userId, id, page) =>
       inSchema(async (tx) => {
-        if (!(await ownsTrackIn(tx, userId, id))) return false;
-        // Keep sheet_version so the next upload gets a new version number.
-        await tx`update track_media set sheet_file_id = null where track_id = ${id}`;
-        return true;
+        if (!(await ownsTrackIn(tx, userId, id))) return null;
+        const [row] = await tx<SheetPages[]>`
+          update track_media
+          set sheet_file_ids = sheet_file_ids[1:${page}::int] || sheet_file_ids[${page}::int + 2:],
+              sheet_version = sheet_version + 1
+          where track_id = ${id} and ${page}::int < cardinality(sheet_file_ids)
+          returning sheet_version as version, cardinality(sheet_file_ids) as count`;
+        return row ?? null;
       }),
 
     saveVideo: (userId, id, videoId) =>

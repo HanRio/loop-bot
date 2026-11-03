@@ -12,6 +12,7 @@ const AUDIO_URL = './fake-audio.mp3';
 const SHEET_URL = './fake-sheet.svg';
 const SHARED_PLAYLIST_ID = 101;
 const SHARED_VIDEO_ID = 'dQw4w9WgXcQ';
+const SHEET_MAX_PAGES = 20;
 const VIDEO_ID_RE = /(?:v=|youtu\.be\/|shorts\/|embed\/|live\/)([A-Za-z0-9_-]{11})(?![A-Za-z0-9_-])/;
 
 export function createApi() {
@@ -30,7 +31,11 @@ export function createApi() {
         { id: 202, title: '공유 곡 2', duration: 80 },
       ]
     : [];
-  let media = MEMBER ? { 201: { sheet_version: 1, video_id: SHARED_VIDEO_ID } } : { 1: { sheet_version: 1, video_id: null } };
+  // 사진 쪽은 3장으로 시작한다. 버전은 한 번 쓴 값을 다시 쓰지 않도록 위로만 올린다.
+  let media = MEMBER
+    ? { 201: { sheet_version: 3, sheet_count: 3, video_id: SHARED_VIDEO_ID } }
+    : { 1: { sheet_version: 3, sheet_count: 3, video_id: null } };
+  let versionCounter = 3;
   let notes = {};
   let activeId = 1;
   let failedSaves = 0;
@@ -52,6 +57,10 @@ export function createApi() {
     const track = library.find((t) => t.id === id);
     if (!track) throw new ApiError('not_found', 404);
     return track;
+  };
+  const nextVersion = () => {
+    versionCounter += 1;
+    return versionCounter;
   };
   const adminOnly = () => {
     if (MEMBER) throw new ApiError('forbidden', 403);
@@ -125,21 +134,37 @@ export function createApi() {
       if (!res.ok) throw new ApiError('upstream', res.status);
       return res.blob();
     },
-    async sheet() {
+    // 쪽마다 번호를 적어 넣어 서로 구별되게 한다.
+    async sheet(id, page) {
       if (SLOW) await new Promise((resolve) => setTimeout(resolve, SLOW));
       const res = await fetch(SHEET_URL);
       if (!res.ok) throw new ApiError('upstream', res.status);
-      return res.blob();
+      const svg = (await res.text()).replace(
+        '</svg>',
+        `<text x="50%" y="50%" text-anchor="middle" font-size="64" fill="#c00">${page + 1}</text></svg>`,
+      );
+      return new Blob([svg], { type: 'image/svg+xml' });
     },
     async uploadSheet(id) {
       adminOnly();
-      const version = (media[id]?.sheet_version ?? 0) + 1;
-      media = { ...media, [id]: { ...media[id], video_id: media[id]?.video_id ?? null, sheet_version: version } };
-      return { version };
+      const current = media[id] ?? {};
+      const count = (current.sheet_count ?? 0) + 1;
+      if (count > SHEET_MAX_PAGES) throw new ApiError('too_many', 409);
+      const version = nextVersion();
+      media = { ...media, [id]: { video_id: current.video_id ?? null, sheet_version: version, sheet_count: count } };
+      return { version, count };
     },
-    async deleteSheet(id) {
+    async deleteSheet(id, page) {
       adminOnly();
-      media = { ...media, [id]: { video_id: media[id]?.video_id ?? null, sheet_version: null } };
+      const current = media[id] ?? {};
+      if (page < 0 || page >= (current.sheet_count ?? 0)) throw new ApiError('not_found', 404);
+      const count = (current.sheet_count ?? 0) - 1;
+      const version = nextVersion();
+      media = {
+        ...media,
+        [id]: { video_id: current.video_id ?? null, sheet_version: count === 0 ? null : version, sheet_count: count },
+      };
+      return { version, count };
     },
     async saveVideo(id, url) {
       adminOnly();

@@ -4,6 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>플레이리스트</title>
+<script>
+  // 칠하기 전에 스킨을 정해 화면이 번쩍이지 않게 한다.
+  try { if (localStorage.getItem('loopbot.skin') === 'glass') document.documentElement.dataset.skin = 'glass'; } catch {}
+</script>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.6/Sortable.min.js"></script>
 <style>
@@ -197,10 +201,25 @@
     position: sticky; top: 0; z-index: 1; background: var(--surface); border-radius: var(--radius-sm);
   }
   .lyric-card.current .lyric-title { color: var(--accent); }
+  /* 사진 넘기기(scroll-snap-carousel). 여러 장이면 다음 장 끝이 보여 옆으로 넘길 수 있음을 알린다. */
+  .sheet-wrap { position: relative; margin-top: 8px; }
+  .sheet-strip {
+    display: flex; gap: 8px; align-items: flex-start; overflow-x: auto;
+    scroll-snap-type: x mandatory; overscroll-behavior-inline: contain; scrollbar-width: none;
+  }
+  .sheet-strip::-webkit-scrollbar, .viewer-strip::-webkit-scrollbar { display: none; }
+  .sheet-count {
+    position: absolute; top: 8px; right: 8px; padding: 2px 10px; border-radius: 999px;
+    background: rgba(23, 32, 51, .62); color: #fff; font-size: 13px; font-weight: 600;
+    font-variant-numeric: tabular-nums; pointer-events: none;
+  }
   .sheet {
-    display: block; width: 100%; aspect-ratio: 4 / 3; margin-top: 8px; padding: 0; border: 0;
+    display: block; flex: 0 0 100%; width: 100%; aspect-ratio: 4 / 3; padding: 0; border: 0;
+    scroll-snap-align: start; scroll-snap-stop: always;
     border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--press); overflow: hidden;
   }
+  .sheet-strip.multi .sheet { flex-basis: 92%; }
+  .sheet-strip.multi .sheet:last-child { scroll-snap-align: end; }
   /* 사진을 받기 전에만 4:3 자리를 잡고, 받은 뒤에는 글자가 보이도록 원래 비율로 꽉 채운다. */
   .sheet:has(img:not([hidden])) { aspect-ratio: auto; }
   .sheet img { display: block; width: 100%; height: auto; }
@@ -244,11 +263,34 @@
   /* 사진 크게 보기 */
   .sheet-viewer {
     width: 100vw; height: 100vh; max-width: none; max-height: none; margin: 0; padding: 0; border: 0;
-    background: var(--surface); overflow: auto; touch-action: pan-x pan-y pinch-zoom;
+    background: var(--surface); overflow: hidden; touch-action: pan-x pan-y pinch-zoom;
   }
+  .viewer-strip {
+    display: flex; height: 100%; overflow-x: auto;
+    scroll-snap-type: x mandatory; overscroll-behavior-inline: contain; scrollbar-width: none;
+  }
+  .viewer-page { flex: 0 0 100%; height: 100%; overflow: auto; scroll-snap-align: start; scroll-snap-stop: always; }
+  .sheet-viewer .sheet-count { position: fixed; top: 24px; right: auto; left: 16px; z-index: 1; }
   .sheet-viewer::backdrop { background: var(--surface); }
-  .sheet-viewer img { display: block; width: 100%; height: auto; }
+  .viewer-page img { display: block; width: 100%; height: auto; }
   .sheet-close { position: fixed; top: 12px; right: 12px; z-index: 1; }
+
+  /* 화면 스킨 스위치 */
+  .page-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .skin-toggle {
+    display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 4px; border: 0; background: none;
+    color: var(--hint); font: inherit; font-size: 14px; font-weight: 600;
+  }
+  .skin-track {
+    position: relative; width: 44px; height: 26px; border-radius: 999px; background: var(--dark);
+    transition: background var(--ease);
+  }
+  .skin-track::after {
+    content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .3); transition: transform 280ms cubic-bezier(.34, 1.56, .64, 1);
+  }
+  .skin-toggle[aria-checked="true"] .skin-track { background: var(--accent); }
+  .skin-toggle[aria-checked="true"] .skin-track::after { transform: translateX(18px); }
 
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
@@ -265,6 +307,7 @@
     button:active:not(:disabled) { transform: none !important; }
   }
 </style>
+<link rel="stylesheet" href="glass.css">
 </head>
 <body ontouchstart="">
 <section id="video-panel" hidden>
@@ -334,7 +377,12 @@
     <p id="library-empty" class="empty" hidden>라이브러리가 비었어요. 링크나 음원을 보내주세요</p>
   </section>
   <p class="empty">링크는 채팅에 붙여넣으면 추가돼요. 긴 곡은 채팅에서 /play로 들어요</p>
-  <button id="guide-open" class="text-button" type="button">사용법 보기</button>
+  <div class="page-foot">
+    <button id="guide-open" class="text-button" type="button">사용법 보기</button>
+    <button id="skin-toggle" class="skin-toggle" type="button" role="switch" aria-checked="false">
+      글래스 화면<span class="skin-track" aria-hidden="true"></span>
+    </button>
+  </div>
 </main>
 <footer id="bar" hidden>
   <input id="seek" type="range" min="0" max="0" step="0.1" value="0" aria-label="재생 위치">
@@ -357,7 +405,8 @@
 </footer>
 <dialog id="sheet-viewer" class="sheet-viewer" aria-label="가사 사진">
   <button id="sheet-viewer-close" class="round sheet-close" type="button" aria-label="닫기"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button>
-  <img id="sheet-viewer-img" alt="가사 사진">
+  <div id="sheet-viewer-strip" class="viewer-strip"></div>
+  <span id="sheet-viewer-count" class="sheet-count" aria-hidden="true" hidden></span>
 </dialog>
 <script type="module" src="app.js"></script>
 </body>

@@ -1,8 +1,8 @@
-// 가사집 화면. 곡마다 카드 하나: 제목, 가사 사진, 참고 영상, 느낀점. 글자는 COPY와 textContent로만 넣는다.
+// 가사집 화면. 곡마다 카드 하나: 제목, 가사 사진(여러 장), 참고 영상, 느낀점. 글자는 COPY와 textContent로만 넣는다.
 // 카드는 feedKey가 바뀔 때만 다시 만든다. 곡이 넘어가 renderAll이 불려도 쓰던 글과 커서는 남는다.
 import { CACHE_NAME } from './audio.js';
 import { COPY } from './copy.js';
-import { draftsToRestore, embedUrl, feedKey, fitSize, sheetCacheKey, watchUrl } from './lyrics-logic.js';
+import { clampPage, draftsToRestore, embedUrl, feedKey, fitSize, pageFromScroll, pagesToLoad, sheetCacheKey, watchUrl } from './lyrics-logic.js';
 import { $ } from './render.js';
 import { createSaves, localKeys, readLocal, removeLocal, writeLocal } from './store.js';
 
@@ -38,6 +38,28 @@ function textButton(text, onClick, className = 'text-button') {
 
 function errorText(err, fallback) {
   return err.code === 'expired' ? COPY.reopen : fallback;
+}
+
+// 사진 쪽 하나가 차지하는 너비. 쪽이 하나뿐이면 0이다.
+function pageStep(nodes) {
+  return nodes.length < 2 ? 0 : nodes[1].offsetLeft - nodes[0].offsetLeft;
+}
+
+function makePage(index, count) {
+  const button = el('button', 'sheet');
+  button.type = 'button';
+  const img = el('img');
+  img.alt = `${COPY.sheetAlt} ${index + 1}/${count}`;
+  img.hidden = true;
+  button.append(img);
+  return { button, img, url: null, loaded: false, loading: false };
+}
+
+// 사진 올리기가 실패했을 때 글. too_many와 too_big은 따로 적는다.
+function uploadErrorText(err) {
+  if (err.code === 'too_many') return COPY.sheetTooMany;
+  if (err.code === 'too_big') return COPY.sheetTooBig;
+  return errorText(err, COPY.sheetUploadFailed);
 }
 
 // 사진 파일을 그림으로 읽는다. 방향은 사진 메타데이터를 따르고, 안 되면 <img>로 읽는다.
@@ -79,13 +101,13 @@ async function copyText(text, textarea) {
   }
 }
 
-// 사진은 Cache Storage에서 먼저 찾고, 없으면 받아서 넣는다. 키에 version이 있어 바뀐 사진은 다시 받는다.
-async function readSheet(api, id, version) {
+// 쪽 사진은 Cache Storage에서 먼저 찾고, 없으면 받아서 넣는다. 키에 version과 쪽 번호가 있어 바뀐 사진은 다시 받는다.
+async function readSheet(api, id, version, page) {
   const cache = await openSheetCache();
-  const key = sheetCacheKey(id, version);
+  const key = sheetCacheKey(id, version, page);
   const hit = cache ? await cache.match(key).catch(() => undefined) : undefined;
   if (hit) return hit.blob();
-  const blob = await api.sheet(id);
+  const blob = await api.sheet(id, page);
   if (cache) await cache.put(key, new Response(blob)).catch(() => {});
   return blob;
 }
@@ -94,7 +116,8 @@ export function createLyrics({ api, getState, onPlay, onError, onMediaChange, on
   const root = $('lyrics');
   const empty = $('lyrics-empty');
   const viewer = $('sheet-viewer');
-  const viewerImg = $('sheet-viewer-img');
+  const viewerStrip = $('sheet-viewer-strip');
+  const viewerCount = $('sheet-viewer-count');
   const videoPanel = $('video-panel');
   const videoFrame = $('video-frame');
   const tg = window.Telegram?.WebApp;
@@ -107,7 +130,12 @@ export function createLyrics({ api, getState, onPlay, onError, onMediaChange, on
   let feed = null;
   let cards = new Map();
   let openedVideoId = null;
-  let zoomIndex = 0;
+  // 곡마다 마지막으로 본 쪽. 카드를 다시 만들어도 같은 쪽을 보여 준다.
+  const pageMemo = new Map();
+  // 사진 올리기 중 실패한 글. 다시 그려진 카드에 붙여 보여 준다.
+  const pendingErrors = new Map();
+  // 열린 뷰어가 보여 주는 카드와 쪽 사진들.
+  let viewing = null;
   const cardOfSheet = new WeakMap();
   const observer = 'IntersectionObserver' in window ? new IntersectionObserver(onVisible, { rootMargin: '400px' }) : null;
 
@@ -178,20 +206,34 @@ export function createLyrics({ api, getState, onPlay, onError, onMediaChange, on
     card.error.textContent = text;
   }
 
+  // 파일 한 장을 줄여 올린다. 그림은 올린 뒤든 실패한 뒤든 놓아준다.
+  async function uploadPhoto(card, file) {
+    let image = null;
+    try {
+      image = await readImage(file);
+      const { width, height } = fitSize(image.width, image.height, SHEET_MAX_EDGE);
+      const blob = await drawJpeg(image.source, width, height);
+      return await api.uploadSheet(card.id, blob);
+    } finally {
+      image?.release();
+    }
+  }
+
   function buildTools(card, media) {
     const tools = el('div', 'lyric-tools');
     const file = el('input');
     file.type = 'file';
     file.accept = 'image/*';
+    file.multiple = true;
     file.hidden = true;
     file.addEventListener('change', () => {
-      const picked = file.files?.[0];
+      const picked = [...(file.files ?? [])];
       file.value = '';
-      if (picked) pickPhoto(card, picked);
+      if (picked.length) pickPhotos(card, picked);
     });
-    const photo = textButton(card.hasSheet ? COPY.photoReplace : COPY.photoAdd, () => file.click());
+    const photo = textButton(COPY.photoAdd, () => file.click());
     const remove = textButton(COPY.photoRemove, () => removePhoto(card));
-    remove.hidden = !card.hasSheet;
+    remove.hidden = card.count === 0;
     const url = el('input', 'video-input');
     url.type = 'url';
     url.inputMode = 'url';
@@ -199,23 +241,31 @@ export function createLyrics({ api, getState, onPlay, onError, onMediaChange, on
     url.value = media.video_id ? watchUrl(media.video_id) : '';
     const saveLink = textButton(COPY.save, () => saveVideoLink(card, url.value));
     tools.append(file, photo, remove, url, saveLink);
+    card.photo = photo;
     card.controls = [photo, remove, saveLink];
     return tools;
   }
 
   function buildCard(id, state) {
     const media = state.media[id] ?? {};
-    const hasSheet = media.sheet_version != null;
+    const count = media.sheet_count ?? 0;
+    const page = clampPage(pageMemo.get(id) ?? 0, count);
     const section = el('section', 'card lyric-card');
     const title = textButton(state.titles.get(id) ?? '', () => onPlay(id), 'lyric-title');
-    const sheet = el('button', 'sheet');
-    sheet.type = 'button';
-    sheet.hidden = !hasSheet;
-    const img = el('img');
-    img.alt = COPY.sheetAlt;
-    img.hidden = true;
-    sheet.append(img);
-    const retry = textButton(COPY.sheetRetry, () => loadSheet(card));
+    const pages = Array.from({ length: count }, (_, i) => makePage(i, count));
+    const strip = el('div', 'sheet-strip');
+    strip.setAttribute('role', 'group');
+    strip.setAttribute('aria-roledescription', 'carousel');
+    strip.setAttribute('aria-label', COPY.sheetAlt);
+    strip.classList.toggle('multi', count > 1);
+    strip.hidden = count === 0;
+    strip.append(...pages.map((p) => p.button));
+    const counter = el('span', 'sheet-count', COPY.sheetPage(page + 1, count));
+    counter.setAttribute('aria-hidden', 'true');
+    counter.hidden = count < 2;
+    const wrap = el('div', 'sheet-wrap');
+    wrap.append(strip, counter);
+    const retry = textButton(COPY.sheetRetry, () => loadPages(card));
     retry.hidden = true;
     const video = textButton(COPY.videoOpen, () => openVideo(media.video_id, state.titles.get(id) ?? ''));
     video.hidden = !media.video_id;
@@ -230,20 +280,23 @@ export function createLyrics({ api, getState, onPlay, onError, onMediaChange, on
     label.append(textarea);
     const foot = el('div', 'note-foot');
     foot.append(status, copy);
-    const error = el('p', 'card-error');
+    const pending = pendingErrors.get(id) ?? '';
+    pendingErrors.delete(id);
+    const error = el('p', 'card-error', pending);
     error.setAttribute('role', 'alert');
 
     const card = {
-      id, section, title, sheet, img, retry, hasSheet, textarea, status, copy, error,
-      controls: [], url: null, loaded: false, loading: false, version: media.sheet_version,
+      id, section, title, strip, wrap, counter, pages, count, page, retry, textarea, status, copy, error,
+      controls: [], photo: null, version: media.sheet_version,
     };
-    section.append(title, sheet, retry, video, label, foot, error);
+    section.append(title, wrap, retry, video, label, foot, error);
     if (state.canEdit) section.append(buildTools(card, media));
     textarea.addEventListener('input', () => onNoteInput(card, textarea.value));
-    sheet.addEventListener('click', () => {
-      if (card.loaded) openViewer(card);
-    });
-    cardOfSheet.set(sheet, card);
+    pages.forEach((p, i) => p.button.addEventListener('click', () => {
+      if (p.loaded) openViewer(card, i);
+    }));
+    strip.addEventListener('scroll', () => onPageScroll(card), { passive: true });
+    cardOfSheet.set(wrap, card);
     return card;
   }
 
@@ -278,19 +331,22 @@ export function createLyrics({ api, getState, onPlay, onError, onMediaChange, on
     const focus = keepFocus();
     observer?.disconnect();
     for (const card of cards.values()) {
-      if (card.url) URL.revokeObjectURL(card.url);
+      for (const page of card.pages) {
+        if (page.url) URL.revokeObjectURL(page.url);
+      }
     }
     cards = new Map(state.trackIds.map((id) => [id, buildCard(id, state)]));
     root.replaceChildren(empty, ...[...cards.values()].map((card) => card.section));
+    restorePages();
     feed = key;
     refresh(state);
     restoreFocus(focus);
     // 열린 영상이 새 목록에 더는 없으면 닫는다.
     if (openedVideoId && !state.trackIds.some((id) => state.media[id]?.video_id === openedVideoId)) closeVideo();
     for (const card of cards.values()) {
-      if (!card.hasSheet) continue;
-      if (observer) observer.observe(card.sheet);
-      else loadSheet(card);
+      if (card.count === 0) continue;
+      if (observer) observer.observe(card.wrap);
+      else loadPages(card);
     }
   }
 
@@ -299,69 +355,134 @@ export function createLyrics({ api, getState, onPlay, onError, onMediaChange, on
       if (!entry.isIntersecting) continue;
       observer.unobserve(entry.target);
       const card = cardOfSheet.get(entry.target);
-      if (card) loadSheet(card);
+      if (card) loadPages(card);
     }
   }
 
-  async function loadSheet(card) {
-    if (card.loaded || card.loading) return;
-    card.loading = true;
-    card.sheet.classList.add('is-loading');
+  function restorePages() {
+    for (const card of cards.values()) card.strip.scrollLeft = card.page * pageStep(card.pages.map((p) => p.button));
+  }
+
+  // 가로로 밀어 쪽이 바뀌면 번호를 고치고, 새 쪽과 그다음 쪽을 받는다.
+  function onPageScroll(card) {
+    const page = pageFromScroll(card.strip.scrollLeft, pageStep(card.pages.map((p) => p.button)), card.count);
+    if (page === card.page) return;
+    card.page = page;
+    pageMemo.set(card.id, page);
+    card.counter.textContent = COPY.sheetPage(page + 1, card.count);
+    loadPages(card);
+  }
+
+  // 보고 있는 쪽과 그다음 쪽을 받는다. 다시 받기 버튼도 여기로 온다.
+  function loadPages(card) {
+    for (const i of pagesToLoad(card.page, card.count)) loadPage(card, i);
+  }
+
+  async function loadPage(card, i) {
+    const page = card.pages[i];
+    if (page.loaded || page.loading) return;
+    page.loading = true;
+    page.button.classList.add('is-loading');
     card.retry.hidden = true;
     setError(card, '');
     try {
-      const blob = await readSheet(api, card.id, card.version);
+      const blob = await readSheet(api, card.id, card.version, i);
       // 받는 동안 카드가 다시 만들어졌으면 이 사진은 버린다.
       if (cards.get(card.id) !== card) return;
-      card.url = URL.createObjectURL(blob);
-      card.img.src = card.url;
+      page.url = URL.createObjectURL(blob);
+      page.img.src = page.url;
       // 크기를 알기 전에 보여 주면 카드가 잠깐 납작해져 아래 카드까지 한꺼번에 받는다.
-      await card.img.decode().catch(() => {});
-      card.img.hidden = false;
-      card.loaded = true;
+      await page.img.decode().catch(() => {});
+      page.img.hidden = false;
+      page.loaded = true;
+      showViewerPage(card, i);
     } catch (err) {
       if (cards.get(card.id) === card) {
         card.retry.hidden = false;
         setError(card, errorText(err, COPY.sheetLoadFailed));
       }
     } finally {
-      card.loading = false;
-      card.sheet.classList.remove('is-loading');
+      page.loading = false;
+      page.button.classList.remove('is-loading');
     }
   }
 
-  function openViewer(card) {
-    viewerImg.src = card.url;
-    zoomIndex = 0;
-    viewerImg.style.width = ZOOM_WIDTHS[zoomIndex];
-    viewer.showModal();
+  // 뷰어가 이 카드를 보고 있으면 방금 받은 쪽을 넣는다.
+  function showViewerPage(card, i) {
+    if (viewing?.card === card) viewing.imgs[i].src = card.pages[i].url;
   }
 
-  async function pickPhoto(card, file) {
+  function toggleZoom(img) {
+    img.style.width = ZOOM_WIDTHS[(ZOOM_WIDTHS.indexOf(img.style.width) + 1) % ZOOM_WIDTHS.length];
+  }
+
+  // 뷰어에는 쪽마다 img 하나를 만든다. 받은 쪽은 바로 넣고, 아직 없는 쪽은 받는 대로 넣는다.
+  function openViewer(card, index) {
+    const imgs = card.pages.map((_, i) => {
+      const img = el('img');
+      img.alt = `${COPY.sheetAlt} ${i + 1}/${card.count}`;
+      img.style.width = ZOOM_WIDTHS[0];
+      img.addEventListener('click', () => toggleZoom(img));
+      const box = el('div', 'viewer-page');
+      box.append(img);
+      viewerStrip.append(box);
+      return img;
+    });
+    viewing = { card, imgs };
+    viewerCount.hidden = card.count < 2;
+    viewerCount.textContent = COPY.sheetPage(index + 1, card.count);
+    viewer.showModal();
+    viewerStrip.scrollLeft = index * pageStep([...viewerStrip.children]);
+    card.pages.forEach((page, i) => {
+      if (page.loaded) imgs[i].src = page.url;
+      else loadPage(card, i);
+    });
+  }
+
+  function onViewerScroll() {
+    if (!viewing) return;
+    const page = pageFromScroll(viewerStrip.scrollLeft, pageStep([...viewerStrip.children]), viewing.card.count);
+    viewerCount.textContent = COPY.sheetPage(page + 1, viewing.card.count);
+  }
+
+  // 고른 사진을 차례로 올린다. 실패하면 거기서 멈추고, 그때까지 올라간 쪽은 남는다.
+  async function pickPhotos(card, files) {
     setBusy(card, true);
     setError(card, '');
-    let image = null;
+    const firstNew = card.count;
+    let last = null;
+    let failure = null;
     try {
-      image = await readImage(file);
-      const { width, height } = fitSize(image.width, image.height, SHEET_MAX_EDGE);
-      const blob = await drawJpeg(image.source, width, height);
-      const { version } = await api.uploadSheet(card.id, blob);
-      onMediaChange(card.id, { ...getState().media[card.id], sheet_version: version });
-    } catch (err) {
-      if (err.code === 'too_big') setError(card, COPY.sheetTooBig);
-      else setError(card, errorText(err, COPY.sheetUploadFailed));
+      for (const [i, file] of files.entries()) {
+        card.photo.textContent = COPY.photoUploading(i + 1, files.length);
+        try {
+          last = await uploadPhoto(card, file);
+        } catch (err) {
+          failure = err;
+          break;
+        }
+      }
+      if (failure && !last) setError(card, uploadErrorText(failure));
+      if (last) {
+        // 카드가 곧바로 다시 그려지므로 글을 먼저 맡겨 둔다.
+        if (failure) pendingErrors.set(card.id, uploadErrorText(failure));
+        pageMemo.set(card.id, firstNew);
+        onMediaChange(card.id, { ...getState().media[card.id], sheet_version: last.version, sheet_count: last.count });
+      }
     } finally {
-      image?.release();
+      card.photo.textContent = COPY.photoAdd;
       setBusy(card, false);
     }
   }
 
+  // 보고 있는 쪽을 지운다. 뒤의 쪽은 한 칸씩 앞으로 온다.
   async function removePhoto(card) {
     setBusy(card, true);
     setError(card, '');
     try {
-      await api.deleteSheet(card.id);
-      onMediaChange(card.id, { ...getState().media[card.id], sheet_version: null });
+      const { version, count } = await api.deleteSheet(card.id, card.page);
+      pageMemo.set(card.id, clampPage(card.page, count));
+      onMediaChange(card.id, { ...getState().media[card.id], sheet_version: count ? version : null, sheet_count: count });
     } catch (err) {
       setError(card, errorText(err, COPY.sheetDeleteFailed));
     } finally {
@@ -425,9 +546,10 @@ export function createLyrics({ api, getState, onPlay, onError, onMediaChange, on
     else window.open(url, '_blank', 'noopener');
   }
 
-  viewerImg.addEventListener('click', () => {
-    zoomIndex = (zoomIndex + 1) % ZOOM_WIDTHS.length;
-    viewerImg.style.width = ZOOM_WIDTHS[zoomIndex];
+  viewerStrip.addEventListener('scroll', onViewerScroll, { passive: true });
+  viewer.addEventListener('close', () => {
+    viewing = null;
+    viewerStrip.replaceChildren();
   });
   $('sheet-viewer-close').addEventListener('click', () => viewer.close());
   $('video-youtube').addEventListener('click', openYoutube);
@@ -441,6 +563,7 @@ export function createLyrics({ api, getState, onPlay, onError, onMediaChange, on
       serverNotes = state.notes;
       restoreDrafts(state.notes);
     }
+    const wasHidden = root.hidden;
     root.hidden = !state.visible;
     if (!state.visible) {
       // 가사집을 떠나면 열린 영상도 닫는다.
@@ -450,6 +573,8 @@ export function createLyrics({ api, getState, onPlay, onError, onMediaChange, on
     const key = feedKey(state.playlistId, state.trackIds, state.media, state.canEdit);
     if (key === feed) refresh(state);
     else rebuild(state, key);
+    // 가사집이 숨겨지면 가로 위치가 사라지는 브라우저가 있어 돌아올 때 맞춘다.
+    if (wasHidden) restorePages();
   }
 
   // 저장 중인 느낀점을 모두 기다린다. 실패하면 값은 남는다.

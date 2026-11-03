@@ -32,7 +32,7 @@ DB_SCHEMA = "loopbot"  # same default as PostgresStore
 PART_SUFFIX = ".part"
 HASH_PATTERN = re.compile(r"[0-9a-f]{64}")
 AUTH_DATE_PATTERN = re.compile(r"\d{1,15}", re.ASCII)
-TRACK_PATH = re.compile(r"/tracks/([1-9][0-9]{0,17})/(file|sheet)")
+TRACK_PATH = re.compile(r"/tracks/([1-9][0-9]{0,17})/(file|sheet)(?:/([0-9]{1,3}))?")
 CONTENT_TYPES = {"file": "audio/mp4", "sheet": "image/jpeg"}
 # The sheet URL stays the same when the photo is replaced, so it must always revalidate.
 CACHE_CONTROL = {"file": "private, max-age=31536000", "sheet": "private, no-cache"}
@@ -189,26 +189,27 @@ READABLE_TRACK_SQL = (
     "WHERE pt.track_id = t.id AND p.shared))"
 )
 FILE_ID_SQL = f"SELECT t.file_id FROM tracks t WHERE {READABLE_TRACK_SQL}"
+# Pages are array slots that start at 1 in SQL, so the 0-based page is bound as page + 1. An empty slot is NULL.
 SHEET_FILE_ID_SQL = (
-    "SELECT m.sheet_file_id FROM tracks t JOIN track_media m ON m.track_id = t.id "
-    f"WHERE {READABLE_TRACK_SQL} AND m.sheet_file_id IS NOT NULL"
+    "SELECT m.sheet_file_ids[%s] FROM tracks t JOIN track_media m ON m.track_id = t.id "
+    f"WHERE {READABLE_TRACK_SQL}"
 )
 
 
-def _lookup(database_url: str, query: str, user_id: int, track_id: int, schema: str) -> str | None:
+def _lookup(database_url: str, query: str, params: tuple, schema: str) -> str | None:
     # ponytail: 요청마다 연결. 부하가 생기면 풀을 쓴다.
     with psycopg.connect(database_url, autocommit=True, prepare_threshold=None, connect_timeout=10) as conn:
         conn.execute(sql.SQL("SET search_path TO {}").format(sql.Identifier(schema)))
-        row = conn.execute(query, (track_id, user_id)).fetchone()
+        row = conn.execute(query, params).fetchone()
     return row[0] if row else None
 
 
 def file_id_for(database_url: str, user_id: int, track_id: int, schema: str = DB_SCHEMA) -> str | None:
-    return _lookup(database_url, FILE_ID_SQL, user_id, track_id, schema)
+    return _lookup(database_url, FILE_ID_SQL, (track_id, user_id), schema)
 
 
-def sheet_file_id_for(database_url: str, user_id: int, track_id: int, schema: str = DB_SCHEMA) -> str | None:
-    return _lookup(database_url, SHEET_FILE_ID_SQL, user_id, track_id, schema)
+def sheet_file_id_for(database_url: str, user_id: int, track_id: int, page: int = 0, schema: str = DB_SCHEMA) -> str | None:
+    return _lookup(database_url, SHEET_FILE_ID_SQL, (page + 1, track_id, user_id), schema)
 
 
 @dataclass(frozen=True)
@@ -216,7 +217,7 @@ class Deps:
     bot_token: str
     is_allowed: Callable[[int, str | None], bool]
     file_id_for: Callable[[int, int], str | None]
-    sheet_file_id_for: Callable[[int, int], str | None]
+    sheet_file_id_for: Callable[[int, int, int], str | None]
     download: Callable[[str, Path], None]
     cache: FileCache
     now: Callable[[], int]
@@ -242,7 +243,8 @@ class FileHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         match = TRACK_PATH.fullmatch(urlsplit(self.path).path)
-        if match is None:
+        # 파일은 한 개뿐이라 쪽 번호가 붙으면 없는 경로다.
+        if match is None or (match.group(2) == "file" and match.group(3) is not None):
             self._json(404, "not_found")
             return
 
@@ -255,9 +257,15 @@ class FileHandler(BaseHTTPRequestHandler):
             return
 
         kind = match.group(2)
-        lookup = self.deps.file_id_for if kind == "file" else self.deps.sheet_file_id_for
+        track_id = int(match.group(1))
+        # 쪽 번호가 없으면 첫 쪽(0)이다.
+        page = int(match.group(3) or 0)
         try:
-            file_id = lookup(user.id, int(match.group(1)))
+            file_id = (
+                self.deps.file_id_for(user.id, track_id)
+                if kind == "file"
+                else self.deps.sheet_file_id_for(user.id, track_id, page)
+            )
             if file_id is None:
                 self._json(404, "not_found")
                 return
@@ -331,7 +339,7 @@ def main() -> None:
         bot_token=cfg.bot_token,
         is_allowed=cfg.is_allowed,
         file_id_for=lambda user_id, track_id: file_id_for(cfg.database_url, user_id, track_id),
-        sheet_file_id_for=lambda user_id, track_id: sheet_file_id_for(cfg.database_url, user_id, track_id),
+        sheet_file_id_for=lambda user_id, track_id, page: sheet_file_id_for(cfg.database_url, user_id, track_id, page),
         download=lambda file_id, dest: download_from_telegram(cfg.bot_token, file_id, dest),
         cache=FileCache(cache_dir),
         now=lambda: int(time.time()),

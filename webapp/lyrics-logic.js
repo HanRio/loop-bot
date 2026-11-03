@@ -35,9 +35,26 @@ export function watchUrl(videoId) {
   return `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`;
 }
 
-// Cache Storage 키. 사진을 바꾸면 version이 올라 옛 사진은 다시 받지 않는다.
-export function sheetCacheKey(trackId, version) {
-  return `sheet-${trackId}-${version}`;
+// Cache Storage 키. 사진을 바꾸면 version이 올라 옛 사진은 다시 받지 않는다. 쪽마다 따로 둔다.
+export function sheetCacheKey(trackId, version, page) {
+  return `sheet-${trackId}-${version}-${page}`;
+}
+
+// 쪽 번호를 0부터 count-1 사이로 맞춘다. 쪽이 없으면 0이다.
+export function clampPage(page, count) {
+  if (count <= 0) return 0;
+  return Math.min(Math.max(page, 0), count - 1);
+}
+
+// 가로 스크롤 위치를 쪽 번호로 바꾼다. step은 쪽 하나의 너비다.
+export function pageFromScroll(scrollLeft, step, count) {
+  if (step <= 0) return 0;
+  return clampPage(Math.round(scrollLeft / step), count);
+}
+
+// 보고 있는 쪽과 그다음 쪽. 받을 쪽이 없으면 빈 배열이다.
+export function pagesToLoad(page, count) {
+  return [page, page + 1].filter((p) => p >= 0 && p < count);
 }
 
 // 처음 보여 줄 목록. 내 목록이 비어 있고 공유 목록이 있으면 공유 목록을 연다. 처음 온 사람이 빈 화면을 보지 않게 한다.

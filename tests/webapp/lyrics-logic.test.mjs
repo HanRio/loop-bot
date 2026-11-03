@@ -1,11 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  clampPage,
   draftsToRestore,
   embedUrl,
   feedKey,
   fitSize,
   isWritable,
+  pagesToLoad,
+  pageFromScroll,
   sheetCacheKey,
   startPlaylistId,
   watchUrl,
@@ -58,8 +61,31 @@ test('embedUrl and watchUrl build the YouTube links from a video id', () => {
   assert.equal(watchUrl('abcdefghijk'), 'https://www.youtube.com/watch?v=abcdefghijk');
 });
 
-test('sheetCacheKey names the cached photo by track and version', () => {
-  assert.equal(sheetCacheKey(7, 2), 'sheet-7-2');
+test('sheetCacheKey names the cached page by track, version, and page', () => {
+  assert.equal(sheetCacheKey(7, 2, 0), 'sheet-7-2-0');
+  assert.equal(sheetCacheKey(7, 2, 1), 'sheet-7-2-1');
+});
+
+test('clampPage keeps the page between 0 and the last page, and is 0 when there are no pages', () => {
+  assert.equal(clampPage(1, 3), 1);
+  assert.equal(clampPage(-1, 3), 0);
+  assert.equal(clampPage(5, 3), 2);
+  assert.equal(clampPage(4, 0), 0);
+});
+
+test('pageFromScroll rounds the scroll position to a page and is 0 without a step', () => {
+  assert.equal(pageFromScroll(0, 300, 3), 0);
+  assert.equal(pageFromScroll(160, 300, 3), 1);
+  assert.equal(pageFromScroll(440, 300, 3), 1);
+  assert.equal(pageFromScroll(9000, 300, 3), 2);
+  assert.equal(pageFromScroll(500, 0, 3), 0);
+});
+
+test('pagesToLoad gives the current page and the next one, inside the valid range', () => {
+  assert.deepEqual(pagesToLoad(0, 3), [0, 1]);
+  assert.deepEqual(pagesToLoad(2, 3), [2]);
+  assert.deepEqual(pagesToLoad(0, 1), [0]);
+  assert.deepEqual(pagesToLoad(0, 0), []);
 });
 
 test('startPlaylistId opens the first shared list when the list to show is my own empty one', () => {

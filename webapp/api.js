@@ -85,13 +85,12 @@ export function createApi(baseUrl, initData, fileBase = null) {
     renameTrack: (id, title) => json('PUT', `/tracks/${id}`, { title }),
     setShared: (id, shared) => json('PUT', `/playlists/${id}/shared`, { shared }),
     file: (id) => fetchFile(`/tracks/${id}/file`),
-    sheet: (id) => fetchFile(`/tracks/${id}/sheet`),
-    // 사진은 JPEG 바이트 그대로 보낸다. 응답은 {version}.
+    // 쪽은 0부터 센다. 응답은 {version, count}.
+    sheet: (id, page) => fetchFile(`/tracks/${id}/sheet/${page}`),
+    // 사진은 JPEG 바이트 그대로 보낸다. 한 쪽씩 뒤에 붙는다.
     uploadSheet: (id, blob) =>
-      request('PUT', `/tracks/${id}/sheet`, undefined, { body: blob, headers: { 'Content-Type': 'image/jpeg' } }).then((res) => res.json()),
-    deleteSheet: async (id) => {
-      await request('DELETE', `/tracks/${id}/sheet`);
-    },
+      request('POST', `/tracks/${id}/sheet`, undefined, { body: blob, headers: { 'Content-Type': 'image/jpeg' } }).then((res) => res.json()),
+    deleteSheet: (id, page) => json('DELETE', `/tracks/${id}/sheet/${page}`),
     saveVideo: (id, url) => json('PUT', `/tracks/${id}/video`, { url }),
     saveNote: async (id, body) => {
       await request('PUT', `/tracks/${id}/note`, { body });

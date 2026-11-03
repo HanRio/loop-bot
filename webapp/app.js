@@ -8,7 +8,7 @@ import {
   $, closeNameForm, enableQueueSort, openNameForm, renderPicker, renderQueue, renderLibrary, renderBar, renderShare,
   renderViewSwitch, setNotice, setVisible,
 } from './render.js';
-import { cleanName, cleanTitle, createActiveSender, createSaves, mergeOrder, readLocal, writeLocal } from './store.js';
+import { cleanName, cleanTitle, createActiveSender, createSaves, mergeOrder, readLocal, removeLocal, writeLocal } from './store.js';
 import { startPlaylistId } from './lyrics-logic.js';
 
 const API_BASE = 'https://rrpmpqxoqxlwrmflpiyi.supabase.co/functions/v1/loopbot-api';
@@ -45,6 +45,27 @@ function applyTheme() {
 }
 applyTheme();
 tg?.onEvent?.('themeChanged', applyTheme);
+
+// 화면 스킨. 기본은 뉴모피즘이고 스위치를 켠 사람에게만 글래스로 보인다. 처음 칠하는 값은 index.html이 정한다.
+const KEY_SKIN = 'loopbot.skin';
+const SKIN_GLASS = 'glass';
+
+function renderSkinToggle() {
+  $('skin-toggle').setAttribute('aria-checked', String(document.documentElement.dataset.skin === SKIN_GLASS));
+}
+
+function onToggleSkin() {
+  const root = document.documentElement;
+  if (root.dataset.skin === SKIN_GLASS) {
+    delete root.dataset.skin;
+    removeLocal(KEY_SKIN);
+  } else {
+    root.dataset.skin = SKIN_GLASS;
+    writeLocal(KEY_SKIN, SKIN_GLASS);
+  }
+  renderSkinToggle();
+  applyTheme();
+}
 
 const model = {
   library: [],
@@ -591,6 +612,8 @@ async function init() {
     setVisible('guide', true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   });
+  renderSkinToggle();
+  $('skin-toggle').addEventListener('click', onToggleSkin);
   $('share-playlist').addEventListener('click', onToggleShare);
   $('view-list').addEventListener('click', () => onViewMode('list'));
   $('view-lyrics').addEventListener('click', () => onViewMode('lyrics'));

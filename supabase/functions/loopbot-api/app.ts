@@ -177,9 +177,9 @@ async function trackFile(userId: number, id: number, deps: Deps): Promise<Respon
   return telegramFile(fileId, { "content-type": "audio/mp4", "cache-control": "private, max-age=31536000" }, deps);
 }
 
-// no-cache: the sheet URL does not change when the photo is replaced, so always revalidate.
-async function trackSheet(userId: number, id: number, deps: Deps): Promise<Response> {
-  const fileId = await deps.db.sheetFileId(userId, id);
+// no-cache: the sheet URL does not change when a page is replaced, so always revalidate.
+async function trackSheet(userId: number, id: number, page: number, deps: Deps): Promise<Response> {
+  const fileId = await deps.db.sheetFileId(userId, id, page);
   if (fileId === null) throw notFound();
   return telegramFile(fileId, { "content-type": "image/jpeg", "cache-control": "private, no-cache" }, deps);
 }
@@ -241,7 +241,7 @@ async function readSheetBytes(req: Request): Promise<Uint8Array<ArrayBuffer>> {
   return bytes;
 }
 
-async function putSheet(req: Request, userId: number, id: number, deps: Deps): Promise<Response> {
+async function addSheet(req: Request, userId: number, id: number, deps: Deps): Promise<Response> {
   if (!(await deps.db.ownsTrack(userId, id))) throw notFound();
   if (mediaType(req) !== "image/jpeg") throw badRequest();
   const declared = req.headers.get("content-length");
@@ -249,9 +249,10 @@ async function putSheet(req: Request, userId: number, id: number, deps: Deps): P
   const bytes = await readSheetBytes(req);
 
   const fileId = await uploadSheet(userId, bytes, deps);
-  const version = await deps.db.saveSheet(userId, id, fileId);
-  if (version === null) throw notFound();
-  return json({ version });
+  const saved = await deps.db.saveSheet(userId, id, fileId);
+  if (saved === null) throw notFound();
+  if (saved === "full") throw new HttpError(409, "too_many");
+  return json(saved);
 }
 
 async function route(req: Request, deps: Deps, userId: number): Promise<Response> {
@@ -314,15 +315,20 @@ async function route(req: Request, deps: Deps, userId: number): Promise<Response
   if (file && req.method === "GET") return trackFile(userId, idParam(file[1]), deps);
 
   const sheet = path.match(/^\/tracks\/(\d+)\/sheet$/);
-  if (sheet && req.method === "GET") return trackSheet(userId, idParam(sheet[1]), deps);
-  if (sheet && req.method === "PUT") {
+  // Plain /sheet is page 0, kept for clients that were already open before pages existed.
+  if (sheet && req.method === "GET") return trackSheet(userId, idParam(sheet[1]), 0, deps);
+  if (sheet && req.method === "POST") {
     requireAdmin(deps, userId);
-    return putSheet(req, userId, idParam(sheet[1]), deps);
+    return addSheet(req, userId, idParam(sheet[1]), deps);
   }
-  if (sheet && req.method === "DELETE") {
+
+  const sheetPage = path.match(/^\/tracks\/(\d+)\/sheet\/(\d{1,3})$/);
+  if (sheetPage && req.method === "GET") return trackSheet(userId, idParam(sheetPage[1]), Number(sheetPage[2]), deps);
+  if (sheetPage && req.method === "DELETE") {
     requireAdmin(deps, userId);
-    if (!(await db.deleteSheet(userId, idParam(sheet[1])))) throw notFound();
-    return new Response(null, { status: 204, headers: CORS_HEADERS });
+    const pages = await db.deleteSheet(userId, idParam(sheetPage[1]), Number(sheetPage[2]));
+    if (pages === null) throw notFound();
+    return json(pages);
   }
 
   const video = path.match(/^\/tracks\/(\d+)\/video$/);

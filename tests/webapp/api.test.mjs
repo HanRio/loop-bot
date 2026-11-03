@@ -76,27 +76,47 @@ test('file uses only the function when no fileBase is given', async () => {
   assert.ok(calls[0].url.startsWith(SUPABASE));
 });
 
-test('sheet uses Oracle first and falls back to the function on 502', async () => {
+test('sheet uses Oracle first and falls back to the function on 502, for the given page', async () => {
   const calls = stubFetch((url) => (url.startsWith(ORACLE) ? failing(502, 'upstream') : audio()));
-  const blob = await createApi(SUPABASE, INIT_DATA, ORACLE).sheet(7);
+  const blob = await createApi(SUPABASE, INIT_DATA, ORACLE).sheet(7, 2);
 
   assert.equal(await blob.text(), 'AUDIO');
-  assert.equal(toOracle(calls)[0].url, `${ORACLE}/tracks/7/sheet`);
-  assert.equal(toSupabase(calls)[0].url, `${SUPABASE}/tracks/7/sheet`);
+  assert.equal(toOracle(calls)[0].url, `${ORACLE}/tracks/7/sheet/2`);
+  assert.equal(toSupabase(calls)[0].url, `${SUPABASE}/tracks/7/sheet/2`);
 });
 
-test('uploadSheet PUTs the JPEG bytes to the function with initData and returns the version', async () => {
+test('uploadSheet POSTs the JPEG bytes to the function with initData and returns version and count', async () => {
   const jpeg = new Blob(['JPEG'], { type: 'image/jpeg' });
-  const calls = stubFetch(() => new Response(JSON.stringify({ version: 2 }), { status: 200 }));
+  const calls = stubFetch(() => new Response(JSON.stringify({ version: 2, count: 3 }), { status: 200 }));
   const result = await createApi(SUPABASE, INIT_DATA, ORACLE).uploadSheet(7, jpeg);
 
-  assert.deepEqual(result, { version: 2 });
+  assert.deepEqual(result, { version: 2, count: 3 });
   assert.equal(calls.length, 1);
   assert.equal(calls[0].url, `${SUPABASE}/tracks/7/sheet`);
-  assert.equal(calls[0].init.method, 'PUT');
+  assert.equal(calls[0].init.method, 'POST');
   assert.equal(calls[0].init.body, jpeg);
   assert.equal(calls[0].init.headers['Content-Type'], 'image/jpeg');
   assert.equal(calls[0].init.headers['X-Telegram-Init-Data'], INIT_DATA);
+});
+
+test('uploadSheet answers ApiError too_many on 409', async () => {
+  stubFetch(() => failing(409, 'too_many'));
+
+  await assert.rejects(createApi(SUPABASE, INIT_DATA, ORACLE).uploadSheet(7, new Blob(['J'])), (err) => {
+    assert.ok(err instanceof ApiError);
+    assert.equal(err.code, 'too_many');
+    assert.equal(err.status, 409);
+    return true;
+  });
+});
+
+test('deleteSheet sends DELETE for the page and returns version and count', async () => {
+  const calls = stubFetch(() => new Response(JSON.stringify({ version: 5, count: 2 }), { status: 200 }));
+  const result = await createApi(SUPABASE, INIT_DATA, ORACLE).deleteSheet(7, 1);
+
+  assert.deepEqual(result, { version: 5, count: 2 });
+  assert.equal(calls[0].url, `${SUPABASE}/tracks/7/sheet/1`);
+  assert.equal(calls[0].init.method, 'DELETE');
 });
 
 test('file sends initData to both Oracle and the function', async () => {
