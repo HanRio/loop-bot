@@ -301,8 +301,10 @@ export function createLyrics({ api, getState, onPlay, onError, onMediaChange, on
       id, section, title, strip, wrap, counter, pages, count, page, retry, textarea, status, copy, error,
       controls: [], photo: null, version: media.sheet_version,
     };
-    section.append(title, wrap, retry, video, label, foot, error);
-    if (state.canEdit) section.append(buildTools(card, media));
+    const side = el('div', 'lyric-side');
+    side.append(video, label, foot, error);
+    if (state.canEdit) side.append(buildTools(card, media));
+    section.append(title, wrap, retry, side);
     textarea.addEventListener('input', () => onNoteInput(card, textarea.value));
     pages.forEach((p, i) => p.button.addEventListener('click', () => {
       if (p.loaded) openViewer(card, i);

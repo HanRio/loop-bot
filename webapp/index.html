@@ -283,6 +283,25 @@
   .viewer-page img { display: block; width: 100%; height: auto; }
   .sheet-close { position: fixed; top: 12px; right: 12px; z-index: 1; }
 
+  /* 넓은 화면: 목록은 재생 순서와 라이브러리를 나란히, 가사집은 왼쪽 사진과 오른쪽 느낀점을 나란히 둔다. */
+  @media (min-width: 900px) {
+    #app { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 24px; align-items: start; }
+    #app > * { grid-column: 1 / -1; }
+    #app > #queue-card { grid-column: 1; }
+    #app > #library-card { grid-column: 2; }
+    #app:has(#library-card[hidden]) > #queue-card { grid-column: 1 / -1; }
+    .lyric-card { display: grid; grid-template-columns: minmax(0, 3fr) minmax(320px, 2fr); column-gap: 24px; align-items: start; }
+    .lyric-title { grid-column: 1 / -1; }
+    .sheet-wrap, .lyric-card > .text-button { grid-column: 1; }
+    /* 긴 사진을 내려 봐도 느낀점 칸이 따라온다. 영상이 열리면 영상 패널 아래에 붙는다. */
+    .lyric-side { grid-column: 2; grid-row: 2 / span 2; position: sticky; top: var(--side-top, 52px); max-height: calc(100vh - var(--side-top, 52px) - 8px); overflow-y: auto; }
+    body.video-open { --side-top: calc(40vh + 72px); }
+    .lyric-side > .video-button:first-child { margin-top: 8px; }
+    .note-input { min-height: 14em; }
+    .video-frame { width: min(100%, calc(40vh * 16 / 9)); margin-inline: auto; }
+    .video-foot { width: min(100%, calc(40vh * 16 / 9)); margin-inline: auto; }
+  }
+
   /* 화면 스킨 스위치 */
   .page-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .skin-toggle {
