@@ -133,3 +133,8 @@
     -webkit-backdrop-filter: none; backdrop-filter: none; outline: 1px solid var(--text);
   }
 }
+
+/* 넓은 화면에서 영상 패널은 카드 안의 칸이라 유리 면을 걷는다. 위의 같은 선택자보다 뒤에 둬서 이긴다. */
+@media (min-width: 760px) {
+  :root[data-skin="glass"] #video-panel { background: none; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
+}

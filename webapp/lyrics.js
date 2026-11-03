@@ -2,6 +2,7 @@
 // 카드는 feedKey가 바뀔 때만 다시 만든다. 곡이 넘어가 renderAll이 불려도 쓰던 글과 커서는 남는다.
 import { CACHE_NAME } from './audio.js';
 import { COPY } from './copy.js';
+import { createDesk } from './desk.js';
 import { clampPage, draftsToRestore, embedUrl, feedKey, fitSize, pageFromScroll, pagesToLoad, sheetCacheKey, watchUrl } from './lyrics-logic.js';
 import { $ } from './render.js';
 import { createSaves, localKeys, readLocal, removeLocal, writeLocal } from './store.js';
@@ -37,14 +38,28 @@ function textButton(text, onClick, className = 'text-button') {
   return button;
 }
 
-function playIcon() {
+// href는 index.html 스프라이트의 '#i-이름'이다.
+function icon(href) {
   const svg = document.createElementNS(SVG_NS, 'svg');
   svg.setAttribute('class', 'i');
   svg.setAttribute('aria-hidden', 'true');
   const use = document.createElementNS(SVG_NS, 'use');
-  use.setAttribute('href', '#i-play');
+  use.setAttribute('href', href);
   svg.append(use);
   return svg;
+}
+
+// 칸 안의 패널. 앞의 손잡이를 끌어 다른 자리로 옮긴다. 이름이 이미 있는 패널은 손잡이에 아이콘만 둔다.
+function makePane(name, label, showName = true) {
+  const pane = el('div', 'desk-pane');
+  pane.dataset.pane = name;
+  const grip = el('button', 'pane-grip');
+  grip.type = 'button';
+  grip.setAttribute('aria-label', COPY.deskMove(label));
+  grip.append(icon('#i-grip'));
+  if (showName) grip.append(el('span', '', label));
+  pane.append(grip);
+  return pane;
 }
 
 function errorText(err, fallback) {
@@ -132,6 +147,7 @@ export function createLyrics({ api, getState, onPlay, onError, onMediaChange, on
   const videoPanel = $('video-panel');
   const videoFrame = $('video-frame');
   const tg = window.Telegram?.WebApp;
+  const desk = createDesk({ root, onChange: placeVideo, onApplied: restorePages });
 
   // 이 화면에서 쓴 느낀점 중 아직 서버에 같은 값이 없는 것. localStorage에도 같이 둔다.
   const drafts = new Map();
@@ -140,6 +156,8 @@ export function createLyrics({ api, getState, onPlay, onError, onMediaChange, on
   let restored = false;
   let feed = null;
   let cards = new Map();
+  // 열린 영상이 붙은 곡과 영상 ID. 영상은 넓은 화면에서 그 곡의 카드 안으로 간다.
+  let openedTrackId = null;
   let openedVideoId = null;
   // 곡마다 마지막으로 본 쪽. 카드를 다시 만들어도 같은 쪽을 보여 준다.
   const pageMemo = new Map();
@@ -278,8 +296,8 @@ export function createLyrics({ api, getState, onPlay, onError, onMediaChange, on
     wrap.append(strip, counter);
     const retry = textButton(COPY.sheetRetry, () => loadPages(card));
     retry.hidden = true;
-    const video = textButton(COPY.videoWatch, () => openVideo(media.video_id, state.titles.get(id) ?? ''), 'video-button');
-    video.prepend(playIcon());
+    const video = textButton(COPY.videoWatch, () => openVideo(id, media.video_id, state.titles.get(id) ?? ''), 'video-button');
+    video.prepend(icon('#i-play'));
     video.hidden = !media.video_id;
     const textarea = el('textarea', 'well note-input');
     textarea.rows = 4;
@@ -297,20 +315,39 @@ export function createLyrics({ api, getState, onPlay, onError, onMediaChange, on
     const error = el('p', 'card-error', pending);
     error.setAttribute('role', 'alert');
 
+    const sheetPane = makePane('sheet', COPY.paneSheet);
+    sheetPane.hidden = count === 0;
+    sheetPane.append(wrap, retry);
+    const videoPane = makePane('video', COPY.paneVideo);
+    videoPane.hidden = true;
+    const notePane = makePane('note', COPY.paneNote, false);
+    const panes = { sheet: sheetPane, video: videoPane, note: notePane };
+    const columns = { a: el('div', 'desk-col'), b: el('div', 'desk-col') };
+    const divider = el('div', 'desk-divider');
+    divider.setAttribute('role', 'separator');
+    divider.setAttribute('aria-orientation', 'vertical');
+    divider.setAttribute('aria-label', COPY.deskResize);
+    divider.tabIndex = 0;
+    const deskEl = el('div', 'desk');
+    deskEl.append(columns.a, divider, columns.b);
+
     const card = {
       id, section, title, strip, wrap, counter, pages, count, page, retry, textarea, status, copy, error,
       controls: [], photo: null, version: media.sheet_version,
+      desk: deskEl, columns, panes, divider,
     };
     const side = el('div', 'lyric-side');
     side.append(video, label, foot, error);
     if (state.canEdit) side.append(buildTools(card, media));
-    section.append(title, wrap, retry, side);
+    notePane.append(side);
+    section.append(title, deskEl);
     textarea.addEventListener('input', () => onNoteInput(card, textarea.value));
     pages.forEach((p, i) => p.button.addEventListener('click', () => {
       if (p.loaded) openViewer(card, i);
     }));
     strip.addEventListener('scroll', () => onPageScroll(card), { passive: true });
     cardOfSheet.set(wrap, card);
+    desk.applyCard(card);
     return card;
   }
 
@@ -355,8 +392,10 @@ export function createLyrics({ api, getState, onPlay, onError, onMediaChange, on
     feed = key;
     refresh(state);
     restoreFocus(focus);
-    // 열린 영상이 새 목록에 더는 없으면 닫는다.
-    if (openedVideoId && !state.trackIds.some((id) => state.media[id]?.video_id === openedVideoId)) closeVideo();
+    // 열린 영상의 곡이 목록에서 사라졌거나 영상 링크가 바뀌었으면 닫는다.
+    if (openedTrackId !== null && (!state.trackIds.includes(openedTrackId) || state.media[openedTrackId]?.video_id !== openedVideoId)) closeVideo();
+    else placeVideo();
+    desk.applyAll(cards.values());
     for (const card of cards.values()) {
       if (card.count === 0) continue;
       if (observer) observer.observe(card.wrap);
@@ -531,8 +570,9 @@ export function createLyrics({ api, getState, onPlay, onError, onMediaChange, on
   }
 
   // 열면 iframe을 만들고, 닫으면 지운다. 재생을 멈추고 바를 숨기는 일은 onVideoToggle을 받은 쪽이 한다.
-  function openVideo(videoId, label) {
+  function openVideo(id, videoId, label) {
     if (!videoId) return;
+    openedTrackId = id;
     openedVideoId = videoId;
     const frame = el('iframe');
     frame.src = embedUrl(videoId);
@@ -542,6 +582,8 @@ export function createLyrics({ api, getState, onPlay, onError, onMediaChange, on
     frame.title = `${label} ${COPY.videoOpen}`;
     videoFrame.replaceChildren(frame);
     videoPanel.hidden = false;
+    placeVideo();
+    if (desk.isWide()) cards.get(id)?.section.scrollIntoView({ block: 'start' });
     onVideoToggle(true);
   }
 
@@ -550,7 +592,22 @@ export function createLyrics({ api, getState, onPlay, onError, onMediaChange, on
     videoFrame.replaceChildren();
     videoPanel.hidden = true;
     openedVideoId = null;
+    openedTrackId = null;
+    placeVideo();
     onVideoToggle(false);
+  }
+
+  // 넓은 화면에서 열린 영상은 그 곡 카드의 영상 칸으로 옮기고, 그 밖에서는 본문 맨 위로 되돌린다.
+  function placeVideo() {
+    const card = openedTrackId === null ? null : cards.get(openedTrackId);
+    const slot = card && desk.isWide() ? card.panes.video : null;
+    for (const c of cards.values()) c.panes.video.hidden = c.panes.video !== slot;
+    if (slot) {
+      if (videoPanel.parentNode !== slot) slot.append(videoPanel);
+    } else if (videoPanel.parentNode !== document.body) {
+      document.body.prepend(videoPanel);
+    }
+    desk.applyAll(cards.values());
   }
 
   function openYoutube() {
@@ -595,5 +652,6 @@ export function createLyrics({ api, getState, onPlay, onError, onMediaChange, on
   const flush = () => saves.flushAll();
 
   empty.textContent = COPY.emptyLyrics;
+  $('desk-reset').textContent = COPY.deskReset;
   return { sync, flush, closeVideo };
 }

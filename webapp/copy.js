@@ -39,4 +39,10 @@ export const COPY = {
   save: '저장',
   create: '만들기',
   rename: '바꾸기',
+  paneSheet: '가사 사진',
+  paneVideo: '참고 영상',
+  deskMove: (name) => `${name} 옮기기`,
+  paneNote: '느낀점',
+  deskResize: '칸 너비 조절',
+  deskReset: '배치 초기화',
 };
