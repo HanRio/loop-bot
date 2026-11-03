@@ -5,6 +5,7 @@ from typing import TypeVar
 import psycopg
 from psycopg import Cursor, sql
 
+from loopbot.payload import youtube_video_id
 from loopbot.store import DEFAULT_PLAYLIST_NAME, Playlist, Track
 
 T = TypeVar("T")
@@ -98,6 +99,9 @@ class PostgresStore:
                 (user_id, title, file_id, duration, source),
             )
             track_id = cur.fetchone()[0]
+            video_id = youtube_video_id(source) if source else None
+            if video_id is not None:
+                cur.execute("INSERT INTO track_media (track_id, video_id) VALUES (%s, %s)", (track_id, video_id))
             playlist_id = self._active_id(cur, user_id)
             cur.execute(
                 "INSERT INTO playlist_tracks (playlist_id, track_id, position) "

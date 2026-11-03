@@ -24,6 +24,10 @@ def _add(store, user_id, *titles):
     return [store.add_track(user_id, t, "f" + t, None, None).id for t in titles]
 
 
+def _video_id(store, track_id):
+    return store._run(lambda cur: cur.execute("SELECT video_id FROM track_media WHERE track_id = %s", (track_id,)).fetchone())
+
+
 def _titles(store, user_id, playlist):
     by_id = {t.id: t.title for t in store.library(user_id)}
     return [by_id[i] for i in playlist.track_ids]
@@ -146,3 +150,15 @@ def test_playlist_tracks_is_none_for_unshared_or_missing_playlist(store):
     assert store.playlist_tracks(2, pid) is None
     assert store.playlist_tracks(1, pid) is not None
     assert store.playlist_tracks(1, 999999) is None
+
+
+def test_add_track_saves_video_id_from_youtube_source(store):
+    t = store.add_track(1, "A", "fa", None, "https://youtu.be/dQw4w9WgXcQ")
+    assert _video_id(store, t.id) == ("dQw4w9WgXcQ",)
+
+
+def test_add_track_without_video_id_leaves_no_media(store):
+    no_source = store.add_track(1, "A", "fa", None, None)
+    non_video = store.add_track(1, "B", "fb", None, "https://youtu.be/a")
+    assert _video_id(store, no_source.id) is None
+    assert _video_id(store, non_video.id) is None

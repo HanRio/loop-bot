@@ -1,6 +1,6 @@
 import pytest
 
-from loopbot.payload import extract_youtube_urls
+from loopbot.payload import extract_youtube_urls, youtube_video_id
 
 def test_extract_youtube_urls_from_mixed_text():
     text = "이거 https://youtu.be/a 랑\nhttps://youtu.be/b https://youtu.be/a 들어봐"
@@ -30,3 +30,20 @@ def test_extract_youtube_urls_cuts_surrounding_text(text, expected):
 ])
 def test_extract_youtube_urls_ignores_lookalikes(text):
     assert extract_youtube_urls(text) == []
+
+@pytest.mark.parametrize("url,expected", [
+    ("https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=3", "dQw4w9WgXcQ"),
+    ("https://music.youtube.com/watch?v=dQw4w9WgXcQ&list=PLx", "dQw4w9WgXcQ"),
+    ("https://m.youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ"),
+    ("https://youtu.be/dQw4w9WgXcQ?si=abc", "dQw4w9WgXcQ"),
+    ("https://youtube.com/shorts/dQw4w9WgXcQ", "dQw4w9WgXcQ"),
+    ("https://www.youtube.com/embed/dQw4w9WgXcQ", "dQw4w9WgXcQ"),
+    ("https://www.youtube.com/live/dQw4w9WgXcQ?feature=share", "dQw4w9WgXcQ"),
+    ("https://youtu.be/short", None),
+    ("https://www.youtube.com/playlist?list=PLx", None),
+    ("https://evil.com/watch?v=dQw4w9WgXcQ", None),
+    ("ftp://youtu.be/dQw4w9WgXcQ", None),
+    ("not a url", None),
+])
+def test_youtube_video_id(url, expected):
+    assert youtube_video_id(url) == expected
