@@ -227,6 +227,14 @@
     content: "사진 받는 중…"; display: grid; place-items: center; height: 100%;
     color: var(--hint); font-size: 14px;
   }
+  /* 화면에서 유일하게 색을 채운 버튼. 글자는 면 색이라 네 테마 모두 대비가 유지된다. */
+  .video-button {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    width: calc(100% - 16px); min-height: 48px; margin: 12px 8px 0; padding: 0 16px; border: 0;
+    border-radius: var(--radius-md); background: var(--accent); color: var(--surface);
+    font: inherit; font-weight: 700; box-shadow: var(--raise-sm);
+  }
+  .video-button .i { flex: none; width: 20px; height: 20px; margin: 0; }
   .note-label { display: block; margin: 12px 8px 0; font-size: 13px; font-weight: 600; color: var(--hint); }
   .note-input {
     display: block; width: 100%; margin-top: 6px; padding: 12px 16px; border: 0; border-radius: var(--radius-md);

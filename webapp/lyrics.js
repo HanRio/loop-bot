@@ -12,6 +12,7 @@ const SHEET_QUALITY = 0.9;
 const COPIED_MS = 1500;
 const ZOOM_WIDTHS = ['100%', '220%'];
 const VIDEO_ALLOW = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
+const SVG_NS = 'http://www.w3.org/2000/svg';
 
 async function openSheetCache() {
   try {
@@ -34,6 +35,16 @@ function textButton(text, onClick, className = 'text-button') {
   button.type = 'button';
   button.addEventListener('click', onClick);
   return button;
+}
+
+function playIcon() {
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('class', 'i');
+  svg.setAttribute('aria-hidden', 'true');
+  const use = document.createElementNS(SVG_NS, 'use');
+  use.setAttribute('href', '#i-play');
+  svg.append(use);
+  return svg;
 }
 
 function errorText(err, fallback) {
@@ -267,7 +278,8 @@ export function createLyrics({ api, getState, onPlay, onError, onMediaChange, on
     wrap.append(strip, counter);
     const retry = textButton(COPY.sheetRetry, () => loadPages(card));
     retry.hidden = true;
-    const video = textButton(COPY.videoOpen, () => openVideo(media.video_id, state.titles.get(id) ?? ''));
+    const video = textButton(COPY.videoWatch, () => openVideo(media.video_id, state.titles.get(id) ?? ''), 'video-button');
+    video.prepend(playIcon());
     video.hidden = !media.video_id;
     const textarea = el('textarea', 'well note-input');
     textarea.rows = 4;

@@ -32,6 +32,7 @@ export const COPY = {
   photoUploading: (done, total) => `올리는 중 ${done}/${total}`,
   photoRemove: '이 사진 지우기',
   videoOpen: '참고 영상',
+  videoWatch: '참고 영상 보기',
   videoLink: '영상 링크',
   videoFailed: '영상 링크를 저장하지 못했어요',
   videoInvalid: '유튜브 링크가 아니에요',
