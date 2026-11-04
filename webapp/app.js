@@ -18,7 +18,8 @@ const NEW_PLAYLIST = 'new';
 const REPEAT_ORDER = ['all', 'one', 'off'];
 const KEY_PLAYLIST = 'loopbot.player.playlist';
 const KEY_REPEAT = 'loopbot.player.repeat';
-const KEY_GUIDE = 'loopbot.player.guideSeen';
+// 사용법이 바뀌면 숫자를 올려 한 번 다시 보여 준다.
+const KEY_GUIDE = 'loopbot.player.guideSeen2';
 const NAME_MAX = 20;
 const TRACK_NAME_MAX = 200;
 
