@@ -9,6 +9,11 @@ export const DEFAULT_DESK = Object.freeze({
 
 const PANES = ['sheet', 'video', 'note'];
 
+// 떠 있는 영상 패널: 화면 위쪽 여백, 화면 높이에서 영상이 차지할 비율, 영상 아래 버튼 줄 높이(px).
+export const VIDEO_PIN_TOP = 8;
+export const VIDEO_HEIGHT_SHARE = 0.38;
+export const VIDEO_FOOT = 56;
+
 export function clampRatio(value) {
   if (!Number.isFinite(value)) return DEFAULT_DESK.ratio;
   return Math.min(DESK_MAX_RATIO, Math.max(DESK_MIN_RATIO, value));
@@ -45,4 +50,15 @@ export function movePane(desk, pane, target, where) {
   const at = columns[to].indexOf(target) + (where === 'after' ? 1 : 0);
   columns[to] = [...columns[to].slice(0, at), pane, ...columns[to].slice(at)];
   return { a: columns.a, b: columns.b, ratio: desk.ratio };
+}
+
+// 영상 칸의 자리를 받아 떠 있는 패널의 자리를 돌려준다. 칸이 화면 위로 지나가면 위쪽 여백에 붙는다.
+export function floatRect(slot, viewportHeight) {
+  const width = Math.min(slot.width, viewportHeight * VIDEO_HEIGHT_SHARE * 16 / 9);
+  return {
+    left: slot.left + (slot.width - width) / 2,
+    top: Math.max(slot.top, VIDEO_PIN_TOP),
+    width,
+    height: (width * 9) / 16 + VIDEO_FOOT,
+  };
 }

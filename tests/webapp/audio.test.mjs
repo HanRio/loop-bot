@@ -6,6 +6,7 @@ globalThis.Audio = class {
   paused = true;
   duration = NaN;
   currentTime = 0;
+  volume = 1;
   addEventListener() {}
   async play() {
     this.paused = false;
@@ -88,4 +89,52 @@ test('changing tracks keeps isLoading on until the newest track arrives', async 
   second.resolve(blob);
   await b;
   assert.equal(player.isLoading(), false);
+});
+
+test('setVolume clamps to 0..1', () => {
+  const player = createPlayer({ api: {} });
+  player.setVolume(2);
+  assert.equal(player.volume(), 1);
+  player.setVolume(-1);
+  assert.equal(player.volume(), 0);
+});
+
+test('setVolume ignores non-finite values', () => {
+  const player = createPlayer({ api: {} });
+  player.setVolume(0.4);
+  player.setVolume(NaN);
+  assert.equal(player.volume(), 0.4);
+});
+
+test('canSetVolume is true when the element accepts volume changes', () => {
+  const player = createPlayer({ api: {} });
+  assert.equal(player.canSetVolume(), true);
+});
+
+test('canSetVolume is false when the element ignores volume changes', () => {
+  const Normal = globalThis.Audio;
+  // iPhone/iPad처럼 볼륨 쓰기를 무시하고 항상 1을 돌려주는 요소.
+  globalThis.Audio = class {
+    paused = true;
+    duration = NaN;
+    currentTime = 0;
+    get volume() {
+      return 1;
+    }
+    set volume(_value) {}
+    addEventListener() {}
+  };
+  try {
+    const player = createPlayer({ api: {} });
+    assert.equal(player.canSetVolume(), false);
+  } finally {
+    globalThis.Audio = Normal;
+  }
+});
+
+test('canSetVolume leaves the current volume unchanged', () => {
+  const player = createPlayer({ api: {} });
+  player.setVolume(0.3);
+  player.canSetVolume();
+  assert.equal(player.volume(), 0.3);
 });

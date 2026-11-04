@@ -1,0 +1,68 @@
+/* 볼륨 버튼과 슬라이더. #controls button 기본 모양을 이어받고 위치와 크기만 바꾼다. */
+#controls #volume { position: absolute; top: 0; bottom: 0; right: 48px; margin-block: auto; }
+
+/* 좁은 화면: 버튼이 작아져 자리를 맞춘다. */
+@media (max-width: 759px) {
+  #controls { gap: 8px; }
+  #controls button { width: 40px; height: 40px; }
+  #controls #toggle { width: 52px; height: 52px; }
+  #controls #volume { right: 44px; }
+}
+
+/* 아주 좁은 화면: 자리가 없어 볼륨은 하드웨어 버튼에 맡긴다. */
+@media (max-width: 359px) {
+  #controls #volume, #volume-pop { display: none !important; }
+}
+
+/* 좁은 화면 팝오버 */
+#volume-pop {
+  position: absolute; right: 0; bottom: calc(100% + 40px); padding: 12px 16px;
+  border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--raise-sm); z-index: 3;
+}
+:root[data-skin="glass"] #volume-pop { background: var(--glass-solid); }
+
+/* 넓은 화면: 슬라이더를 repeat 왼쪽에 항상 펼친다. */
+@media (min-width: 760px) {
+  #volume-pop {
+    position: absolute; top: 0; bottom: 0; right: 100px; display: flex; align-items: center;
+    padding: 0; background: none; box-shadow: none;
+  }
+  :root[data-skin="glass"] #volume-pop { background: none; box-shadow: none; }
+  #volume-range { width: 96px; }
+}
+
+/* 슬라이더 모양은 #seek와 같은 토큰을 쓴다. */
+#volume-range {
+  display: block; width: 160px; height: 28px; margin: 0; background: none;
+  -webkit-appearance: none; appearance: none;
+}
+#volume-range::-webkit-slider-runnable-track {
+  height: 6px; border-radius: 3px; box-shadow: var(--press);
+  background: linear-gradient(var(--accent), var(--accent)) no-repeat 0 / var(--progress, 100%) 100%, var(--surface);
+}
+#volume-range::-moz-range-track {
+  height: 6px; border-radius: 3px; box-shadow: var(--press);
+  background: linear-gradient(var(--accent), var(--accent)) no-repeat 0 / var(--progress, 100%) 100%, var(--surface);
+}
+#volume-range::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 18px; height: 18px; margin-top: -6px; border: 0; border-radius: 50%;
+  background: var(--surface); box-shadow: var(--raise-sm);
+}
+#volume-range::-moz-range-thumb {
+  width: 18px; height: 18px; border: 0; border-radius: 50%;
+  background: var(--surface); box-shadow: var(--raise-sm);
+}
+:root[data-skin="glass"] #volume-range::-webkit-slider-runnable-track {
+  box-shadow: none;
+  background: linear-gradient(var(--accent), var(--accent)) no-repeat 0 / var(--progress, 100%) 100%, var(--track);
+}
+:root[data-skin="glass"] #volume-range::-moz-range-track {
+  box-shadow: none;
+  background: linear-gradient(var(--accent), var(--accent)) no-repeat 0 / var(--progress, 100%) 100%, var(--track);
+}
+
+/* 좁은 화면에서 볼륨 칸을 여는 동안 전체 복사 버튼에 가리지 않게 한다. */
+@media (max-width: 759px) {
+  body:has(#volume-pop:not([hidden])) #lyrics-actions { display: none; }
+}

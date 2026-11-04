@@ -10,6 +10,7 @@ import {
 } from './render.js';
 import { cleanName, cleanTitle, createActiveSender, createSaves, mergeOrder, readLocal, removeLocal, writeLocal } from './store.js';
 import { startPlaylistId } from './lyrics-logic.js';
+import { initVolume } from './volume.js';
 
 const API_BASE = 'https://rrpmpqxoqxlwrmflpiyi.supabase.co/functions/v1/loopbot-api';
 const FILE_BASE = 'https://168-110-54-40.sslip.io';
@@ -551,6 +552,7 @@ async function init() {
     onError: onTrackFailed,
     onSkip: (dir) => (dir === 'next' ? userMove(computeNext(true)) : userMove(computePrev())),
   });
+  initVolume(player);
   lyrics = createLyrics({
     api,
     getState: lyricsState,

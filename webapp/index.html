@@ -336,8 +336,6 @@
     .desk.single .desk-col { flex: 1 1 100%; }
     .desk.single .desk-divider { display: none; }
     .desk.single .desk-col:not(:has(> .desk-pane:not([hidden]))) { display: none; }
-    /* 사진을 내려 봐도 영상·느낀점 칸이 따라온다. */
-    .desk-col.follows { position: sticky; top: 52px; max-height: calc(100vh - 60px); overflow-y: auto; padding: 4px; margin: -4px; }
     .desk-divider { display: block; flex: 0 0 17px; align-self: stretch; cursor: col-resize; touch-action: none; position: relative; }
     .desk-divider::after {
       content: ""; position: absolute; top: 8px; bottom: 8px; left: 50%; width: 3px; margin-left: -1.5px;
@@ -348,7 +346,7 @@
     /* 느낀점은 이름표가 이미 있어 손잡이를 그 줄 오른쪽에 겹친다. */
     .desk-pane[data-pane="note"] .pane-grip { position: absolute; top: 0; right: 0; width: auto; z-index: 1; }
     /* 영상을 연 카드에서는 여는 버튼이 필요 없다. 그 자리를 느낀점에 준다. */
-    .lyric-card:has(#video-panel) .video-button { display: none; }
+    .lyric-card:has(.desk-pane[data-pane="video"]:not([hidden])) .video-button { display: none; }
     .pane-grip {
       display: flex; align-items: center; gap: 6px; width: 100%; min-height: 32px; padding: 0 8px; border: 0;
       background: none; color: var(--hint); font: inherit; font-size: 13px; font-weight: 600; cursor: grab; touch-action: none;
@@ -360,12 +358,23 @@
     body.desk-dragging { user-select: none; cursor: grabbing; }
     body.desk-dragging iframe { pointer-events: none; }
     .desk .sheet-wrap { margin-top: 0; }
-    /* 영상 패널은 칸 안에 들어가므로 고정과 바깥 여백을 걷는다. */
-    #video-panel { position: static; margin: 0; padding: 0; box-shadow: none; background: none; }
-    .video-frame { width: min(100%, calc(38vh * 16 / 9)); margin-inline: auto; }
-    .video-foot { width: min(100%, calc(38vh * 16 / 9)); margin-inline: auto; }
-    .note-input { min-height: 14em; }
-    body.video-open .note-input { min-height: 8em; }
+    /* 영상 패널은 body에 남아 있고, 열면 칸의 영상 자리 위에 떠서 따라간다(video-float.js). */
+    #video-panel.floating { position: fixed; z-index: 5; margin: 0; padding: 0; background: var(--surface); box-shadow: var(--raise-sm); border-radius: var(--radius-md); }
+    #video-panel.floating .video-frame { width: 100%; }
+    #video-panel.floating .video-foot { padding: 4px 8px 8px; }
+    body.desk-dragging #video-panel { pointer-events: none; }
+    .lyric-card:has(.desk-pane[data-pane="video"]:not([hidden])) .video-button { display: none; }
+    .video-slot { display: block; }
+    /* 아래 몫: 재생 바와 전체 복사 버튼. 영상을 열면 재생 바가 숨는다. */
+    body { --below-room: 172px; }
+    body.video-open { --below-room: 76px; }
+    .desk:not(.single) .desk-col.follows:has(> .desk-pane[data-pane="note"]) { position: sticky; top: 52px; display: flex; flex-direction: column; height: calc(100vh - 52px - var(--below-room)); height: calc(100dvh - 52px - var(--below-room)); overflow-y: auto; padding: 4px; margin: -4px; }
+    .desk:not(.single) .desk-col.follows > .desk-pane[data-pane="note"] { flex: 1 1 0; min-height: 200px; display: flex; flex-direction: column; }
+    .desk:not(.single) .desk-col.follows .lyric-side { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
+    .desk:not(.single) .desk-col.follows .note-label { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
+    .desk:not(.single) .desk-col.follows .note-input { flex: 1 1 0; min-height: 6em; field-sizing: fixed; resize: none; }
+    .note-input { min-height: 14em; max-height: 50vh; overflow: auto; }
+    .desk:not(.single) .desk-col.follows .note-input { max-height: none; }
     #desk-reset { display: block; margin-right: auto; }
   }
 
@@ -402,6 +411,7 @@
   }
 </style>
 <link rel="stylesheet" href="glass.css">
+<link rel="stylesheet" href="volume.css">
 </head>
 <body ontouchstart="">
 <section id="video-panel" hidden>
@@ -423,6 +433,8 @@
   <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
   <symbol id="i-grip" viewBox="0 0 24 24"><path d="M5 8h14M5 12h14M5 16h14"/></symbol>
   <symbol id="i-chevron" viewBox="0 0 24 24"><path d="M6 9.5l6 6 6-6"/></symbol>
+  <symbol id="i-volume" viewBox="0 0 24 24"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5zM15.5 9a4 4 0 0 1 0 6M18 6.5a8 8 0 0 1 0 11"/></symbol>
+  <symbol id="i-mute" viewBox="0 0 24 24"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5zM16 9.5l5 5M21 9.5l-5 5"/></symbol>
   <symbol id="i-share" viewBox="0 0 24 24"><path d="M12 15V4M8 8l4-4 4 4M5 13v6h14v-6"/></symbol>
 </svg>
 <p id="fatal" class="empty" hidden></p>
@@ -500,6 +512,8 @@
       </button>
       <button id="next" type="button" aria-label="다음 곡"><svg class="i" aria-hidden="true"><use href="#i-next"/></svg></button>
       <button id="repeat" type="button" aria-label="전체 반복"><svg class="i" aria-hidden="true"><use href="#i-repeat"/></svg></button>
+      <button id="volume" type="button" aria-label="볼륨" hidden><svg class="i" aria-hidden="true"><use id="volume-icon" href="#i-volume"/></svg></button>
+      <div id="volume-pop" hidden><input id="volume-range" type="range" min="0" max="1" step="0.01" value="1" aria-label="볼륨 크기"></div>
     </div>
   </div>
   <p id="play-notice" role="alert"></p>

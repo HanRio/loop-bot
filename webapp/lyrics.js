@@ -7,6 +7,7 @@ import { clampPage, draftsToRestore, embedUrl, feedKey, fitSize, pageFromScroll,
 import { createNoteActions } from './note-actions.js';
 import { $ } from './render.js';
 import { createSaves, localKeys, readLocal, removeLocal, writeLocal } from './store.js';
+import { createVideoFloat } from './video-float.js';
 
 const NOTE_KEY = 'loopbot.note.';
 const SHEET_MAX_EDGE = 2400;
@@ -149,6 +150,8 @@ export function createLyrics({ api, getState, onPlay, onError, onMediaChange, on
   const videoFrame = $('video-frame');
   const tg = window.Telegram?.WebApp;
   const desk = createDesk({ root, onChange: placeVideo, onApplied: restorePages });
+  // 영상 패널은 body에 그대로 두고, 넓은 화면에서 카드의 영상 칸 위에 띄운다. 그래서 칸을 옮겨도 iframe이 다시 뜨지 않는다.
+  const videoFloat = createVideoFloat(videoPanel);
 
   // 이 화면에서 쓴 느낀점 중 아직 서버에 같은 값이 없는 것. localStorage에도 같이 둔다.
   const drafts = new Map();
@@ -330,6 +333,8 @@ export function createLyrics({ api, getState, onPlay, onError, onMediaChange, on
     sheetPane.append(wrap, retry);
     const videoPane = makePane('video', COPY.paneVideo);
     videoPane.hidden = true;
+    const videoSlot = el('div', 'video-slot');
+    videoPane.append(videoSlot);
     const notePane = makePane('note', COPY.paneNote, false);
     const panes = { sheet: sheetPane, video: videoPane, note: notePane };
     const columns = { a: el('div', 'desk-col'), b: el('div', 'desk-col') };
@@ -344,7 +349,7 @@ export function createLyrics({ api, getState, onPlay, onError, onMediaChange, on
     const card = {
       id, section, title, strip, wrap, counter, pages, count, page, retry, textarea, status, copy, del, error,
       controls: [], photo: null, version: media.sheet_version,
-      desk: deskEl, columns, panes, divider,
+      desk: deskEl, columns, panes, divider, videoSlot,
     };
     const side = el('div', 'lyric-side');
     side.append(video, label, foot, error);
@@ -607,17 +612,13 @@ export function createLyrics({ api, getState, onPlay, onError, onMediaChange, on
     onVideoToggle(false);
   }
 
-  // 넓은 화면에서 열린 영상은 그 곡 카드의 영상 칸으로 옮기고, 그 밖에서는 본문 맨 위로 되돌린다.
+  // 넓은 화면에서 열린 영상은 그 곡 카드의 영상 칸을 따라 떠 있고, 그 밖에서는 본문 맨 위에 머문다.
   function placeVideo() {
     const card = openedTrackId === null ? null : cards.get(openedTrackId);
-    const slot = card && desk.isWide() ? card.panes.video : null;
-    for (const c of cards.values()) c.panes.video.hidden = c.panes.video !== slot;
-    if (slot) {
-      if (videoPanel.parentNode !== slot) slot.append(videoPanel);
-    } else if (videoPanel.parentNode !== document.body) {
-      document.body.prepend(videoPanel);
-    }
+    const pane = card && desk.isWide() ? card.panes.video : null;
+    for (const c of cards.values()) c.panes.video.hidden = c.panes.video !== pane;
     desk.applyAll(cards.values());
+    videoFloat.attach(pane ? card.videoSlot : null);
   }
 
   function openYoutube() {

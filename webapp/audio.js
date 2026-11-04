@@ -168,10 +168,28 @@ export function createPlayer({
     await cache?.delete(cacheKey(trackId)).catch(() => {});
   }
 
+  // 0..1로 자른다. 숫자가 아니면 무시한다.
+  function setVolume(value) {
+    if (!Number.isFinite(value)) return;
+    audio.volume = Math.min(1, Math.max(0, value));
+  }
+
+  // iPhone/iPad는 <audio> 볼륨 쓰기를 무시한다. 잠깐 바꿔 보고 원래 값으로 되돌린다.
+  function canSetVolume() {
+    const before = audio.volume;
+    audio.volume = 0.5;
+    const works = Math.abs(audio.volume - 0.5) < 0.01;
+    audio.volume = before;
+    return works;
+  }
+
   return {
     play,
     prefetch,
     forget,
+    setVolume,
+    volume: () => audio.volume,
+    canSetVolume,
     // 받는 중인 곡이 있으면 버린다. 멈춘 뒤에 늦게 도착한 곡이 재생되지 않게 한다.
     cancel() {
       token += 1;
