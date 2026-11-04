@@ -4,6 +4,7 @@ import { CACHE_NAME } from './audio.js';
 import { COPY } from './copy.js';
 import { createDesk } from './desk.js';
 import { clampPage, draftsToRestore, embedUrl, feedKey, fitSize, pageFromScroll, pagesToLoad, sheetCacheKey, watchUrl } from './lyrics-logic.js';
+import { createNoteActions } from './note-actions.js';
 import { $ } from './render.js';
 import { createSaves, localKeys, readLocal, removeLocal, writeLocal } from './store.js';
 
@@ -224,7 +225,14 @@ export function createLyrics({ api, getState, onPlay, onError, onMediaChange, on
     writeLocal(NOTE_KEY + card.id, body);
     card.status.textContent = COPY.saving;
     card.copy.disabled = !body;
+    card.del.disabled = !body;
     saves.update({ id: card.id, body });
+  }
+
+  function deleteNote(card) {
+    if (!card.textarea.value || !confirm(COPY.noteDeleteConfirm)) return;
+    card.textarea.value = '';
+    onNoteInput(card, '');
   }
 
   function setBusy(card, busy) {
@@ -306,10 +314,12 @@ export function createLyrics({ api, getState, onPlay, onError, onMediaChange, on
     status.setAttribute('aria-live', 'polite');
     const copy = textButton(COPY.copy, () => copyNote(card));
     copy.disabled = !textarea.value;
+    const del = textButton(COPY.noteDelete, () => deleteNote(card), 'text-button note-delete');
+    del.disabled = !textarea.value;
     const label = el('label', 'note-label', COPY.note);
     label.append(textarea);
     const foot = el('div', 'note-foot');
-    foot.append(status, copy);
+    foot.append(status, del, copy);
     const pending = pendingErrors.get(id) ?? '';
     pendingErrors.delete(id);
     const error = el('p', 'card-error', pending);
@@ -332,7 +342,7 @@ export function createLyrics({ api, getState, onPlay, onError, onMediaChange, on
     deskEl.append(columns.a, divider, columns.b);
 
     const card = {
-      id, section, title, strip, wrap, counter, pages, count, page, retry, textarea, status, copy, error,
+      id, section, title, strip, wrap, counter, pages, count, page, retry, textarea, status, copy, del, error,
       controls: [], photo: null, version: media.sheet_version,
       desk: deskEl, columns, panes, divider,
     };
@@ -636,6 +646,7 @@ export function createLyrics({ api, getState, onPlay, onError, onMediaChange, on
     }
     const wasHidden = root.hidden;
     root.hidden = !state.visible;
+    $('lyrics-actions').hidden = !state.visible || state.trackIds.length === 0;
     if (!state.visible) {
       // 가사집을 떠나면 열린 영상도 닫는다.
       closeVideo();
@@ -653,5 +664,12 @@ export function createLyrics({ api, getState, onPlay, onError, onMediaChange, on
 
   empty.textContent = COPY.emptyLyrics;
   $('desk-reset').textContent = COPY.deskReset;
+  // 전체 복사와 양식 창. 가사집이 보일 때만 떠 있다.
+  createNoteActions({
+    getRows: () => {
+      const state = getState();
+      return state.trackIds.map((id) => ({ title: state.titles.get(id) ?? '', body: noteValue(id) }));
+    },
+  });
   return { sync, flush, closeVideo };
 }

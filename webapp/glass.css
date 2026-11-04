@@ -57,6 +57,8 @@
 :root[data-skin="glass"] .note-foot .text-button { border-radius: 999px; }
 :root[data-skin="glass"] .buttons button.primary { background: var(--tint); }
 :root[data-skin="glass"] .note-foot .text-button:disabled { background: transparent; box-shadow: none; }
+:root[data-skin="glass"] #template-open { background: var(--glass-solid); }
+:root[data-skin="glass"] .template-dialog { background: var(--glass-solid); box-shadow: var(--float); }
 :root[data-skin="glass"] #share-playlist[aria-pressed="true"] { background: var(--tint); box-shadow: var(--press); }
 
 /* 목록/가사집 전환: 렌즈가 스프링으로 미끄러진다 */
