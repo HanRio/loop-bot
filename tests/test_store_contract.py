@@ -162,3 +162,8 @@ def test_add_track_without_video_id_leaves_no_media(store):
     non_video = store.add_track(1, "B", "fb", None, "https://youtu.be/a")
     assert _video_id(store, no_source.id) is None
     assert _video_id(store, non_video.id) is None
+
+
+def test_allowed_usernames_lists_rows_from_table(store):
+    store._run(lambda cur: cur.execute("INSERT INTO allowed_usernames (username) VALUES (%s), (%s)", ("alice", "bob")))
+    assert sorted(store.allowed_usernames()) == ["alice", "bob"]

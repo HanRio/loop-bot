@@ -1,6 +1,6 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 import postgres from "postgres";
-import { handle, parseUsernames, youtubeId, type Deps } from "./app.ts";
+import { handle, parseNewUsername, parseUsernames, youtubeId, type Deps } from "./app.ts";
 import { createDb, type Db } from "./db.ts";
 
 const dsn = Deno.env.get("LOOPBOT_TEST_DATABASE_URL") ?? "";
@@ -11,7 +11,8 @@ const NOW = 1_800_000_000;
 const ALLOWED_USER = 900001;
 const OTHER_USER = 900002;
 const STRANGER = 900003;
-const TEST_USERS = [ALLOWED_USER, OTHER_USER];
+const NAMED_USER = 900004;
+const TEST_USERS = [ALLOWED_USER, OTHER_USER, NAMED_USER];
 
 // Test-only signer, same Telegram rules as auth_test.ts.
 async function signFor(userId: number, username?: string): Promise<string> {
@@ -51,7 +52,7 @@ function depsWith(db: Db, overrides: Partial<Deps> = {}): Deps {
   };
 }
 
-// Each test starts from an empty state for the two test users only.
+// Each test starts from an empty state for the test users only, and an empty allowed_usernames list.
 function dbTest(name: string, fn: (ctx: Ctx) => Promise<void>): void {
   Deno.test({
     name,
@@ -65,6 +66,7 @@ function dbTest(name: string, fn: (ctx: Ctx) => Promise<void>): void {
         await sql`delete from loopbot_test.user_state where user_id in ${sql(TEST_USERS)}`;
         await sql`delete from loopbot_test.playlists where user_id in ${sql(TEST_USERS)}`;
         await sql`delete from loopbot_test.tracks where user_id in ${sql(TEST_USERS)}`;
+        await sql`delete from loopbot_test.allowed_usernames`;
         await fn({ db, sql, deps: depsWith(db) });
       } finally {
         await db.close();
@@ -123,8 +125,11 @@ Deno.test("answers 403 forbidden for a user outside the allowed set", async () =
   assertEquals(await res.json(), { error: "forbidden" });
 });
 
-// Stub DB for the auth-only cases: GET /state only reads state, so no Postgres is needed.
-const stateOnlyDb = { state: async () => ({ library: [], playlists: [], active_id: null }) } as unknown as Db;
+// Stub DB for the auth-only cases: GET /state only reads state, and no username is in the DB list, so no Postgres is needed.
+const stateOnlyDb = {
+  state: async () => ({ library: [], playlists: [], active_id: null }),
+  isUsernameAllowed: async () => false,
+} as unknown as Db;
 
 async function getStateAs(allowedUsernames: string[], userId: number, username?: string): Promise<Response> {
   const deps = depsWith(stateOnlyDb, { allowedUsernames: new Set(allowedUsernames) });
@@ -157,6 +162,17 @@ Deno.test("answers 403 for a user outside the id list who has no username", asyn
 Deno.test("parseUsernames trims, strips @, lowercases, and drops blank entries", () => {
   assertEquals(parseUsernames("@Some_User, other ,,"), new Set(["some_user", "other"]));
   assertEquals(parseUsernames(" , "), new Set());
+});
+
+Deno.test("parseNewUsername trims, strips one leading @, lowercases, and rejects invalid names", () => {
+  assertEquals(parseNewUsername("  @Some_User "), "some_user");
+  assertEquals(parseNewUsername("abcde"), "abcde");
+  assertEquals(parseNewUsername("a".repeat(32)), "a".repeat(32));
+  assertEquals(parseNewUsername("@@abcde"), null);
+  assertEquals(parseNewUsername("@"), null);
+  for (const raw of ["abc", "has space", "bad-name", "a".repeat(33), "", 12345, null, undefined, ["abcde"]]) {
+    assertEquals(parseNewUsername(raw), null, String(raw));
+  }
 });
 
 dbTest("GET /state creates an active 기본 playlist for a new user", async (ctx) => {
@@ -880,6 +896,91 @@ dbTest("deleting a track also removes its media and every user's notes", async (
   const [notes] = await ctx.sql`select count(*)::int as n from loopbot_test.track_notes where track_id = ${trackId}`;
   assertEquals(media.n, 0);
   assertEquals(notes.n, 0);
+});
+
+dbTest("admin username routes answer 403 to a non-admin allowed user and to a stranger", async (ctx) => {
+  await ctx.db.addUsername("keeper", ALLOWED_USER);
+  const cases: [string, string, unknown][] = [
+    ["GET", "/admin/usernames", undefined],
+    ["POST", "/admin/usernames", { username: "someone" }],
+    ["DELETE", "/admin/usernames/keeper", undefined],
+  ];
+
+  for (const userId of [OTHER_USER, STRANGER]) {
+    for (const [method, path, body] of cases) {
+      const res = await call(ctx, method, path, { userId, body });
+
+      assertEquals(res.status, 403);
+      assertEquals(await res.json(), { error: "forbidden" });
+    }
+  }
+  assertEquals(await ctx.db.listUsernames(), ["keeper"]);
+});
+
+dbTest("admin adds a username, stored lowercase, and that user is then admitted in any case", async (ctx) => {
+  const before = await call(ctx, "GET", "/state", { initData: await signFor(NAMED_USER, "SOME_USER") });
+  assertEquals(before.status, 403);
+
+  const added = await call(ctx, "POST", "/admin/usernames", { body: { username: "  @Some_User " } });
+  assertEquals(added.status, 200);
+  assertEquals(await added.json(), { username: "some_user" });
+  assertEquals(await ctx.db.listUsernames(), ["some_user"]);
+
+  const after = await call(ctx, "GET", "/state", { initData: await signFor(NAMED_USER, "SOME_USER") });
+  assertEquals(after.status, 200);
+  assertEquals((await after.json()).is_admin, false);
+});
+
+dbTest("DELETE removes a username, and that user gets 403 again", async (ctx) => {
+  await call(ctx, "POST", "/admin/usernames", { body: { username: "@Some_User" } });
+  const initData = await signFor(NAMED_USER, "some_user");
+  assertEquals((await call(ctx, "GET", "/state", { initData })).status, 200);
+
+  const removed = await call(ctx, "DELETE", "/admin/usernames/some_user");
+  assertEquals(removed.status, 204);
+
+  const res = await call(ctx, "GET", "/state", { initData });
+  assertEquals(res.status, 403);
+  assertEquals(await res.json(), { error: "forbidden" });
+  assertEquals(await ctx.db.listUsernames(), []);
+});
+
+dbTest("POST /admin/usernames answers 400 for invalid names and stores nothing", async (ctx) => {
+  const bodies: unknown[] = [{ username: "abc" }, { username: "has space" }, { username: 12345 }, { username: "a".repeat(33) }, {}];
+
+  for (const body of bodies) {
+    const res = await call(ctx, "POST", "/admin/usernames", { body });
+
+    assertEquals(res.status, 400);
+    assertEquals(await res.json(), { error: "bad_request" });
+  }
+  assertEquals(await ctx.db.listUsernames(), []);
+});
+
+dbTest("DELETE /admin/usernames/:name answers 404 for a name that is not on the list", async (ctx) => {
+  const res = await call(ctx, "DELETE", "/admin/usernames/nobody1");
+
+  assertEquals(res.status, 404);
+  assertEquals(await res.json(), { error: "not_found" });
+});
+
+dbTest("adding the same username twice is fine and keeps one row", async (ctx) => {
+  const first = await call(ctx, "POST", "/admin/usernames", { body: { username: "some_user" } });
+  const second = await call(ctx, "POST", "/admin/usernames", { body: { username: "some_user" } });
+
+  assertEquals(first.status, 200);
+  assertEquals(second.status, 200);
+  assertEquals(await ctx.db.listUsernames(), ["some_user"]);
+});
+
+dbTest("GET /admin/usernames lists usernames in ascending order", async (ctx) => {
+  await ctx.db.addUsername("zed_user", ALLOWED_USER);
+  await ctx.db.addUsername("alpha_user", ALLOWED_USER);
+
+  const res = await call(ctx, "GET", "/admin/usernames");
+
+  assertEquals(res.status, 200);
+  assertEquals(await res.json(), { usernames: ["alpha_user", "zed_user"] });
 });
 
 Deno.test("youtubeId accepts each YouTube link form and rejects everything else", () => {

@@ -95,5 +95,11 @@ export function createApi(baseUrl, initData, fileBase = null) {
     saveNote: async (id, body) => {
       await request('PUT', `/tracks/${id}/note`, { body });
     },
+    // 관리자만 쓴다. 텔레그램 아이디 목록.
+    listUsernames: () => json('GET', '/admin/usernames'),
+    addUsername: (username) => json('POST', '/admin/usernames', { username }),
+    removeUsername: async (name) => {
+      await request('DELETE', `/admin/usernames/${encodeURIComponent(name)}`);
+    },
   };
 }

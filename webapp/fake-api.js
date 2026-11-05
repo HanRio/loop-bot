@@ -1,7 +1,8 @@
 // localhost 시험용 가짜 API. app.js가 localhost일 때만 불러온다.
-// ?fail=too_big · ?fail=expired · ?fail=save · ?fail=note 로 오류 장면을 만든다.
+// ?fail=too_big · ?fail=expired · ?fail=save · ?fail=note · ?fail=users 로 오류 장면을 만든다.
 // ?role=member 면 관리자가 공유한 목록이 있는 멤버로 시작한다.
 import { ApiError } from './api.js';
+import { cleanUsername } from './users-logic.js';
 
 const params = new URLSearchParams(location.search);
 const FAIL = params.get('fail');
@@ -42,6 +43,7 @@ export function createApi() {
   let failedNotes = 0;
   // 지운 id를 다시 쓰지 않도록 올라가기만 한다.
   let lastId = 2;
+  let usernames = ['sample_one', 'sample_two'];
 
   const copy = (value) => structuredClone(value);
   const nextId = () => {
@@ -181,6 +183,25 @@ export function createApi() {
       }
       if (body) notes = { ...notes, [id]: body };
       else notes = Object.fromEntries(Object.entries(notes).filter(([key]) => Number(key) !== id));
+    },
+    async listUsernames() {
+      adminOnly();
+      if (FAIL === 'users') throw new ApiError('upstream', 502);
+      return { usernames: [...usernames] };
+    },
+    async addUsername(username) {
+      adminOnly();
+      if (FAIL === 'users') throw new ApiError('upstream', 502);
+      const name = cleanUsername(username);
+      if (!name) throw new ApiError('bad_request', 400);
+      if (!usernames.includes(name)) usernames = [...usernames, name];
+      return { username: name };
+    },
+    async removeUsername(name) {
+      adminOnly();
+      if (FAIL === 'users') throw new ApiError('upstream', 502);
+      if (!usernames.includes(name)) throw new ApiError('not_found', 404);
+      usernames = usernames.filter((n) => n !== name);
     },
   };
 }

@@ -409,7 +409,7 @@ def _app():
     from loopbot.handlers import build_app
 
     cfg = SimpleNamespace(bot_token="123:abc", allowed_user_ids=frozenset({1}))
-    return build_app(cfg, store=None)
+    return build_app(cfg, store=SimpleNamespace(allowed_usernames=lambda: []))
 
 
 def test_build_app_registers_error_handler():
@@ -548,10 +548,11 @@ def _filter_update(user_id, username):
 
 def test_allowed_user_filter_matches_by_id_or_username_case_insensitively():
     from loopbot import handlers
+    from loopbot.access import Access
     from loopbot.config import load_config
 
     cfg = load_config({**BASE_CONFIG, "ALLOWED_USER_IDS": "1", "ALLOWED_USERNAMES": "@Some_User"})
-    allowed = handlers._AllowedUser(cfg)
+    allowed = handlers._AllowedUser(Access(cfg, lambda: []))
 
     assert allowed.check_update(_filter_update(1, None))
     assert allowed.check_update(_filter_update(99, "SOME_USER"))
@@ -562,10 +563,11 @@ def test_allowed_user_filter_matches_by_id_or_username_case_insensitively():
 
 def test_allowed_user_filter_rejects_blank_username():
     from loopbot import handlers
+    from loopbot.access import Access
     from loopbot.config import load_config
 
     cfg = load_config({**BASE_CONFIG, "ALLOWED_USER_IDS": "1", "ALLOWED_USERNAMES": " , "})
-    allowed = handlers._AllowedUser(cfg)
+    allowed = handlers._AllowedUser(Access(cfg, lambda: []))
 
     assert not allowed.check_update(_filter_update(99, ""))
     assert not allowed.check_update(_filter_update(99, None))
@@ -627,10 +629,11 @@ def _run_chat(data, store, bot, user_id=1, message=None):
     import asyncio
 
     from loopbot import handlers
+    from loopbot.access import Access
     from loopbot.config import load_config
 
     cfg = load_config({**BASE_CONFIG, "ALLOWED_USER_IDS": "1"})
-    context = SimpleNamespace(bot_data={"cfg": cfg, "store": store}, bot=bot)
+    context = SimpleNamespace(bot_data={"cfg": cfg, "store": store, "access": Access(cfg, lambda: [])}, bot=bot)
     query = _FakeQuery(user_id, data, message or _FakeMessage())
     asyncio.run(handlers.on_chat_play(SimpleNamespace(callback_query=query), context))
     return query

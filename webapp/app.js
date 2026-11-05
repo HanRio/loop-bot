@@ -11,6 +11,7 @@ import {
 import { cleanName, cleanTitle, createActiveSender, createSaves, mergeOrder, readLocal, removeLocal, writeLocal } from './store.js';
 import { startPlaylistId } from './lyrics-logic.js';
 import { initVolume } from './volume.js';
+import { createUsersAdmin } from './users-admin.js';
 
 const API_BASE = 'https://rrpmpqxoqxlwrmflpiyi.supabase.co/functions/v1/loopbot-api';
 const FILE_BASE = 'https://168-110-54-40.sslip.io';
@@ -92,6 +93,7 @@ const playback = {
 let api;
 let player;
 let lyrics;
+let usersAdmin;
 // 끄는 동안에는 자동 전환이 목록 DOM을 바꾸지 않는다. 끝나면 onQueueEnd에서 다시 그린다.
 let dragging = false;
 // 지우는 중인 플레이리스트는 편집을 받지 않는다.
@@ -529,6 +531,7 @@ async function refreshFromServer() {
   model.media = state.media;
   model.notes = state.notes;
   model.isAdmin = state.is_admin;
+  usersAdmin.setVisible(state.is_admin);
   // 보고 있던 목록이 내 목록에서도 공유 목록에서도 사라졌으면(공유 해제 등) 활성 목록으로 돌아간다.
   if (!findPlaylist(model.viewedId)) {
     model.viewedId = state.active_id;
@@ -561,6 +564,7 @@ async function init() {
     onMediaChange,
     onVideoToggle,
   });
+  usersAdmin = createUsersAdmin({ api });
 
   let state;
   try {
@@ -575,6 +579,7 @@ async function init() {
   model.media = state.media;
   model.notes = state.notes;
   model.isAdmin = state.is_admin;
+  usersAdmin.setVisible(state.is_admin);
   model.viewedId = startPlaylistId({
     rememberedId: Number(readLocal(KEY_PLAYLIST)),
     activeId: state.active_id,

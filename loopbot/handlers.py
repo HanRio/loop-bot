@@ -14,6 +14,7 @@ from telegram import (
 from telegram.error import BadRequest, RetryAfter, TelegramError, TimedOut
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
 
+from loopbot.access import Access
 from loopbot.config import Config
 from loopbot.payload import MAX_LINKS, extract_youtube_urls
 from loopbot.store import Playlist, Store, Track
@@ -306,8 +307,8 @@ async def _stop_play(query: CallbackQuery, context: ContextTypes.DEFAULT_TYPE) -
 
 async def on_chat_play(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
-    cfg: Config = context.bot_data["cfg"]
-    if not cfg.is_allowed(query.from_user.id, query.from_user.username):
+    access: Access = context.bot_data["access"]
+    if not access.is_allowed(query.from_user.id, query.from_user.username):
         await query.answer(FORBIDDEN_TEXT, show_alert=True)
         return
     if query.message is None:
@@ -444,13 +445,13 @@ async def _on_startup(app: Application) -> None:
 
 
 class _AllowedUser(filters.UpdateFilter):
-    def __init__(self, cfg: Config) -> None:
+    def __init__(self, access: Access) -> None:
         super().__init__(name="allowed user")
-        self._cfg = cfg
+        self._access = access
 
     def filter(self, update: Update) -> bool:
         user = update.effective_user
-        return user is not None and self._cfg.is_allowed(user.id, user.username)
+        return user is not None and self._access.is_allowed(user.id, user.username)
 
 
 def build_app(cfg: Config, store: Store) -> Application:
@@ -462,8 +463,9 @@ def build_app(cfg: Config, store: Store) -> Application:
         .post_init(_on_startup)
         .build()
     )
-    app.bot_data.update(cfg=cfg, store=store, lock=asyncio.Lock())
-    allowed = _AllowedUser(cfg)
+    access = Access(cfg, store.allowed_usernames)
+    app.bot_data.update(cfg=cfg, store=store, lock=asyncio.Lock(), access=access)
+    allowed = _AllowedUser(access)
     is_audio = filters.AUDIO | filters.Document.Category("audio/")
     commands = allowed & filters.UpdateType.MESSAGE
     app.add_handler(CommandHandler("start", start, filters=commands))

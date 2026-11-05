@@ -40,7 +40,7 @@ class PostgresStore:
 
     def reset(self) -> None:
         def work(cur: Cursor) -> None:
-            cur.execute("TRUNCATE tracks, playlists, playlist_tracks, user_state CASCADE")
+            cur.execute("TRUNCATE tracks, playlists, playlist_tracks, user_state, allowed_usernames CASCADE")
 
         self._run(work)
 
@@ -164,3 +164,10 @@ class PostgresStore:
             "ON CONFLICT (user_id) DO UPDATE SET play_message_ids = EXCLUDED.play_message_ids",
             (user_id, ids),
         ))
+
+    def allowed_usernames(self) -> list[str]:
+        def work(cur: Cursor) -> list[str]:
+            cur.execute("SELECT username FROM allowed_usernames")
+            return [username for (username,) in cur.fetchall()]
+
+        return self._run(work)

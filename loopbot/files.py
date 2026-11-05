@@ -20,6 +20,7 @@ import psycopg
 from dotenv import load_dotenv
 from psycopg import sql
 
+from loopbot.access import Access
 from loopbot.config import load_config
 
 ALLOWED_ORIGIN = "https://hanrio.github.io"
@@ -212,6 +213,13 @@ def sheet_file_id_for(database_url: str, user_id: int, track_id: int, page: int 
     return _lookup(database_url, SHEET_FILE_ID_SQL, (page + 1, track_id, user_id), schema)
 
 
+def allowed_usernames_for(database_url: str, schema: str = DB_SCHEMA) -> list[str]:
+    # ponytail: 요청마다 연결. 부하가 생기면 풀을 쓴다.
+    with psycopg.connect(database_url, autocommit=True, prepare_threshold=None, connect_timeout=10) as conn:
+        conn.execute(sql.SQL("SET search_path TO {}").format(sql.Identifier(schema)))
+        return [username for (username,) in conn.execute("SELECT username FROM allowed_usernames").fetchall()]
+
+
 @dataclass(frozen=True)
 class Deps:
     bot_token: str
@@ -337,7 +345,7 @@ def main() -> None:
     port = int(os.environ.get("FILE_PORT", "8081"))
     deps = Deps(
         bot_token=cfg.bot_token,
-        is_allowed=cfg.is_allowed,
+        is_allowed=Access(cfg, lambda: allowed_usernames_for(cfg.database_url)).is_allowed,
         file_id_for=lambda user_id, track_id: file_id_for(cfg.database_url, user_id, track_id),
         sheet_file_id_for=lambda user_id, track_id, page: sheet_file_id_for(cfg.database_url, user_id, track_id, page),
         download=lambda file_id, dest: download_from_telegram(cfg.bot_token, file_id, dest),

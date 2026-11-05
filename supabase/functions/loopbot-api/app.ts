@@ -26,6 +26,7 @@ const TELEGRAM_API = "https://api.telegram.org";
 const YOUTUBE_HOSTS = new Set(["youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com"]);
 const YOUTUBE_PATH_PREFIXES = ["/shorts/", "/embed/", "/live/"];
 const YOUTUBE_ID_PATTERN = /^[A-Za-z0-9_-]{11}$/;
+const USERNAME_PATTERN = /^[a-z0-9_]{5,32}$/;
 
 class HttpError extends Error {
   status: number;
@@ -45,6 +46,13 @@ export function parseUsernames(raw: string): Set<string> {
     .map((part) => part.trim().replace(/^@/, "").toLowerCase())
     .filter((name) => name !== "");
   return new Set(names);
+}
+
+// Same normalization as the ALLOWED_USERNAMES setting, so a name typed as "@Some_User" is stored as "some_user".
+export function parseNewUsername(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const name = raw.trim().replace(/^@/, "").toLowerCase();
+  return USERNAME_PATTERN.test(name) ? name : null;
 }
 
 function json(body: unknown, status = 200): Response {
@@ -146,8 +154,11 @@ function playlistFields(body: Record<string, unknown>): { name: string; trackIds
 async function authenticate(req: Request, deps: Deps): Promise<number> {
   const user = await verifyInitData(req.headers.get("x-telegram-init-data") ?? "", deps.botToken, deps.now());
   if (user === null) throw new HttpError(401, "expired");
-  const byName = user.username !== null && deps.allowedUsernames.has(user.username.toLowerCase());
-  if (!deps.allowed.has(user.id) && !byName) throw new HttpError(403, "forbidden");
+  if (deps.allowed.has(user.id)) return user.id;
+  if (user.username === null) throw new HttpError(403, "forbidden");
+  const username = user.username.toLowerCase();
+  if (deps.allowedUsernames.has(username)) return user.id;
+  if (!(await deps.db.isUsernameAllowed(username))) throw new HttpError(403, "forbidden");
   return user.id;
 }
 
@@ -344,6 +355,26 @@ async function route(req: Request, deps: Deps, userId: number): Promise<Response
     const { body } = await readBody(req);
     if (typeof body !== "string" || [...body].length > NOTE_MAX_LENGTH) throw badRequest();
     if (!(await db.saveNote(userId, idParam(note[1]), body))) throw notFound();
+    return new Response(null, { status: 204, headers: CORS_HEADERS });
+  }
+
+  if (req.method === "GET" && path === "/admin/usernames") {
+    requireAdmin(deps, userId);
+    return json({ usernames: await db.listUsernames() });
+  }
+  if (req.method === "POST" && path === "/admin/usernames") {
+    requireAdmin(deps, userId);
+    const { username } = await readBody(req);
+    const name = parseNewUsername(username);
+    if (name === null) throw badRequest();
+    await db.addUsername(name, userId);
+    return json({ username: name });
+  }
+
+  const adminUsername = path.match(/^\/admin\/usernames\/([a-z0-9_]{1,64})$/);
+  if (adminUsername && req.method === "DELETE") {
+    requireAdmin(deps, userId);
+    if (!(await db.removeUsername(adminUsername[1]))) throw notFound();
     return new Response(null, { status: 204, headers: CORS_HEADERS });
   }
 

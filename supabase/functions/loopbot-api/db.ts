@@ -59,6 +59,10 @@ export interface Db {
   deleteSheet(userId: number, id: number, page: number): Promise<SheetPages | null>;
   saveVideo(userId: number, id: number, videoId: string | null): Promise<boolean>;
   saveNote(userId: number, id: number, body: string): Promise<boolean>;
+  isUsernameAllowed(username: string): Promise<boolean>;
+  listUsernames(): Promise<string[]>;
+  addUsername(username: string, addedBy: number): Promise<void>;
+  removeUsername(username: string): Promise<boolean>;
   close(): Promise<void>;
 }
 
@@ -331,6 +335,30 @@ export function createDb(dsn: string, schema: string): Db {
             on conflict (user_id, track_id) do update set body = excluded.body, updated_at = now()`;
         }
         return true;
+      }),
+
+    isUsernameAllowed: (username) =>
+      inSchema(async (tx) => {
+        const rows = await tx`select 1 from allowed_usernames where username = ${username}`;
+        return rows.length > 0;
+      }),
+
+    listUsernames: () =>
+      inSchema(async (tx) => {
+        const rows = await tx<{ username: string }[]>`select username from allowed_usernames order by username`;
+        return rows.map((row) => row.username);
+      }),
+
+    addUsername: (username, addedBy) =>
+      inSchema(async (tx) => {
+        await tx`insert into allowed_usernames (username, added_by) values (${username}, ${addedBy})
+          on conflict do nothing`;
+      }),
+
+    removeUsername: (username) =>
+      inSchema(async (tx) => {
+        const deleted = await tx`delete from allowed_usernames where username = ${username} returning username`;
+        return deleted.length > 0;
       }),
 
     close: () => sql.end(),
