@@ -165,12 +165,12 @@ async function authenticate(req: Request, deps: Deps): Promise<number> {
   const user = await verifyInitData(req.headers.get("x-telegram-init-data") ?? "", deps.botToken, deps.now());
   if (user === null) throw new HttpError(401, "expired");
   const username = user.username === null ? null : user.username.toLowerCase();
-  if (deps.allowed.has(user.id)) {
-    if (username !== null) await deps.db.claimUsername(username, user.id);
+  if (deps.allowed.has(user.id) || deps.admins.has(user.id)) {
+    if (username !== null) await deps.db.claimUsername(username, user.id, user.authDate);
     return user.id;
   }
   if (username === null) throw new HttpError(403, "forbidden");
-  if (await deps.db.claimUsername(username, user.id)) return user.id;
+  if (await deps.db.claimUsername(username, user.id, user.authDate)) return user.id;
   if (deps.allowedUsernames.has(username)) return user.id;
   throw new HttpError(403, "forbidden");
 }
@@ -402,8 +402,11 @@ async function route(req: Request, deps: Deps, userId: number): Promise<Response
     const name = adminUsername[1];
     const row = await db.usernameRow(name);
     if (row === null) throw notFound();
-    const ownerRow = row.user_id !== null && deps.admins.has(row.user_id);
-    if (!deps.admins.has(userId) && (row.is_admin || ownerRow)) throw new HttpError(403, "forbidden");
+    if (row.user_id !== null && deps.admins.has(row.user_id)) throw new HttpError(409, "owner");
+    // Env-allowed access would survive removing the row, so the removal is refused until env stops allowing it.
+    const envAllowed = deps.allowedUsernames.has(name) || (row.user_id !== null && deps.allowed.has(row.user_id));
+    if (envAllowed) throw new HttpError(409, "env_allowed");
+    if (!deps.admins.has(userId) && row.is_admin) throw new HttpError(403, "forbidden");
     if (!(await db.removeUsername(name))) throw notFound();
     return new Response(null, { status: 204, headers: CORS_HEADERS });
   }

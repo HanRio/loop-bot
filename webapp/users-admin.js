@@ -28,7 +28,8 @@ function addFailText(err) {
 
 function adminFailText(err) {
   if (err.code === 'not_seen') return COPY.usersNotSeen;
-  if (err.code === 'forbidden') return COPY.usersForbidden;
+  if (err.code === 'forbidden' || err.code === 'owner') return COPY.usersForbidden;
+  if (err.code === 'env_allowed') return COPY.usersEnvAllowed;
   if (err.code === 'expired') return COPY.reopen;
   return COPY.usersSaveFailed;
 }
@@ -172,7 +173,7 @@ export function createUsersAdmin({ api }) {
     } catch (err) {
       // 이미 없는 아이디는 지운 것으로 본다.
       if (err.code !== 'not_found') {
-        error.textContent = COPY.usersSaveFailed;
+        error.textContent = adminFailText(err);
         return;
       }
     }

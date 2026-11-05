@@ -34,23 +34,29 @@ Deno.test("returns the user id for a correctly signed initData", async () => {
   assertEquals((await verifyInitData(initData, BOT_TOKEN, NOW))?.id, USER_ID);
 });
 
+Deno.test("returns the signed auth_date with the user", async () => {
+  const initData = await sign(fieldsFor({ id: USER_ID }, NOW - 120));
+
+  assertEquals((await verifyInitData(initData, BOT_TOKEN, NOW))?.authDate, NOW - 120);
+});
+
 Deno.test("returns the username when the signed user has one", async () => {
   const initData = await sign(fieldsFor({ id: USER_ID, username: "Some_User" }, NOW - 60));
 
-  assertEquals(await verifyInitData(initData, BOT_TOKEN, NOW), { id: USER_ID, username: "Some_User" });
+  assertEquals(await verifyInitData(initData, BOT_TOKEN, NOW), { id: USER_ID, username: "Some_User", authDate: NOW - 60 });
 });
 
 Deno.test("returns a null username when the user has none", async () => {
   const initData = await sign(fieldsFor({ id: USER_ID }, NOW - 60));
 
-  assertEquals(await verifyInitData(initData, BOT_TOKEN, NOW), { id: USER_ID, username: null });
+  assertEquals(await verifyInitData(initData, BOT_TOKEN, NOW), { id: USER_ID, username: null, authDate: NOW - 60 });
 });
 
 Deno.test("treats a non-string or empty username as absent", async () => {
   for (const username of [123, "", null]) {
     const initData = await sign(fieldsFor({ id: USER_ID, username }, NOW - 60));
 
-    assertEquals(await verifyInitData(initData, BOT_TOKEN, NOW), { id: USER_ID, username: null });
+    assertEquals(await verifyInitData(initData, BOT_TOKEN, NOW), { id: USER_ID, username: null, authDate: NOW - 60 });
   }
 });
 

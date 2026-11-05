@@ -15,11 +15,11 @@ const NAMED_USER = 900004;
 const TEST_USERS = [ALLOWED_USER, OTHER_USER, NAMED_USER, STRANGER];
 
 // Test-only signer, same Telegram rules as auth_test.ts.
-async function signFor(userId: number, username?: string): Promise<string> {
+async function signFor(userId: number, username?: string, authDate: number = NOW): Promise<string> {
   const encoder = new TextEncoder();
   const user = username === undefined ? { id: userId } : { id: userId, username };
   const fields: [string, string][] = [
-    ["auth_date", String(NOW)],
+    ["auth_date", String(authDate)],
     ["user", JSON.stringify(user)],
   ];
   const dataCheck = fields.map(([key, value]) => `${key}=${value}`).join("\n");
@@ -168,6 +168,17 @@ Deno.test("answers 403 for a user outside the id list who has no username", asyn
 
   assertEquals(res.status, 403);
   assertEquals(await res.json(), { error: "forbidden" });
+});
+
+Deno.test("an env owner reaches /state even when not in the allowed id set", async () => {
+  const deps = depsWith(stateOnlyDb, { allowed: new Set(), admins: new Set([STRANGER]) });
+  const req = new Request(`${ORIGIN}/loopbot-api/state`, {
+    headers: { "x-telegram-init-data": await signFor(STRANGER) },
+  });
+  const res = await handle(req, deps);
+
+  assertEquals(res.status, 200);
+  assertEquals((await res.json()).is_owner, true);
 });
 
 Deno.test("parseUsernames trims, strips @, lowercases, and drops blank entries", () => {
@@ -975,6 +986,44 @@ dbTest("DELETE /admin/usernames/:name answers 404 for a name that is not on the 
   assertEquals(await res.json(), { error: "not_found" });
 });
 
+dbTest("DELETE /admin/usernames/:name answers 409 owner for the owner's own row, even for the owner", async (ctx) => {
+  await ctx.db.addUsername("owner_user", ALLOWED_USER);
+  await call(ctx, "GET", "/state", { initData: await signFor(ALLOWED_USER, "owner_user") });
+
+  const res = await call(ctx, "DELETE", "/admin/usernames/owner_user");
+
+  assertEquals(res.status, 409);
+  assertEquals(await res.json(), { error: "owner" });
+  assertEquals(await listedNames(ctx), ["owner_user"]);
+});
+
+dbTest("DELETE /admin/usernames/:name answers 409 env_allowed while env still allows the name or its id", async (ctx) => {
+  await ctx.db.addUsername("env_user", ALLOWED_USER);
+  await ctx.db.addUsername("member_user", ALLOWED_USER);
+  await call(ctx, "GET", "/state", { initData: await signFor(OTHER_USER, "member_user") });
+  const envDeps = depsWith(ctx.db, { allowedUsernames: new Set(["env_user"]) });
+
+  const byName = await call(ctx, "DELETE", "/admin/usernames/env_user", { deps: envDeps });
+  assertEquals(byName.status, 409);
+  assertEquals(await byName.json(), { error: "env_allowed" });
+
+  const byId = await call(ctx, "DELETE", "/admin/usernames/member_user");
+  assertEquals(byId.status, 409);
+  assertEquals(await byId.json(), { error: "env_allowed" });
+  assertEquals(await listedNames(ctx), ["env_user", "member_user"]);
+});
+
+dbTest("DELETE /admin/usernames/:name removes the name once env no longer allows it", async (ctx) => {
+  await ctx.db.addUsername("env_user", ALLOWED_USER);
+  const envDeps = depsWith(ctx.db, { allowedUsernames: new Set(["env_user"]) });
+  assertEquals((await call(ctx, "DELETE", "/admin/usernames/env_user", { deps: envDeps })).status, 409);
+
+  const res = await call(ctx, "DELETE", "/admin/usernames/env_user");
+
+  assertEquals(res.status, 204);
+  assertEquals(await listedNames(ctx), []);
+});
+
 dbTest("adding the same username twice is fine and keeps one row", async (ctx) => {
   const first = await call(ctx, "POST", "/admin/usernames", { body: { username: "some_user" } });
   const second = await call(ctx, "POST", "/admin/usernames", { body: { username: "some_user" } });
@@ -1067,11 +1116,15 @@ dbTest("a granted admin adds and removes plain users, but cannot change admins o
   assertEquals(granting.status, 403);
   assertEquals(await granting.json(), { error: "forbidden" });
 
-  for (const name of ["peer_user", "owner_user"]) {
-    const res = await call(ctx, "DELETE", `/admin/usernames/${name}`, { initData: adminData });
-    assertEquals(res.status, 403);
-    assertEquals(await res.json(), { error: "forbidden" });
-  }
+  // Without OTHER_USER in the env id set, peer_user's removal reaches the admin-row check instead of env_allowed.
+  const notEnvAllowed = depsWith(ctx.db, { allowed: new Set([ALLOWED_USER]) });
+  const peer = await call(ctx, "DELETE", "/admin/usernames/peer_user", { initData: adminData, deps: notEnvAllowed });
+  assertEquals(peer.status, 403);
+  assertEquals(await peer.json(), { error: "forbidden" });
+
+  const owner = await call(ctx, "DELETE", "/admin/usernames/owner_user", { initData: adminData });
+  assertEquals(owner.status, 409);
+  assertEquals(await owner.json(), { error: "owner" });
   assertEquals(await listedNames(ctx), ["owner_user", "peer_user", "some_user"]);
 });
 
@@ -1112,7 +1165,8 @@ dbTest("the owner deleting an admin's row removes that id's admin rights", async
 
 dbTest("when another id presents a listed username, the old id loses admin and the new id is not admin", async (ctx) => {
   await ctx.db.addUsername("some_user", ALLOWED_USER);
-  await call(ctx, "GET", "/state", { initData: await signFor(NAMED_USER, "some_user") });
+  // The holder signed in earlier than the challenger, so the newer auth_date takes the name.
+  await call(ctx, "GET", "/state", { initData: await signFor(NAMED_USER, "some_user", NOW - 100) });
   assertEquals((await setAdminVia(ctx, "some_user", true)).status, 200);
 
   const res = await call(ctx, "GET", "/state", { initData: await signFor(STRANGER, "some_user") });
@@ -1122,6 +1176,25 @@ dbTest("when another id presents a listed username, the old id loses admin and t
   assertEquals(await ctx.db.isAdminUser(NAMED_USER), false);
   assertEquals(await ctx.db.isAdminUser(STRANGER), false);
   assertEquals(await ctx.db.usernameRow("some_user"), { user_id: STRANGER, is_admin: false });
+});
+
+dbTest("an older sign-in cannot take a name back from a newer holder and leaves its admin alone", async (ctx) => {
+  const OLD_AUTH = NOW - 100;
+  await ctx.db.addUsername("some_user", ALLOWED_USER);
+  await call(ctx, "GET", "/state", { initData: await signFor(NAMED_USER, "some_user", OLD_AUTH) });
+  assertEquals((await setAdminVia(ctx, "some_user", true)).status, 200);
+
+  const takeover = await call(ctx, "GET", "/state", { initData: await signFor(STRANGER, "some_user", OLD_AUTH + 10) });
+  assertEquals(takeover.status, 200);
+  assertEquals(await ctx.db.isAdminUser(NAMED_USER), false);
+  assertEquals(await ctx.db.usernameRow("some_user"), { user_id: STRANGER, is_admin: false });
+  assertEquals((await setAdminVia(ctx, "some_user", true)).status, 200);
+
+  const replay = await call(ctx, "GET", "/state", { initData: await signFor(NAMED_USER, "some_user", OLD_AUTH) });
+  assertEquals(replay.status, 403);
+  assertEquals(await replay.json(), { error: "forbidden" });
+  assertEquals(await ctx.db.usernameRow("some_user"), { user_id: STRANGER, is_admin: true });
+  assertEquals(await ctx.db.isAdminUser(NAMED_USER), false);
 });
 
 dbTest("the owner's own row cannot be granted or revoked and answers 409 owner", async (ctx) => {

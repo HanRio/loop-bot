@@ -22,15 +22,16 @@ function dataCheckString(params: URLSearchParams): string {
 export interface VerifiedUser {
   id: number;
   username: string | null;
+  authDate: number;
 }
 
-function userOf(user: string | null): VerifiedUser | null {
+function userOf(user: string | null, authDate: number): VerifiedUser | null {
   try {
     const parsed = JSON.parse(user ?? "null");
     const id = parsed?.id;
     if (!Number.isSafeInteger(id)) return null;
     const username = typeof parsed.username === "string" && parsed.username !== "" ? parsed.username : null;
-    return { id, username };
+    return { id, username, authDate };
   } catch {
     return null;
   }
@@ -60,5 +61,5 @@ export async function verifyInitData(
     hexToBytes(hash),
     encoder.encode(dataCheckString(params)),
   );
-  return valid ? userOf(params.get("user")) : null;
+  return valid ? userOf(params.get("user"), authDate) : null;
 }

@@ -66,7 +66,7 @@ export interface Db {
   deleteSheet(userId: number, id: number, page: number): Promise<SheetPages | null>;
   saveVideo(userId: number, id: number, videoId: string | null): Promise<boolean>;
   saveNote(userId: number, id: number, body: string): Promise<boolean>;
-  claimUsername(username: string, userId: number): Promise<boolean>;
+  claimUsername(username: string, userId: number, authDate: number): Promise<boolean>;
   listUsernames(): Promise<AllowedUsername[]>;
   isAdminUser(userId: number): Promise<boolean>;
   usernameRow(username: string): Promise<{ user_id: number | null; is_admin: boolean } | null>;
@@ -347,17 +347,27 @@ export function createDb(dsn: string, schema: string): Db {
         return true;
       }),
 
-    // The id that opens the app with a listed name takes it over. The previous holder loses admin, so it cannot stay an invisible admin.
-    claimUsername: (username, userId) =>
+    // A holder is replaced only by a sign-in whose signed auth_date is newer than the holder's claim, so an old initData cannot take the name back.
+    // The previous holder loses admin, so it cannot stay an invisible admin.
+    claimUsername: (username, userId, authDate) =>
       inSchema(async (tx) => {
-        const [row] = await tx<{ user_id: number | null }[]>`
-          select user_id from allowed_usernames where username = ${username} for update`;
+        const [row] = await tx<{ user_id: number | null; claimed_auth_date: number | null }[]>`
+          select user_id, claimed_auth_date from allowed_usernames where username = ${username} for update`;
         if (row === undefined) return false;
-        if (row.user_id === userId) return true;
-        if (row.user_id !== null) {
-          await tx`delete from admin_users where user_id = ${row.user_id}`;
+        const claimedAt = row.claimed_auth_date ?? 0;
+        if (row.user_id === null) {
+          await tx`update allowed_usernames set user_id = ${userId}, claimed_auth_date = ${authDate} where username = ${username}`;
+          return true;
         }
-        await tx`update allowed_usernames set user_id = ${userId} where username = ${username}`;
+        if (row.user_id === userId) {
+          if (authDate > claimedAt) {
+            await tx`update allowed_usernames set claimed_auth_date = ${authDate} where username = ${username}`;
+          }
+          return true;
+        }
+        if (authDate <= claimedAt) return false;
+        await tx`delete from admin_users where user_id = ${row.user_id}`;
+        await tx`update allowed_usernames set user_id = ${userId}, claimed_auth_date = ${authDate} where username = ${username}`;
         return true;
       }),
 

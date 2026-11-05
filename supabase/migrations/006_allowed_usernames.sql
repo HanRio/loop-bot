@@ -31,3 +31,20 @@ create table if not exists loopbot_test.admin_users (
 );
 grant update on loopbot_test.allowed_usernames to loopbot_app;
 grant select, insert, delete, truncate on loopbot_test.admin_users to loopbot_app;
+
+-- auth_date of the sign-in that last claimed the name, so an old sign-in cannot take it back.
+alter table loopbot.allowed_usernames add column if not exists claimed_auth_date bigint;
+alter table loopbot_test.allowed_usernames add column if not exists claimed_auth_date bigint;
+
+alter table loopbot.allowed_usernames enable row level security;
+drop policy if exists loopbot_app_all on loopbot.allowed_usernames;
+create policy loopbot_app_all on loopbot.allowed_usernames for all to loopbot_app using (true) with check (true);
+alter table loopbot.admin_users enable row level security;
+drop policy if exists loopbot_app_all on loopbot.admin_users;
+create policy loopbot_app_all on loopbot.admin_users for all to loopbot_app using (true) with check (true);
+alter table loopbot_test.allowed_usernames enable row level security;
+drop policy if exists loopbot_app_all on loopbot_test.allowed_usernames;
+create policy loopbot_app_all on loopbot_test.allowed_usernames for all to loopbot_app using (true) with check (true);
+alter table loopbot_test.admin_users enable row level security;
+drop policy if exists loopbot_app_all on loopbot_test.admin_users;
+create policy loopbot_app_all on loopbot_test.admin_users for all to loopbot_app using (true) with check (true);
