@@ -43,6 +43,13 @@ export interface State {
   notes: Record<string, string>;
 }
 
+export interface AllowedUsername {
+  username: string;
+  seen: boolean;
+  is_admin: boolean;
+  user_id: number | null;
+}
+
 export interface Db {
   state(userId: number): Promise<State>;
   createPlaylist(userId: number, name: string, trackIds: number[]): Promise<Playlist>;
@@ -59,10 +66,13 @@ export interface Db {
   deleteSheet(userId: number, id: number, page: number): Promise<SheetPages | null>;
   saveVideo(userId: number, id: number, videoId: string | null): Promise<boolean>;
   saveNote(userId: number, id: number, body: string): Promise<boolean>;
-  isUsernameAllowed(username: string): Promise<boolean>;
-  listUsernames(): Promise<string[]>;
+  claimUsername(username: string, userId: number): Promise<boolean>;
+  listUsernames(): Promise<AllowedUsername[]>;
+  isAdminUser(userId: number): Promise<boolean>;
+  usernameRow(username: string): Promise<{ user_id: number | null; is_admin: boolean } | null>;
   addUsername(username: string, addedBy: number): Promise<void>;
   removeUsername(username: string): Promise<boolean>;
+  setAdmin(username: string, grant: boolean, by: number): Promise<"ok" | "missing" | "not_seen">;
   close(): Promise<void>;
 }
 
@@ -337,16 +347,41 @@ export function createDb(dsn: string, schema: string): Db {
         return true;
       }),
 
-    isUsernameAllowed: (username) =>
+    // The id that opens the app with a listed name takes it over. The previous holder loses admin, so it cannot stay an invisible admin.
+    claimUsername: (username, userId) =>
       inSchema(async (tx) => {
-        const rows = await tx`select 1 from allowed_usernames where username = ${username}`;
-        return rows.length > 0;
+        const [row] = await tx<{ user_id: number | null }[]>`
+          select user_id from allowed_usernames where username = ${username} for update`;
+        if (row === undefined) return false;
+        if (row.user_id === userId) return true;
+        if (row.user_id !== null) {
+          await tx`delete from admin_users where user_id = ${row.user_id}`;
+        }
+        await tx`update allowed_usernames set user_id = ${userId} where username = ${username}`;
+        return true;
       }),
 
     listUsernames: () =>
       inSchema(async (tx) => {
-        const rows = await tx<{ username: string }[]>`select username from allowed_usernames order by username`;
-        return rows.map((row) => row.username);
+        return tx<AllowedUsername[]>`
+          select a.username, a.user_id, a.user_id is not null as seen, ad.user_id is not null as is_admin
+          from allowed_usernames a left join admin_users ad on ad.user_id = a.user_id
+          order by a.username`;
+      }),
+
+    isAdminUser: (userId) =>
+      inSchema(async (tx) => {
+        const rows = await tx`select 1 from admin_users where user_id = ${userId}`;
+        return rows.length > 0;
+      }),
+
+    usernameRow: (username) =>
+      inSchema(async (tx) => {
+        const [row] = await tx<{ user_id: number | null; is_admin: boolean }[]>`
+          select a.user_id, ad.user_id is not null as is_admin
+          from allowed_usernames a left join admin_users ad on ad.user_id = a.user_id
+          where a.username = ${username}`;
+        return row ?? null;
       }),
 
     addUsername: (username, addedBy) =>
@@ -357,8 +392,29 @@ export function createDb(dsn: string, schema: string): Db {
 
     removeUsername: (username) =>
       inSchema(async (tx) => {
-        const deleted = await tx`delete from allowed_usernames where username = ${username} returning username`;
-        return deleted.length > 0;
+        const [row] = await tx<{ user_id: number | null }[]>`
+          delete from allowed_usernames where username = ${username} returning user_id`;
+        if (row === undefined) return false;
+        if (row.user_id !== null) {
+          await tx`delete from admin_users where user_id = ${row.user_id}`;
+        }
+        return true;
+      }),
+
+    // Admin rights attach to the numeric id seen for the name, so a name that was never opened cannot be granted.
+    setAdmin: (username, grant, by) =>
+      inSchema(async (tx) => {
+        const [row] = await tx<{ user_id: number | null }[]>`
+          select user_id from allowed_usernames where username = ${username} for update`;
+        if (row === undefined) return "missing";
+        if (row.user_id === null) return "not_seen";
+        if (grant) {
+          await tx`insert into admin_users (user_id, granted_by) values (${row.user_id}, ${by})
+            on conflict do nothing`;
+        } else {
+          await tx`delete from admin_users where user_id = ${row.user_id}`;
+        }
+        return "ok";
       }),
 
     close: () => sql.end(),

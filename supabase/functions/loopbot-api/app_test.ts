@@ -12,7 +12,7 @@ const ALLOWED_USER = 900001;
 const OTHER_USER = 900002;
 const STRANGER = 900003;
 const NAMED_USER = 900004;
-const TEST_USERS = [ALLOWED_USER, OTHER_USER, NAMED_USER];
+const TEST_USERS = [ALLOWED_USER, OTHER_USER, NAMED_USER, STRANGER];
 
 // Test-only signer, same Telegram rules as auth_test.ts.
 async function signFor(userId: number, username?: string): Promise<string> {
@@ -67,6 +67,7 @@ function dbTest(name: string, fn: (ctx: Ctx) => Promise<void>): void {
         await sql`delete from loopbot_test.playlists where user_id in ${sql(TEST_USERS)}`;
         await sql`delete from loopbot_test.tracks where user_id in ${sql(TEST_USERS)}`;
         await sql`delete from loopbot_test.allowed_usernames`;
+        await sql`delete from loopbot_test.admin_users`;
         await fn({ db, sql, deps: depsWith(db) });
       } finally {
         await db.close();
@@ -100,6 +101,15 @@ async function createPlaylistVia(ctx: Ctx, name: string, trackIds: number[]): Pr
   return (await res.json()).id;
 }
 
+// Owner (ALLOWED_USER) grants or revokes admin on a listed username.
+function setAdminVia(ctx: Ctx, username: string, admin: boolean): Promise<Response> {
+  return call(ctx, "PUT", `/admin/usernames/${username}/admin`, { body: { admin } });
+}
+
+async function listedNames(ctx: Ctx): Promise<string[]> {
+  return (await ctx.db.listUsernames()).map((row) => row.username);
+}
+
 // Auth failures must answer before any DB call, so these run without LOOPBOT_TEST_DATABASE_URL.
 const untouchedDb = {} as Db;
 
@@ -128,7 +138,8 @@ Deno.test("answers 403 forbidden for a user outside the allowed set", async () =
 // Stub DB for the auth-only cases: GET /state only reads state, and no username is in the DB list, so no Postgres is needed.
 const stateOnlyDb = {
   state: async () => ({ library: [], playlists: [], active_id: null }),
-  isUsernameAllowed: async () => false,
+  claimUsername: async () => false,
+  isAdminUser: async () => false,
 } as unknown as Db;
 
 async function getStateAs(allowedUsernames: string[], userId: number, username?: string): Promise<Response> {
@@ -914,7 +925,7 @@ dbTest("admin username routes answer 403 to a non-admin allowed user and to a st
       assertEquals(await res.json(), { error: "forbidden" });
     }
   }
-  assertEquals(await ctx.db.listUsernames(), ["keeper"]);
+  assertEquals(await listedNames(ctx), ["keeper"]);
 });
 
 dbTest("admin adds a username, stored lowercase, and that user is then admitted in any case", async (ctx) => {
@@ -924,7 +935,7 @@ dbTest("admin adds a username, stored lowercase, and that user is then admitted 
   const added = await call(ctx, "POST", "/admin/usernames", { body: { username: "  @Some_User " } });
   assertEquals(added.status, 200);
   assertEquals(await added.json(), { username: "some_user" });
-  assertEquals(await ctx.db.listUsernames(), ["some_user"]);
+  assertEquals(await listedNames(ctx), ["some_user"]);
 
   const after = await call(ctx, "GET", "/state", { initData: await signFor(NAMED_USER, "SOME_USER") });
   assertEquals(after.status, 200);
@@ -942,7 +953,7 @@ dbTest("DELETE removes a username, and that user gets 403 again", async (ctx) =>
   const res = await call(ctx, "GET", "/state", { initData });
   assertEquals(res.status, 403);
   assertEquals(await res.json(), { error: "forbidden" });
-  assertEquals(await ctx.db.listUsernames(), []);
+  assertEquals(await listedNames(ctx), []);
 });
 
 dbTest("POST /admin/usernames answers 400 for invalid names and stores nothing", async (ctx) => {
@@ -954,7 +965,7 @@ dbTest("POST /admin/usernames answers 400 for invalid names and stores nothing",
     assertEquals(res.status, 400);
     assertEquals(await res.json(), { error: "bad_request" });
   }
-  assertEquals(await ctx.db.listUsernames(), []);
+  assertEquals(await listedNames(ctx), []);
 });
 
 dbTest("DELETE /admin/usernames/:name answers 404 for a name that is not on the list", async (ctx) => {
@@ -970,7 +981,7 @@ dbTest("adding the same username twice is fine and keeps one row", async (ctx) =
 
   assertEquals(first.status, 200);
   assertEquals(second.status, 200);
-  assertEquals(await ctx.db.listUsernames(), ["some_user"]);
+  assertEquals(await listedNames(ctx), ["some_user"]);
 });
 
 dbTest("GET /admin/usernames lists usernames in ascending order", async (ctx) => {
@@ -980,7 +991,188 @@ dbTest("GET /admin/usernames lists usernames in ascending order", async (ctx) =>
   const res = await call(ctx, "GET", "/admin/usernames");
 
   assertEquals(res.status, 200);
-  assertEquals(await res.json(), { usernames: ["alpha_user", "zed_user"] });
+  assertEquals(await res.json(), {
+    usernames: [
+      { username: "alpha_user", seen: false, is_admin: false, is_owner: false },
+      { username: "zed_user", seen: false, is_admin: false, is_owner: false },
+    ],
+  });
+});
+
+dbTest("a listed user who opens the app is recorded as seen", async (ctx) => {
+  await ctx.db.addUsername("some_user", ALLOWED_USER);
+  assertEquals((await ctx.db.listUsernames())[0].seen, false);
+
+  const res = await call(ctx, "GET", "/state", { initData: await signFor(NAMED_USER, "some_user") });
+
+  assertEquals(res.status, 200);
+  assertEquals((await ctx.db.listUsernames())[0].seen, true);
+  assertEquals(await ctx.db.usernameRow("some_user"), { user_id: NAMED_USER, is_admin: false });
+});
+
+dbTest("granting admin before the listed user has opened the app answers 409 not_seen", async (ctx) => {
+  await ctx.db.addUsername("some_user", ALLOWED_USER);
+
+  const res = await setAdminVia(ctx, "some_user", true);
+
+  assertEquals(res.status, 409);
+  assertEquals(await res.json(), { error: "not_seen" });
+  assertEquals(await ctx.db.isAdminUser(NAMED_USER), false);
+});
+
+dbTest("granting admin after the user has opened the app shows in /state, and revoking reverts it", async (ctx) => {
+  await ctx.db.addUsername("some_user", ALLOWED_USER);
+  const initData = await signFor(NAMED_USER, "some_user");
+  await call(ctx, "GET", "/state", { initData });
+
+  const granted = await setAdminVia(ctx, "some_user", true);
+  assertEquals(granted.status, 200);
+  assertEquals(await granted.json(), { username: "some_user", is_admin: true });
+  const asAdmin = await (await call(ctx, "GET", "/state", { initData })).json();
+  assertEquals([asAdmin.is_admin, asAdmin.is_owner], [true, false]);
+  assertEquals((await call(ctx, "GET", "/admin/usernames", { initData })).status, 200);
+
+  const revoked = await setAdminVia(ctx, "some_user", false);
+  assertEquals(revoked.status, 200);
+  assertEquals(await revoked.json(), { username: "some_user", is_admin: false });
+  const asMember = await (await call(ctx, "GET", "/state", { initData })).json();
+  assertEquals(asMember.is_admin, false);
+  const denied = await call(ctx, "GET", "/admin/usernames", { initData });
+  assertEquals(denied.status, 403);
+  assertEquals(await denied.json(), { error: "forbidden" });
+});
+
+dbTest("a granted admin adds and removes plain users, but cannot change admins or delete admin and owner rows", async (ctx) => {
+  await ctx.db.addUsername("owner_user", ALLOWED_USER);
+  await ctx.db.addUsername("peer_user", OTHER_USER);
+  await ctx.db.addUsername("some_user", ALLOWED_USER);
+  const ownerData = await signFor(ALLOWED_USER, "owner_user");
+  const peerData = await signFor(OTHER_USER, "peer_user");
+  const adminData = await signFor(NAMED_USER, "some_user");
+  await call(ctx, "GET", "/state", { initData: ownerData });
+  await call(ctx, "GET", "/state", { initData: peerData });
+  await call(ctx, "GET", "/state", { initData: adminData });
+  assertEquals((await setAdminVia(ctx, "peer_user", true)).status, 200);
+  assertEquals((await setAdminVia(ctx, "some_user", true)).status, 200);
+
+  const added = await call(ctx, "POST", "/admin/usernames", { initData: adminData, body: { username: "plain_user" } });
+  assertEquals(added.status, 200);
+  const removed = await call(ctx, "DELETE", "/admin/usernames/plain_user", { initData: adminData });
+  assertEquals(removed.status, 204);
+
+  const granting = await call(ctx, "PUT", "/admin/usernames/plain_user/admin", {
+    initData: adminData,
+    body: { admin: true },
+  });
+  assertEquals(granting.status, 403);
+  assertEquals(await granting.json(), { error: "forbidden" });
+
+  for (const name of ["peer_user", "owner_user"]) {
+    const res = await call(ctx, "DELETE", `/admin/usernames/${name}`, { initData: adminData });
+    assertEquals(res.status, 403);
+    assertEquals(await res.json(), { error: "forbidden" });
+  }
+  assertEquals(await listedNames(ctx), ["owner_user", "peer_user", "some_user"]);
+});
+
+dbTest("a plain allowed user gets 403 on PUT .../admin and on the video route until granted admin", async (ctx) => {
+  await ctx.db.addUsername("plain_user", ALLOWED_USER);
+  const plainData = await signFor(OTHER_USER, "plain_user");
+  await call(ctx, "GET", "/state", { initData: plainData });
+  const t = await insertTrack(ctx, OTHER_USER, "mine");
+  const videoBody = { url: "https://youtu.be/aaaaaaaaaaa" };
+
+  const notOwner = await call(ctx, "PUT", "/admin/usernames/plain_user/admin", {
+    initData: plainData,
+    body: { admin: true },
+  });
+  assertEquals(notOwner.status, 403);
+  const notAdmin = await call(ctx, "PUT", `/tracks/${t}/video`, { initData: plainData, body: videoBody });
+  assertEquals(notAdmin.status, 403);
+  assertEquals(await notAdmin.json(), { error: "forbidden" });
+
+  assertEquals((await setAdminVia(ctx, "plain_user", true)).status, 200);
+  const granted = await call(ctx, "PUT", `/tracks/${t}/video`, { initData: plainData, body: videoBody });
+  assertEquals(granted.status, 200);
+  assertEquals(await granted.json(), { video_id: "aaaaaaaaaaa" });
+});
+
+dbTest("the owner deleting an admin's row removes that id's admin rights", async (ctx) => {
+  await ctx.db.addUsername("some_user", ALLOWED_USER);
+  const adminData = await signFor(NAMED_USER, "some_user");
+  await call(ctx, "GET", "/state", { initData: adminData });
+  assertEquals((await setAdminVia(ctx, "some_user", true)).status, 200);
+
+  const removed = await call(ctx, "DELETE", "/admin/usernames/some_user");
+
+  assertEquals(removed.status, 204);
+  assertEquals(await ctx.db.isAdminUser(NAMED_USER), false);
+  assertEquals(await listedNames(ctx), []);
+});
+
+dbTest("when another id presents a listed username, the old id loses admin and the new id is not admin", async (ctx) => {
+  await ctx.db.addUsername("some_user", ALLOWED_USER);
+  await call(ctx, "GET", "/state", { initData: await signFor(NAMED_USER, "some_user") });
+  assertEquals((await setAdminVia(ctx, "some_user", true)).status, 200);
+
+  const res = await call(ctx, "GET", "/state", { initData: await signFor(STRANGER, "some_user") });
+
+  assertEquals(res.status, 200);
+  assertEquals((await res.json()).is_admin, false);
+  assertEquals(await ctx.db.isAdminUser(NAMED_USER), false);
+  assertEquals(await ctx.db.isAdminUser(STRANGER), false);
+  assertEquals(await ctx.db.usernameRow("some_user"), { user_id: STRANGER, is_admin: false });
+});
+
+dbTest("the owner's own row cannot be granted or revoked and answers 409 owner", async (ctx) => {
+  await ctx.db.addUsername("owner_user", ALLOWED_USER);
+  await call(ctx, "GET", "/state", { initData: await signFor(ALLOWED_USER, "owner_user") });
+
+  for (const admin of [true, false]) {
+    const res = await setAdminVia(ctx, "owner_user", admin);
+
+    assertEquals(res.status, 409);
+    assertEquals(await res.json(), { error: "owner" });
+  }
+  assertEquals((await ctx.db.usernameRow("owner_user"))?.is_admin, false);
+});
+
+dbTest("GET /admin/usernames omits user_id and marks the owner's row is_owner", async (ctx) => {
+  await ctx.db.addUsername("owner_user", ALLOWED_USER);
+  await ctx.db.addUsername("some_user", ALLOWED_USER);
+  await call(ctx, "GET", "/state", { initData: await signFor(ALLOWED_USER, "owner_user") });
+  await call(ctx, "GET", "/state", { initData: await signFor(NAMED_USER, "some_user") });
+
+  const res = await call(ctx, "GET", "/admin/usernames");
+  const { usernames } = await res.json();
+
+  assertEquals(res.status, 200);
+  for (const entry of usernames) {
+    assertEquals(Object.keys(entry).sort(), ["is_admin", "is_owner", "seen", "username"]);
+  }
+  assertEquals(usernames, [
+    { username: "owner_user", seen: true, is_admin: false, is_owner: true },
+    { username: "some_user", seen: true, is_admin: false, is_owner: false },
+  ]);
+});
+
+dbTest("GET /state reports is_owner for an env admin and not for a plain allowed user", async (ctx) => {
+  const owner = await (await call(ctx, "GET", "/state")).json();
+  const plain = await (await call(ctx, "GET", "/state", { userId: OTHER_USER })).json();
+
+  assertEquals([owner.is_admin, owner.is_owner], [true, true]);
+  assertEquals([plain.is_admin, plain.is_owner], [false, false]);
+});
+
+dbTest("PUT /admin/usernames/:name/admin answers 404 for an unknown name and 400 for a non-boolean body", async (ctx) => {
+  const missing = await setAdminVia(ctx, "nobody1", true);
+  assertEquals(missing.status, 404);
+  assertEquals(await missing.json(), { error: "not_found" });
+
+  await ctx.db.addUsername("some_user", ALLOWED_USER);
+  const bad = await call(ctx, "PUT", "/admin/usernames/some_user/admin", { body: { admin: "yes" } });
+  assertEquals(bad.status, 400);
+  assertEquals(await bad.json(), { error: "bad_request" });
 });
 
 Deno.test("youtubeId accepts each YouTube link form and rejects everything else", () => {

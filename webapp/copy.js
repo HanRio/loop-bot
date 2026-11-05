@@ -69,4 +69,13 @@ export const COPY = {
   usersLoadFailed: '목록을 불러오지 못했어요',
   usersSaveFailed: '저장하지 못했어요',
   usersClose: '닫기',
+  usersGrant: '관리자로',
+  usersRevoke: '관리자 해제',
+  usersWaiting: '아직 접속 전',
+  usersAdminBadge: '관리자',
+  usersOwnerBadge: '원래 관리자',
+  usersGrantConfirm: (name) => `${name}님을 관리자로 지정할까요? 지정 전에 본인인지 확인해 주세요`,
+  usersRevokeConfirm: (name) => `${name}님의 관리자 권한을 해제할까요?`,
+  usersNotSeen: '미니앱을 한 번 연 뒤에 지정할 수 있어요',
+  usersForbidden: '이 사용자는 원래 관리자만 바꿀 수 있어요',
 };

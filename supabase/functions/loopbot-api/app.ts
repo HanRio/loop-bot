@@ -107,7 +107,16 @@ export function youtubeId(url: string): string | null {
 }
 
 // Admins are matched by numeric id only, because usernames can be taken over.
-function requireAdmin(deps: Deps, userId: number): void {
+async function isAdmin(deps: Deps, userId: number): Promise<boolean> {
+  return deps.admins.has(userId) || (await deps.db.isAdminUser(userId));
+}
+
+async function requireAdmin(deps: Deps, userId: number): Promise<void> {
+  if (!(await isAdmin(deps, userId))) throw new HttpError(403, "forbidden");
+}
+
+// Owners are the env admin ids only. Granting admin is owner-only.
+function requireOwner(deps: Deps, userId: number): void {
   if (!deps.admins.has(userId)) throw new HttpError(403, "forbidden");
 }
 
@@ -151,15 +160,19 @@ function playlistFields(body: Record<string, unknown>): { name: string; trackIds
   return { name: normalizeName(name), trackIds };
 }
 
+// Recording the id happens before the env list check, so ids are kept even while ALLOWED_USERNAMES still holds the name.
 async function authenticate(req: Request, deps: Deps): Promise<number> {
   const user = await verifyInitData(req.headers.get("x-telegram-init-data") ?? "", deps.botToken, deps.now());
   if (user === null) throw new HttpError(401, "expired");
-  if (deps.allowed.has(user.id)) return user.id;
-  if (user.username === null) throw new HttpError(403, "forbidden");
-  const username = user.username.toLowerCase();
+  const username = user.username === null ? null : user.username.toLowerCase();
+  if (deps.allowed.has(user.id)) {
+    if (username !== null) await deps.db.claimUsername(username, user.id);
+    return user.id;
+  }
+  if (username === null) throw new HttpError(403, "forbidden");
+  if (await deps.db.claimUsername(username, user.id)) return user.id;
   if (deps.allowedUsernames.has(username)) return user.id;
-  if (!(await deps.db.isUsernameAllowed(username))) throw new HttpError(403, "forbidden");
-  return user.id;
+  throw new HttpError(403, "forbidden");
 }
 
 // Telegram's getFile refuses files over 20MB; the bot token lives in the download URL.
@@ -271,7 +284,11 @@ async function route(req: Request, deps: Deps, userId: number): Promise<Response
   const { db } = deps;
 
   if (req.method === "GET" && path === "/state") {
-    return json({ ...(await db.state(userId)), is_admin: deps.admins.has(userId) });
+    return json({
+      ...(await db.state(userId)),
+      is_admin: await isAdmin(deps, userId),
+      is_owner: deps.admins.has(userId),
+    });
   }
 
   if (req.method === "POST" && path === "/playlists") {
@@ -302,7 +319,7 @@ async function route(req: Request, deps: Deps, userId: number): Promise<Response
 
   const shared = path.match(/^\/playlists\/(\d+)\/shared$/);
   if (shared && req.method === "PUT") {
-    requireAdmin(deps, userId);
+    await requireAdmin(deps, userId);
     const { shared: isShared } = await readBody(req);
     if (typeof isShared !== "boolean") throw badRequest();
     const id = idParam(shared[1]);
@@ -329,14 +346,14 @@ async function route(req: Request, deps: Deps, userId: number): Promise<Response
   // Plain /sheet is page 0, kept for clients that were already open before pages existed.
   if (sheet && req.method === "GET") return trackSheet(userId, idParam(sheet[1]), 0, deps);
   if (sheet && req.method === "POST") {
-    requireAdmin(deps, userId);
+    await requireAdmin(deps, userId);
     return addSheet(req, userId, idParam(sheet[1]), deps);
   }
 
   const sheetPage = path.match(/^\/tracks\/(\d+)\/sheet\/(\d{1,3})$/);
   if (sheetPage && req.method === "GET") return trackSheet(userId, idParam(sheetPage[1]), Number(sheetPage[2]), deps);
   if (sheetPage && req.method === "DELETE") {
-    requireAdmin(deps, userId);
+    await requireAdmin(deps, userId);
     const pages = await db.deleteSheet(userId, idParam(sheetPage[1]), Number(sheetPage[2]));
     if (pages === null) throw notFound();
     return json(pages);
@@ -344,7 +361,7 @@ async function route(req: Request, deps: Deps, userId: number): Promise<Response
 
   const video = path.match(/^\/tracks\/(\d+)\/video$/);
   if (video && req.method === "PUT") {
-    requireAdmin(deps, userId);
+    await requireAdmin(deps, userId);
     const videoId = videoField(await readBody(req));
     if (!(await db.saveVideo(userId, idParam(video[1]), videoId))) throw notFound();
     return json({ video_id: videoId });
@@ -359,11 +376,19 @@ async function route(req: Request, deps: Deps, userId: number): Promise<Response
   }
 
   if (req.method === "GET" && path === "/admin/usernames") {
-    requireAdmin(deps, userId);
-    return json({ usernames: await db.listUsernames() });
+    await requireAdmin(deps, userId);
+    const rows = await db.listUsernames();
+    return json({
+      usernames: rows.map((row) => ({
+        username: row.username,
+        seen: row.seen,
+        is_admin: row.is_admin,
+        is_owner: row.user_id !== null && deps.admins.has(row.user_id),
+      })),
+    });
   }
   if (req.method === "POST" && path === "/admin/usernames") {
-    requireAdmin(deps, userId);
+    await requireAdmin(deps, userId);
     const { username } = await readBody(req);
     const name = parseNewUsername(username);
     if (name === null) throw badRequest();
@@ -373,9 +398,28 @@ async function route(req: Request, deps: Deps, userId: number): Promise<Response
 
   const adminUsername = path.match(/^\/admin\/usernames\/([a-z0-9_]{1,64})$/);
   if (adminUsername && req.method === "DELETE") {
-    requireAdmin(deps, userId);
-    if (!(await db.removeUsername(adminUsername[1]))) throw notFound();
+    await requireAdmin(deps, userId);
+    const name = adminUsername[1];
+    const row = await db.usernameRow(name);
+    if (row === null) throw notFound();
+    const ownerRow = row.user_id !== null && deps.admins.has(row.user_id);
+    if (!deps.admins.has(userId) && (row.is_admin || ownerRow)) throw new HttpError(403, "forbidden");
+    if (!(await db.removeUsername(name))) throw notFound();
     return new Response(null, { status: 204, headers: CORS_HEADERS });
+  }
+
+  const adminGrant = path.match(/^\/admin\/usernames\/([a-z0-9_]{1,64})\/admin$/);
+  if (adminGrant && req.method === "PUT") {
+    requireOwner(deps, userId);
+    const { admin } = await readBody(req);
+    if (typeof admin !== "boolean") throw badRequest();
+    const name = adminGrant[1];
+    const row = await db.usernameRow(name);
+    if (row !== null && row.user_id !== null && deps.admins.has(row.user_id)) throw new HttpError(409, "owner");
+    const result = await db.setAdmin(name, admin, userId);
+    if (result === "missing") throw notFound();
+    if (result === "not_seen") throw new HttpError(409, "not_seen");
+    return json({ username: name, is_admin: admin });
   }
 
   throw notFound();

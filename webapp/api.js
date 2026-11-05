@@ -101,5 +101,6 @@ export function createApi(baseUrl, initData, fileBase = null) {
     removeUsername: async (name) => {
       await request('DELETE', `/admin/usernames/${encodeURIComponent(name)}`);
     },
+    setUserAdmin: (name, admin) => json('PUT', `/admin/usernames/${encodeURIComponent(name)}/admin`, { admin }),
   };
 }

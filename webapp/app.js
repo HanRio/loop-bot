@@ -531,7 +531,7 @@ async function refreshFromServer() {
   model.media = state.media;
   model.notes = state.notes;
   model.isAdmin = state.is_admin;
-  usersAdmin.setVisible(state.is_admin);
+  usersAdmin.setVisible(state.is_admin, state.is_owner);
   // 보고 있던 목록이 내 목록에서도 공유 목록에서도 사라졌으면(공유 해제 등) 활성 목록으로 돌아간다.
   if (!findPlaylist(model.viewedId)) {
     model.viewedId = state.active_id;
@@ -579,7 +579,7 @@ async function init() {
   model.media = state.media;
   model.notes = state.notes;
   model.isAdmin = state.is_admin;
-  usersAdmin.setVisible(state.is_admin);
+  usersAdmin.setVisible(state.is_admin, state.is_owner);
   model.viewedId = startPlaylistId({
     rememberedId: Number(readLocal(KEY_PLAYLIST)),
     activeId: state.active_id,
