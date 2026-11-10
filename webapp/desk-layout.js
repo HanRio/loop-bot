@@ -53,11 +53,11 @@ export function movePane(desk, pane, target, where) {
 }
 
 // 영상 칸의 자리를 받아 떠 있는 패널의 자리를 돌려준다. 칸이 화면 위로 지나가면 위쪽 여백에 붙는다.
-export function floatRect(slot, viewportHeight) {
+export function floatRect(slot, viewportHeight, insetTop = 0) {
   const width = Math.min(slot.width, viewportHeight * VIDEO_HEIGHT_SHARE * 16 / 9);
   return {
     left: slot.left + (slot.width - width) / 2,
-    top: Math.max(slot.top, VIDEO_PIN_TOP),
+    top: Math.max(slot.top, VIDEO_PIN_TOP + insetTop),
     width,
     height: (width * 9) / 16 + VIDEO_FOOT,
   };

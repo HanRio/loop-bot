@@ -6,7 +6,7 @@
 <title>플레이리스트</title>
 <script>
   // 칠하기 전에 스킨을 정해 화면이 번쩍이지 않게 한다.
-  try { if (localStorage.getItem('loopbot.skin') === 'glass') document.documentElement.dataset.skin = 'glass'; } catch {}
+  try { if (localStorage.getItem('loopbot.skin') !== 'neu') document.documentElement.dataset.skin = 'glass'; } catch {}
 </script>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.6/Sortable.min.js"></script>
@@ -20,6 +20,11 @@
     --press: inset 3px 3px 6px var(--dark), inset -3px -3px 6px var(--light);
     --radius-lg: 24px; --radius-md: 16px; --radius-sm: 12px;
     --ease: 200ms ease-in-out;
+    /* 전체 화면에서 상태 표시줄과 텔레그램 닫기·메뉴 버튼 자리. 텔레그램 밖에서는 기기 안전 영역을 쓴다. */
+    --inset-top: calc(var(--tg-safe-area-inset-top, env(safe-area-inset-top, 0px)) + var(--tg-content-safe-area-inset-top, 0px));
+    --inset-bottom: calc(var(--tg-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)) + var(--tg-content-safe-area-inset-bottom, 0px));
+    --inset-left: var(--tg-safe-area-inset-left, env(safe-area-inset-left, 0px));
+    --inset-right: var(--tg-safe-area-inset-right, env(safe-area-inset-right, 0px));
   }
   :root[data-theme="dark"] {
     --surface: #2B3038; --light: #363C46; --dark: #1C2026;
@@ -30,7 +35,7 @@
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
   [hidden] { display: none !important; }
   body {
-    margin: 0; padding: 16px 16px 124px;
+    margin: 0; padding: calc(16px + var(--inset-top)) calc(16px + var(--inset-right)) 124px calc(16px + var(--inset-left));
     background: var(--surface); color: var(--text);
     font: 500 16px/1.5 -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
   }
@@ -118,7 +123,7 @@
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 2;
     background: var(--surface); border-radius: 18px 18px 0 0;
     box-shadow: 0 -4px 12px var(--dark);
-    padding: 4px 16px calc(6px + env(safe-area-inset-bottom, 0px));
+    padding: 4px 16px calc(6px + var(--inset-bottom));
   }
   /* 양쪽 칸 폭을 같게 해 이전·재생·다음이 항상 정가운데에 온다. 반복은 오른쪽 칸 끝에 붙인다. */
   #bar-row { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 8px; }
@@ -199,7 +204,7 @@
   .lyric-title {
     display: block; width: 100%; min-height: 44px; padding: 0 8px; border: 0; background: none;
     color: inherit; font: inherit; font-weight: 700; text-align: left;
-    position: sticky; top: 0; z-index: 1; background: var(--surface); border-radius: var(--radius-sm);
+    position: sticky; top: var(--inset-top); z-index: 1; background: var(--surface); border-radius: var(--radius-sm);
   }
   .lyric-card.current .lyric-title { color: var(--accent); }
   /* 사진 넘기기(scroll-snap-carousel). 여러 장이면 다음 장 끝이 보여 옆으로 넘길 수 있음을 알린다. */
@@ -262,10 +267,10 @@
 
   /* 전체 복사와 양식 버튼: 가사집이 보이는 동안 화면 오른쪽 아래에 뜬다. 입력 중에는 숨긴다. */
   #lyrics-actions {
-    position: fixed; right: 16px; bottom: calc(112px + env(safe-area-inset-bottom, 0px)); z-index: 3;
+    position: fixed; right: 16px; bottom: calc(112px + var(--inset-bottom)); z-index: 3;
     display: flex; gap: 8px; align-items: center;
   }
-  body.video-open #lyrics-actions { bottom: calc(16px + env(safe-area-inset-bottom, 0px)); }
+  body.video-open #lyrics-actions { bottom: calc(16px + var(--inset-bottom)); }
   body:has(.note-input:focus) #lyrics-actions { display: none; }
   #copy-all {
     min-height: 48px; padding: 0 20px; border: 0; border-radius: 999px;
@@ -302,7 +307,7 @@
 
   /* 참고 영상: 맨 위에 고정. 여는 동안 재생 바를 숨기므로 아래 여백을 줄인다. */
   #video-panel {
-    position: sticky; top: 0; z-index: 5; margin: -16px -16px 0; padding: 8px 16px 0;
+    position: sticky; top: 0; z-index: 5; margin: calc(-16px - var(--inset-top)) -16px 0; padding: calc(8px + var(--inset-top)) 16px 0;
     background: var(--surface); box-shadow: var(--raise-sm);
   }
   .video-frame { position: relative; aspect-ratio: 16 / 9; overflow: hidden; border-radius: var(--radius-md); background: var(--dark); }
@@ -320,10 +325,10 @@
     scroll-snap-type: x mandatory; overscroll-behavior-inline: contain; scrollbar-width: none;
   }
   .viewer-page { flex: 0 0 100%; height: 100%; overflow: auto; scroll-snap-align: start; scroll-snap-stop: always; }
-  .sheet-viewer .sheet-count { position: fixed; top: 24px; right: auto; left: 16px; z-index: 1; }
+  .sheet-viewer .sheet-count { position: fixed; top: calc(24px + var(--inset-top)); right: auto; left: 16px; z-index: 1; }
   .sheet-viewer::backdrop { background: var(--surface); }
   .viewer-page img { display: block; width: 100%; height: auto; }
-  .sheet-close { position: fixed; top: 12px; right: 12px; z-index: 1; }
+  .sheet-close { position: fixed; top: calc(12px + var(--inset-top)); right: 12px; z-index: 1; }
 
   /* 칸 장치는 넓은 화면에서만 보인다. 좁은 화면에서는 칸 래퍼가 펼쳐져 예전처럼 한 줄로 쌓인다. */
   .pane-grip, .desk-divider, #desk-reset { display: none; }
@@ -377,7 +382,7 @@
     /* 아래 몫: 재생 바와 전체 복사 버튼. 영상을 열면 재생 바가 숨는다. */
     body { --below-room: 172px; }
     body.video-open { --below-room: 76px; }
-    .desk:not(.single) .desk-col.follows:has(> .desk-pane[data-pane="note"]) { position: sticky; top: 52px; display: flex; flex-direction: column; height: calc(100vh - 52px - var(--below-room)); height: calc(100dvh - 52px - var(--below-room)); overflow-y: auto; padding: 4px; margin: -4px; }
+    .desk:not(.single) .desk-col.follows:has(> .desk-pane[data-pane="note"]) { position: sticky; top: calc(52px + var(--inset-top)); display: flex; flex-direction: column; height: calc(100vh - 52px - var(--inset-top) - var(--below-room)); height: calc(100dvh - 52px - var(--inset-top) - var(--below-room)); overflow-y: auto; padding: 4px; margin: -4px; }
     .desk:not(.single) .desk-col.follows > .desk-pane[data-pane="note"] { flex: 1 1 0; min-height: 200px; display: flex; flex-direction: column; }
     .desk:not(.single) .desk-col.follows .lyric-side { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
     .desk:not(.single) .desk-col.follows .note-label { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }

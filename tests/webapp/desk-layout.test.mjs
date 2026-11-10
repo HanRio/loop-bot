@@ -104,3 +104,8 @@ test('floatRect keeps the slot top when the slot is in view', () => {
   const rect = floatRect({ left: 0, top: 120, width: 300 }, 800);
   assert.equal(rect.top, 120);
 });
+
+test('floatRect pins below the fullscreen top inset once the slot scrolls past it', () => {
+  assert.equal(floatRect({ left: 0, top: -200, width: 300 }, 800, 90).top, VIDEO_PIN_TOP + 90);
+  assert.equal(floatRect({ left: 0, top: 400, width: 300 }, 800, 90).top, 400);
+});

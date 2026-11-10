@@ -1,4 +1,4 @@
-/* 리퀴드 글래스 스킨. <html data-skin="glass">일 때만 켜진다. 끄면 index.html의 뉴모피즘 화면 그대로다.
+/* 리퀴드 글래스 스킨. <html data-skin="glass">일 때 켜지며 기본 화면이다. 스위치로 끄면 index.html의 뉴모피즘 화면이다.
    design-isms refractive-glass-ui 기준: 본문은 안정된 면에, 유리는 떠 있는 제어부에만 쓴다.
    CSS blur는 Apple의 실제 굴절이 아니다. 흐림은 콘텐츠가 지나가는 곳(재생 바, 곡 제목, 영상 패널, 닫기 버튼)에만 준다. */
 :root[data-skin="glass"] {
@@ -70,7 +70,7 @@
 
 /* 재생 바: 화면에서 떠 있는 유리. 안쪽 버튼에는 면을 또 두지 않는다. */
 :root[data-skin="glass"] #bar {
-  left: 10px; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  left: 10px; right: 10px; bottom: calc(10px + var(--inset-bottom));
   padding: 6px 14px 8px; border-radius: 28px;
   background: var(--glass-solid); box-shadow: var(--float), var(--edge);
 }
@@ -106,7 +106,7 @@
 
 /* 콘텐츠가 밑으로 지나가는 곳 */
 :root[data-skin="glass"] .lyric-title {
-  top: 6px; border-radius: var(--radius-sm); background: var(--glass-solid); box-shadow: inset 0 0 0 .5px var(--line);
+  top: calc(6px + var(--inset-top)); border-radius: var(--radius-sm); background: var(--glass-solid); box-shadow: inset 0 0 0 .5px var(--line);
 }
 :root[data-skin="glass"] #video-panel { background: var(--glass-solid); box-shadow: var(--float); }
 :root[data-skin="glass"] .sheet-viewer,

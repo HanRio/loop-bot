@@ -49,9 +49,10 @@ function applyTheme() {
 applyTheme();
 tg?.onEvent?.('themeChanged', applyTheme);
 
-// 화면 스킨. 기본은 뉴모피즘이고 스위치를 켠 사람에게만 글래스로 보인다. 처음 칠하는 값은 index.html이 정한다.
+// 화면 스킨. 기본은 글래스이고 스위치를 끈 사람에게만 뉴모피즘으로 보인다. 처음 칠하는 값은 index.html이 정한다.
 const KEY_SKIN = 'loopbot.skin';
 const SKIN_GLASS = 'glass';
+const SKIN_NEU = 'neu';
 
 function renderSkinToggle() {
   $('skin-toggle').setAttribute('aria-checked', String(document.documentElement.dataset.skin === SKIN_GLASS));
@@ -61,10 +62,10 @@ function onToggleSkin() {
   const root = document.documentElement;
   if (root.dataset.skin === SKIN_GLASS) {
     delete root.dataset.skin;
-    removeLocal(KEY_SKIN);
+    writeLocal(KEY_SKIN, SKIN_NEU);
   } else {
     root.dataset.skin = SKIN_GLASS;
-    writeLocal(KEY_SKIN, SKIN_GLASS);
+    removeLocal(KEY_SKIN);
   }
   renderSkinToggle();
   applyTheme();
