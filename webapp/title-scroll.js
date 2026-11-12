@@ -39,7 +39,7 @@ async function cycle(title) {
   }
 }
 
-function attach(title) {
+export function attach(title) {
   if (title.dataset.scroll) return;
   title.dataset.scroll = '1';
   cycle(title);

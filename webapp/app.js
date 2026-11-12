@@ -15,7 +15,7 @@ import { createPractice } from './tab-practice.js';
 import { moodFor } from './ui-logic.js';
 import { createUsersAdmin } from './users-admin.js';
 import { initVolume } from './volume.js';
-import { initTitleScroll } from './title-scroll.js';
+import { attach as scrollTitle, initTitleScroll } from './title-scroll.js';
 
 const API_BASE = 'https://rrpmpqxoqxlwrmflpiyi.supabase.co/functions/v1/loopbot-api';
 const FILE_BASE = 'https://168-110-54-40.sslip.io';
@@ -152,6 +152,14 @@ function formatTime(seconds) {
 }
 
 // 미니·전체 플레이어. 재생기가 바뀔 때마다(시간 포함) 부른다.
+// 매 틱마다 같은 글자를 다시 넣으면 흐르던 제목이 끊기니, 바뀔 때만 넣는다.
+function setText(id, text) {
+  const node = $(id);
+  if (node.textContent === text) return;
+  node.textContent = text;
+  node.scrollLeft = 0;
+}
+
 function renderPlayer() {
   const id = playback.currentTrackId;
   const position = player?.position() ?? 0;
@@ -163,14 +171,14 @@ function renderPlayer() {
   const sub = findPlaylist(playback.playingPlaylistId ?? model.viewedId)?.name ?? '';
   const playLabel = playing ? '일시정지' : '재생';
 
-  $('mini-title').textContent = title;
+  setText('mini-title', title);
   $('mini-sub').textContent = sub;
   $('mini-art').style.background = artOf(id);
   $('mini-prog').firstElementChild.style.width = percent;
   $('mini-play-icon').setAttribute('d', playing ? ICON_PAUSE : ICON_PLAY);
   $('mini-play').setAttribute('aria-label', playLabel);
 
-  $('player-title').textContent = title;
+  setText('player-title', title);
   $('player-sub').textContent = sub;
   $('player-art').style.background = artOf(id);
   const seek = $('seek');
@@ -732,6 +740,8 @@ async function init() {
   });
   library = createLibrary({ onPlay: onPlayRow, onOpenList, onNewList, onTrackMenu });
   initTitleScroll($('pager'));
+  scrollTitle($('mini-title'));
+  scrollTitle($('player-title'));
   meditate = createMeditate({ api, onError: reportError, onMediaChange });
   practice = createPractice({ player });
   buildVideoForm();

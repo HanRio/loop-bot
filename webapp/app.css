@@ -220,7 +220,10 @@ body:has(textarea:focus, input:focus:not([type=range]):not([type=checkbox])) #do
   box-shadow: inset 0 0 0 1px rgba(255,255,255,.6);
 }
 .mini .tt { min-width: 0; font-size: 14px; line-height: 1.3; }
-.mini .tt b { display: block; font-weight: 600; }
+.mini .tt { flex: 1; }
+.mini .tt b, #player-hero h1 { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mini .tt b { font-weight: 600; }
+.mini .tt b.run, #player-hero h1.run { text-overflow: clip; }
 .mini .tt span { display: block; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ib {
   width: 44px; height: 44px; display: inline-grid; place-items: center; border: 0; background: none; padding: 0;
@@ -258,7 +261,7 @@ body:has(textarea:focus, input:focus:not([type=range]):not([type=checkbox])) #do
   flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: 0 24px; text-align: center;
 }
-#player-hero h1 { margin: 0 0 6px; font-size: 26px; }
+#player-hero h1 { align-self: stretch; margin: 0 0 6px; font-size: 26px; }
 #player-hero p { margin: 0; font-size: 14px; color: var(--muted); }
 #player-hero .chip { margin-top: 14px; }
 .console {
