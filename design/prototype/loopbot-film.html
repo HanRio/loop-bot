@@ -20,8 +20,8 @@ svg.i { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-widt
 
 .app { position: relative; height: 100%; max-width: 440px; margin: 0 auto; overflow: hidden; background: #F4F7FA; isolation: isolate; }
 /* 바탕: 곡 색 세 개를 크게 번지게. 곡이 바뀌면 천천히 물든다. */
-.ambient { position: absolute; inset: -20%; z-index: -1; filter: blur(60px) saturate(1.15); transition: background 1.2s ease; pointer-events: none;
-  background: radial-gradient(40% 32% at 18% 14%, var(--m1), transparent 70%), radial-gradient(45% 36% at 88% 38%, var(--m3), transparent 70%), radial-gradient(55% 40% at 30% 88%, var(--m2), transparent 72%), #F4F7FA; }
+.ambient { position: absolute; inset: 0; z-index: -1; pointer-events: none; transition: background 1.2s ease;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--m1) 45%, #F7F9FB) 0%, #F7F9FB 62%); }
 .glass { background: var(--glass); -webkit-backdrop-filter: blur(24px) saturate(1.7); backdrop-filter: blur(24px) saturate(1.7);
   border: 1px solid var(--rim); box-shadow: 0 12px 32px var(--shade), inset 0 1px 0 rgba(255,255,255,.85), inset 0 -1px 0 rgba(255,255,255,.25); }
 
@@ -104,7 +104,7 @@ h2 { margin: 26px 0 6px; font-size: 13px; font-weight: 600; color: var(--muted);
 /* 재생 화면: 같은 곡 색 바탕 위에 가사, 아래 유리 조작부 */
 .player { position: absolute; inset: 0; z-index: 10; display: flex; flex-direction: column; overflow: hidden; transform: translateY(100%); transition: transform .5s cubic-bezier(.2,.8,.2,1); }
 .player.open { transform: none; }
-.player .ambient { inset: -30%; filter: blur(50px) saturate(1.3); }
+.player .ambient { background: linear-gradient(180deg, color-mix(in srgb, var(--m1) 80%, #F7F9FB) 0%, color-mix(in srgb, var(--m1) 30%, #F7F9FB) 55%, #F7F9FB 100%); }
 .top { display: flex; justify-content: space-between; align-items: center; padding: 10px max(10px, env(safe-area-inset-right, 0px)) 0 max(20px, env(safe-area-inset-left, 0px)); font-size: 13px; color: var(--muted); }
 .lyrics { position: relative; flex: 1; min-height: 0; margin: 0 24px; overflow: hidden; -webkit-mask-image: linear-gradient(transparent, #000 24%, #000 76%, transparent); mask-image: linear-gradient(transparent, #000 24%, #000 76%, transparent); }
 .lyrics ol { list-style: none; margin: 0; padding: 0; transition: transform .7s cubic-bezier(.2,.8,.2,1); }
