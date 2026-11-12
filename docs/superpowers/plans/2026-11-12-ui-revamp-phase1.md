@@ -25,7 +25,7 @@
 
 1. 공유받은 목록(읽기 전용)에서 편집 버튼이 보이거나 동작하면 안 된다.
 2. 목록을 지우거나 곡을 지운 뒤 재생 중인 곡과 큐가 어긋나면 안 된다. 지금 `app.js`의 처리를 그대로 옮긴다.
-3. 탭을 밀어 넘기는 중에 악보 가로 넘김이 탭 넘김을 일으키면 안 된다. 악보에 `overscroll-behavior-x: contain`을 준다.
+3. 화면을 옆으로 밀어도 탭이 바뀌면 안 된다. `#pager`는 `overflow: hidden`이고 탭은 버튼으로만 바꾼다. 묵상 곡 넘김에는 `overscroll-behavior-x: contain`을 준다.
 4. 메모 입력 중에는 키보드에 바가 가려지지 않게 숨긴다.
 5. iOS에서는 볼륨 버튼이 숨겨지는 지금 동작을 유지한다.
 
@@ -92,7 +92,8 @@
 **파일:** 만들기 `webapp/shell.js`
 
 **내보내는 것:** `createShell({ onTab }): { goTab(i: number): void, tab(): number, openPlayer(): void, closePlayer(): void, isPlayerOpen(): boolean, setMood(trackId: number): void }`
-- `#pager`의 scroll 이벤트로 `tabFromScroll`과 `indicatorX`를 써서 알약 위치, `aria-current`, 칸 투명도·크기를 갱신한다. 탭이 바뀌면 `onTab(i)`를 부른다.
+- `#pager`는 `overflow: hidden`이라 사용자가 밀어서 넘길 수 없다. 탭 버튼을 누를 때만 `goTab`이 `scrollTo`로 넘긴다.
+- `#pager`의 scroll 이벤트(프로그램 이동으로만 생김)로 `tabFromScroll`과 `indicatorX`를 써서 알약 위치, `aria-current`, 칸 투명도·크기를 갱신한다. 탭이 바뀌면 `onTab(i)`를 부른다.
 - 탭 버튼을 누르면 `goTab`이 부드럽게 넘긴다. 움직임 줄이기 설정이면 바로 넘긴다.
 - `setMood`는 `moodFor`로 `.app`의 `--m1..3`을 바꾼다.
 - 창 크기가 바뀌면 지금 칸으로 다시 맞춘다.
@@ -114,7 +115,9 @@
   - 검색은 모듈 안에서 제목 `includes`로 거른다.
 - `createMeditate({ api, onError, onMediaChange, noteActions })`
   - view: `{ trackIds, titles, media, notes, currentId, canEdit, playlistId }`
-  - 곡 고르기는 `meditateTrack`으로 정한다.
+  - 곡마다 한 장(`article.slide`)을 가로로 늘어놓고 scroll-snap으로 한 곡씩 넘긴다. 처음 칸은 `meditateTrack`으로 정한다. 위에 `n / 전체`, 아래에 점 표시.
+  - PC 마우스 끌기: pointerType이 mouse일 때만 끌어서 넘기고 놓으면 가까운 곡에 붙인다. 6px 넘게 끈 뒤의 click은 막는다. textarea 안에서 시작한 끌기는 무시한다.
+  - 메모는 곡마다 하나다. 가사 보기와 악보 보기의 메모 칸은 같은 값을 쓴다. 악보 사진은 그 곡 칸 안에서 아래로 이어 붙인다.
   - 느낀점 저장, 초안 복구, 복사, 템플릿은 지금 `lyrics.js`의 코드를 옮긴다(`saveNote`, `draftsToRestore`, `note-actions`).
   - 악보 넘김, 캐시, 업로드, 삭제, 크게 보기도 지금 `lyrics.js` 코드를 옮긴다(`sheetCacheKey`, `pageFromScroll`, `pagesToLoad`, `fitSize`, `uploadSheet`, `deleteSheet`).
 - `createPractice({ player })`: 속도 버튼은 `player.setRate`, 구간 반복 A/B/해제 버튼. 반복 판정은 `loopCheck`(작업 1)를 timeupdate에서 부른다.
