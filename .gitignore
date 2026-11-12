@@ -8,3 +8,4 @@ cookies*.txt
 .audit/
 .claude/
 supabase/.temp/
+design/references/
