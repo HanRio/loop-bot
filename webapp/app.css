@@ -17,6 +17,8 @@
 }
 
 html, body { height: 100%; }
+/* iOS가 가로로 밀리는 제목 칸의 글자를 멋대로 키우지 않게 한다. */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 body {
   margin: 0; background: #EEF2F6; color: var(--ink); font-family: var(--sans); overflow: hidden;
 }
