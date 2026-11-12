@@ -160,13 +160,33 @@ function setText(id, text) {
   node.scrollLeft = 0;
 }
 
+// 재생기는 위치를 1초에 4번쯤만 알려 줘서 막대가 툭툭 끊겨 보인다. 재생 중에는 화면 새로 고침마다 막대만 다시 칠한다.
+let seekDragging = false;
+let progressFrame = 0;
+
+function paintProgress() {
+  const position = player?.position() ?? 0;
+  const duration = player?.duration() ?? 0;
+  const percent = `${duration > 0 ? (position / duration) * 100 : 0}%`;
+  $('mini-prog').firstElementChild.style.width = percent;
+  const seek = $('seek');
+  seek.max = String(duration);
+  if (!seekDragging) seek.value = String(position);
+  seek.style.setProperty('--progress', percent);
+  const now = formatTime(position);
+  if ($('t-now').textContent !== now) $('t-now').textContent = now;
+}
+
+function progressLoop() {
+  paintProgress();
+  progressFrame = player?.isPlaying() && !document.hidden ? requestAnimationFrame(progressLoop) : 0;
+}
+
 function renderPlayer() {
   const id = playback.currentTrackId;
-  const position = player?.position() ?? 0;
   const duration = player?.duration() ?? 0;
   const playing = player?.isPlaying() ?? false;
   const loading = player?.isLoading?.() ?? false;
-  const percent = `${duration > 0 ? (position / duration) * 100 : 0}%`;
   const title = id === null ? TEXT.noTrack : playback.currentTitle;
   const sub = findPlaylist(playback.playingPlaylistId ?? model.viewedId)?.name ?? '';
   const playLabel = playing ? '일시정지' : '재생';
@@ -174,19 +194,15 @@ function renderPlayer() {
   setText('mini-title', title);
   $('mini-sub').textContent = sub;
   $('mini-art').style.background = artOf(id);
-  $('mini-prog').firstElementChild.style.width = percent;
   $('mini-play-icon').setAttribute('d', playing ? ICON_PAUSE : ICON_PLAY);
   $('mini-play').setAttribute('aria-label', playLabel);
 
   setText('player-title', title);
   $('player-sub').textContent = sub;
   $('player-art').style.background = artOf(id);
-  const seek = $('seek');
-  seek.max = String(duration);
-  seek.value = String(position);
-  seek.style.setProperty('--progress', percent);
-  $('t-now').textContent = formatTime(position);
   $('t-all').textContent = loading ? COPY.downloading : formatTime(duration);
+  paintProgress();
+  if (playing && !progressFrame) progressFrame = requestAnimationFrame(progressLoop);
   $('play-icon').setAttribute('d', playing ? ICON_PAUSE : ICON_PLAY);
   const play = $('play');
   play.setAttribute('aria-label', playLabel);
@@ -703,7 +719,12 @@ function wireControls() {
   $('play').addEventListener('click', onPlayPause);
   $('next').addEventListener('click', () => userMove(computeNext(true)));
   $('repeat').addEventListener('click', onRepeat);
-  $('seek').addEventListener('input', (e) => player.seek(Number(e.target.value)));
+  $('seek').addEventListener('input', (e) => {
+    seekDragging = true;
+    player.seek(Number(e.target.value));
+  });
+  $('seek').addEventListener('change', () => { seekDragging = false; });
+  $('seek').addEventListener('pointerup', () => { seekDragging = false; });
   $('player-sheet').addEventListener('click', onOpenSheet);
   $('video-open').addEventListener('click', openVideo);
   $('video-close').addEventListener('click', closeVideo);
