@@ -38,15 +38,16 @@ export function validTemplate(text) {
   return text.trim() !== '' && text.includes('{느낀점}') && text.length <= TEMPLATE_MAX;
 }
 
-// 느낀점이 빈 곡은 뺀다. 번호는 남은 곡끼리 센다. 한 번에 치환해서 본문 안의 글자는 다시 바뀌지 않는다.
+// 느낀점이 빈 곡은 뺀다. 번호는 플리 순서 그대로다. 한 번에 치환해서 본문 안의 글자는 다시 바뀌지 않는다.
 export function renderNotes(template, rows) {
-  const included = rows.filter((row) => row.body.trim() !== '');
-  return included
-    .map((row, index) => {
+  return rows
+    .map((row, index) => ({ row, number: index + 1 }))
+    .filter(({ row }) => row.body.trim() !== '')
+    .map(({ row, number }) => {
       const values = {
         제목: songTitle(row.title),
         느낀점: row.body.trim(),
-        번호: String(index + 1),
+        번호: String(number),
       };
       return template.replace(PLACEHOLDER, (_, key) => values[key]);
     })
