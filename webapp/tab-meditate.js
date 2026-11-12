@@ -12,7 +12,6 @@ const NOTE_KEY = 'loopbot.note.';
 const SHEET_MAX_EDGE = 2400;
 const SHEET_QUALITY = 0.9;
 const COPIED_MS = 1500;
-const ZOOM_WIDTHS = ['100%', '220%'];
 const DRAG_MIN_PX = 6;
 const DRAG_FLIP_PX = 40;
 const SNAP_RESTORE_MS = 400;
@@ -435,7 +434,8 @@ export function createMeditate({ api, onError, onMediaChange }) {
   }
 
   function toggleZoom(img) {
-    img.style.width = ZOOM_WIDTHS[(ZOOM_WIDTHS.indexOf(img.style.width) + 1) % ZOOM_WIDTHS.length];
+    // 기본은 화면에 다 들어오게, 누르면 두 배 넓게 키워 옆·아래로 움직여 본다.
+    img.parentElement.classList.toggle('zoom');
   }
 
   // 뷰어에는 쪽마다 img 하나를 만든다. 받은 쪽은 바로 넣고, 아직 없는 쪽은 받는 대로 넣는다.
@@ -443,7 +443,6 @@ export function createMeditate({ api, onError, onMediaChange }) {
     const imgs = slide.pages.map((_, i) => {
       const img = el('img');
       img.alt = `${COPY.sheetAlt} ${i + 1}/${slide.count}`;
-      img.style.width = ZOOM_WIDTHS[0];
       img.addEventListener('click', () => toggleZoom(img));
       const holder = el('div', 'viewer-page');
       holder.append(img);

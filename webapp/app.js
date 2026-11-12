@@ -15,6 +15,7 @@ import { createPractice } from './tab-practice.js';
 import { moodFor } from './ui-logic.js';
 import { createUsersAdmin } from './users-admin.js';
 import { initVolume } from './volume.js';
+import { initTitleScroll } from './title-scroll.js';
 
 const API_BASE = 'https://rrpmpqxoqxlwrmflpiyi.supabase.co/functions/v1/loopbot-api';
 const FILE_BASE = 'https://168-110-54-40.sslip.io';
@@ -730,6 +731,7 @@ async function init() {
     onSettings: () => $('settings-dialog').showModal(),
   });
   library = createLibrary({ onPlay: onPlayRow, onOpenList, onNewList, onTrackMenu });
+  initTitleScroll($('pager'));
   meditate = createMeditate({ api, onError: reportError, onMediaChange });
   practice = createPractice({ player });
   buildVideoForm();

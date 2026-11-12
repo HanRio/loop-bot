@@ -19,7 +19,7 @@ const SHEET_MAX_PAGES = 20;
 const VIDEO_ID_RE = /(?:v=|youtu\.be\/|shorts\/|embed\/|live\/)([A-Za-z0-9_-]{11})(?![A-Za-z0-9_-])/;
 
 export function createApi() {
-  let library = MEMBER ? [] : [1, 2, 3, 4, 5].map((id) => ({ id, title: `시험 곡 ${id}`, duration: 60 + id }));
+  let library = MEMBER ? [] : [1, 2, 3, 4, 5].map((id) => ({ id, title: id === 4 ? '[LIVE] 예수, 늘 함께하시네 - 마커스워십 정규 앨범 실황 (Official Live Video) 긴 제목 확인용' : `시험 곡 ${id}`, duration: 60 + id }));
   let playlists = MEMBER
     ? [{ id: 1, name: '기본', track_ids: [], shared: false }]
     : [

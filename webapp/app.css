@@ -82,8 +82,10 @@ h3 { margin: 0 0 2px; font-size: 20px; font-weight: 700; letter-spacing: -.01em;
 .row .n { width: 16px; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .thumb { width: 46px; height: 46px; border-radius: 12px; flex: none; box-shadow: inset 0 0 0 1px rgba(255,255,255,.5); }
 .row .t { flex: 1; min-width: 0; }
-.row .t b { display: block; font-size: 15px; font-weight: 500; }
-.row .t span { font-size: 12px; color: var(--muted); }
+.row .t > b { display: block; font-size: 15px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .t > b.run { text-overflow: clip; }
+.row .t > b.run > span { display: inline-block; will-change: transform; }
+.row .t > span { display: block; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .row.now { background: rgba(255,255,255,.4); border-color: transparent; }
 .row.now .t b { font-weight: 700; }
 .row.off { opacity: .45; }
@@ -394,8 +396,15 @@ body:has(textarea:focus, input:focus:not([type=range]):not([type=checkbox])) #do
   scrollbar-width: none;
 }
 .viewer-strip::-webkit-scrollbar { display: none; }
-.viewer-page { flex: 0 0 100%; height: 100%; overflow: auto; scroll-snap-align: start; scroll-snap-stop: always; }
-.viewer-page img { display: block; width: 100%; height: auto; }
+/* 사진 전체가 텔레그램 버튼과 홈바 사이에 들어오게 비율을 지켜 맞춘다. 더 크게는 손가락으로 벌려 본다. */
+.viewer-page {
+  flex: 0 0 100%; height: 100%; overflow: auto; scroll-snap-align: start; scroll-snap-stop: always;
+  box-sizing: border-box; display: flex; align-items: center; justify-content: center;
+  padding: calc(64px + var(--inset-top)) calc(8px + var(--inset-right)) calc(16px + var(--inset-bottom)) calc(8px + var(--inset-left));
+}
+.viewer-page img { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; }
+.viewer-page.zoom { display: block; }
+.viewer-page.zoom img { width: 220%; max-width: none; max-height: none; }
 .sheet-count {
   position: absolute; top: 8px; right: 8px; padding: 2px 10px; border-radius: 999px;
   background: rgba(23,32,51,.62); color: #fff; font-size: 13px; font-weight: 600;
