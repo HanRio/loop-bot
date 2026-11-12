@@ -142,7 +142,7 @@ h3 { margin: 0 0 2px; font-size: 20px; font-weight: 700; letter-spacing: -.01em;
 .dots { display: flex; justify-content: center; gap: 6px; margin: 14px 0 0; }
 .dots i { width: 6px; height: 6px; border-radius: 3px; background: var(--line); transition: width .25s, background .25s; }
 .dots i.on { width: 18px; background: var(--ink); }
-.copyrow { display: flex; align-items: center; gap: 8px; margin: -4px 0 14px; }
+.copyrow { display: flex; align-items: center; gap: 8px; margin: 10px 0 14px; }
 .copyrow span { font-size: 12px; color: var(--muted); }
 
 /* 악보 사진: 사진 자체에 둥근 모서리와 그림자를 준다 */

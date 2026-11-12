@@ -14,6 +14,9 @@ export function createShell({ onTab = () => {} } = {}) {
 
   // 화면에 그린 칸 번호. 스크롤 이벤트로만 바뀐다.
   let current = 0;
+  // 탭 버튼으로 고른 칸. 포커스 때문에 브라우저가 칸을 밀면 여기로 되돌린다.
+  let target = 0;
+  let moving = false;
 
   // 스크롤 위치에 맞춰 알약, aria-current, 칸 투명도·크기를 그린다. 바뀐 칸 번호를 돌려준다.
   function paint() {
@@ -37,14 +40,23 @@ export function createShell({ onTab = () => {} } = {}) {
   }
 
   function onScroll() {
+    if (Math.abs(pager.scrollLeft - target * pager.clientWidth) < 1) moving = false;
     const at = paint();
     if (at === current) return;
     current = at;
+    setInert();
     onTab(at);
+  }
+
+  // 보이지 않는 칸은 키보드 포커스와 스크린리더에서 뺀다.
+  function setInert() {
+    panes.forEach((pane, i) => { pane.inert = i !== current; });
   }
 
   function goTab(i) {
     const at = Math.min(buttons.length - 1, Math.max(0, i));
+    target = at;
+    moving = !reducedMotion();
     pager.scrollTo({ left: at * pager.clientWidth, behavior: reducedMotion() ? 'auto' : 'smooth' });
   }
 
@@ -69,13 +81,17 @@ export function createShell({ onTab = () => {} } = {}) {
   pager.addEventListener('scroll', onScroll, { passive: true });
   // 창 크기가 바뀌면 지금 칸으로 다시 맞춘다.
   addEventListener('resize', () => {
-    pager.scrollLeft = current * pager.clientWidth;
+    pager.scrollLeft = target * pager.clientWidth;
     paint();
   });
+  pager.addEventListener('focusin', () => requestAnimationFrame(() => {
+    if (!moving) pager.scrollLeft = target * pager.clientWidth;
+  }));
   $('mini-open').addEventListener('click', openPlayer);
   $('player-close').addEventListener('click', closePlayer);
 
   current = paint();
+  setInert();
 
   return {
     goTab,
