@@ -1,130 +1,149 @@
 <title>루프봇 필름 시안</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Noto+Sans+KR:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap">
 <style>
-/* 한 화면 앱: 탭 4개를 옆으로 넘기고, 아래 떠 있는 바에서 플레이어를 펼친다. 필름 사진 톤 한 가지로만 보여 준다. */
+/* 한 화면 앱. 지금 곡의 색이 바탕 전체에 크게 번지고, 떠 있는 바와 카드만 맑은 유리로 얹는다. 글꼴 하나, 먹색 하나로 미니멀하게. */
 :root {
-  --bg: #E6E8E6; --surface: #EFF0EE; --line: rgba(30,37,34,.12);
-  --fg: #1E2522; --muted: #4A544F; --accent: #A44C1C; --accent-soft: rgba(164,76,28,.12);
-  --glass: rgba(239,240,238,.8);
-  --serif: 'Gowun Batang', 'Nanum Myeongjo', serif;
+  --ink: #14202B; --muted: #4D5A66; --line: rgba(20,32,43,.08);
+  --glass: rgba(255,255,255,.42); --glass-strong: rgba(255,255,255,.62);
+  --rim: rgba(255,255,255,.7); --shade: rgba(38,62,92,.14);
+  --m1: #9CC4F2; --m2: #C9D9F5; --m3: #B8E0EC;
   --sans: 'Noto Sans KR', -apple-system, 'Apple SD Gothic Neo', sans-serif;
+  --spring: cubic-bezier(.34,1.4,.64,1);
   color-scheme: light;
 }
 html, body { height: 100%; }
-body { background: #CFD3D0; color: var(--fg); font-family: var(--sans); overflow: hidden; }
-button { font: inherit; color: inherit; }
-button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+body { background: #EEF2F6; color: var(--ink); font-family: var(--sans); overflow: hidden; }
+button { font: inherit; color: inherit; -webkit-tap-highlight-color: transparent; }
+button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 svg.i { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 
-.app { position: relative; height: 100%; max-width: 440px; margin: 0 auto; background: var(--bg); overflow: hidden; }
+.app { position: relative; height: 100%; max-width: 440px; margin: 0 auto; overflow: hidden; background: #F4F7FA; isolation: isolate; }
+/* 바탕: 곡 색 세 개를 크게 번지게. 곡이 바뀌면 천천히 물든다. */
+.ambient { position: absolute; inset: -20%; z-index: -1; filter: blur(60px) saturate(1.15); transition: background 1.2s ease; pointer-events: none;
+  background: radial-gradient(40% 32% at 18% 14%, var(--m1), transparent 70%), radial-gradient(45% 36% at 88% 38%, var(--m3), transparent 70%), radial-gradient(55% 40% at 30% 88%, var(--m2), transparent 72%), #F4F7FA; }
+.glass { background: var(--glass); -webkit-backdrop-filter: blur(24px) saturate(1.7); backdrop-filter: blur(24px) saturate(1.7);
+  border: 1px solid var(--rim); box-shadow: 0 12px 32px var(--shade), inset 0 1px 0 rgba(255,255,255,.85), inset 0 -1px 0 rgba(255,255,255,.25); }
+
 .pager { position: absolute; inset: 0; display: flex; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; scrollbar-width: none; overscroll-behavior-x: contain; }
 .pager::-webkit-scrollbar { display: none; }
 .pane { flex: none; width: 100%; height: 100%; overflow-y: auto; scroll-snap-align: start; scroll-snap-stop: always; box-sizing: border-box;
-  padding: 28px max(20px, env(safe-area-inset-right, 0px)) 190px max(20px, env(safe-area-inset-left, 0px)); will-change: transform, opacity; }
+  padding: 30px max(20px, env(safe-area-inset-right, 0px)) 196px max(20px, env(safe-area-inset-left, 0px)); will-change: transform, opacity; }
 .kicker { margin: 0; font-size: 13px; color: var(--muted); }
-h1 { margin: 4px 0 16px; font-family: var(--serif); font-size: 30px; font-weight: 700; text-wrap: balance; }
-h2 { margin: 22px 0 8px; font-size: 15px; font-weight: 700; }
-.note { padding: 14px 0; border-block: 1px solid var(--line); font-size: 14px; line-height: 1.6; }
-.note b { display: block; font-size: 12px; color: var(--accent); margin-bottom: 2px; }
+h1 { margin: 2px 0 20px; font-size: 30px; font-weight: 700; letter-spacing: -.02em; text-wrap: balance; }
+h2 { margin: 26px 0 6px; font-size: 13px; font-weight: 600; color: var(--muted); }
+.panel { border-radius: 22px; padding: 16px 18px; }
+.panel b.label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
+.note { font-size: 14px; line-height: 1.65; }
+
 .rows { list-style: none; margin: 0; padding: 0; }
-.row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.row { display: flex; align-items: center; gap: 12px; padding: 10px 6px; margin: 0 -6px; border-radius: 14px; border-bottom: 1px solid var(--line); cursor: pointer; transition: background .2s, transform .2s; }
+.row:active { transform: scale(.98); background: rgba(255,255,255,.35); }
 .row .n { width: 16px; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.thumb { width: 46px; height: 46px; border-radius: 8px; flex: none; position: relative; overflow: hidden; }
-.thumb::after { content: ""; position: absolute; inset: 0; background: radial-gradient(circle at 30% 20%, rgba(255,255,255,.35), transparent 60%); }
+.thumb { width: 46px; height: 46px; border-radius: 12px; flex: none; box-shadow: inset 0 0 0 1px rgba(255,255,255,.5); }
 .row .t { flex: 1; min-width: 0; }
 .row .t b { display: block; font-size: 15px; font-weight: 500; }
 .row .t span { font-size: 12px; color: var(--muted); }
-.row.now .t b { font-weight: 700; } .row.now .t span, .row.now .n { color: var(--accent); }
-.search { display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 14px; background: var(--surface); border-radius: 12px; color: var(--muted); }
-.search input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; font: 400 15px var(--sans); color: var(--fg); }
+.row.now { background: rgba(255,255,255,.4); border-color: transparent; }
+.row.now .t b { font-weight: 700; }
+
+.search { display: flex; align-items: center; gap: 8px; height: 46px; padding: 0 16px; border-radius: 16px; color: var(--muted); }
+.search input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; font: 400 15px var(--sans); color: var(--ink); }
+.search input::placeholder { color: var(--muted); }
 .chips { display: flex; gap: 8px; margin-top: 12px; overflow-x: auto; scrollbar-width: none; }
-.chip { flex: none; border: 1px solid var(--line); background: none; border-radius: 999px; padding: 0 14px; height: 36px; font-size: 13px; cursor: pointer; }
-.chip[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
-.lists { display: flex; gap: 12px; overflow-x: auto; scrollbar-width: none; }
+.chip { flex: none; border: 1px solid var(--line); background: rgba(255,255,255,.3); border-radius: 999px; padding: 0 15px; height: 36px; font-size: 13px; cursor: pointer; transition: background .2s, transform .15s; }
+.chip:active { transform: scale(.96); }
+.chip[aria-pressed="true"] { background: var(--ink); color: #fff; border-color: var(--ink); }
+.lists { display: flex; gap: 12px; overflow-x: auto; scrollbar-width: none; padding-bottom: 4px; }
 .lists > * { flex: none; width: 104px; font-size: 13px; text-align: left; }
-.lists .cv { display: block; width: 104px; height: 104px; border-radius: 10px; margin-bottom: 6px; }
+.lists .cv { display: block; width: 104px; height: 104px; border-radius: 18px; margin-bottom: 6px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.5); }
 .new { border: 0; background: none; padding: 0; cursor: pointer; }
-.new .cv { border: 1.5px dashed rgba(30,37,34,.35); display: grid; place-items: center; }
-.line { display: block; width: 100%; text-align: left; border: 0; background: none; font: 400 17px/1.55 var(--serif); color: var(--muted); padding: 8px 10px; border-radius: 8px; cursor: pointer; }
-.line[aria-pressed="true"] { color: var(--fg); font-weight: 700; background: var(--accent-soft); }
-.memo { margin: 4px 0 8px; padding: 12px 14px; border-left: 2px solid var(--accent); }
-.memo label { font-size: 12px; font-weight: 700; color: var(--accent); }
-.memo textarea { display: block; width: 100%; box-sizing: border-box; margin-top: 4px; border: 0; background: none; resize: none; font: 400 15px/1.6 var(--sans); color: var(--fg); padding: 0; }
+.new .cv { display: grid; place-items: center; }
+
+.seg { display: flex; gap: 4px; padding: 4px; border-radius: 14px; }
+.seg button { flex: 1; height: 34px; border: 0; background: none; border-radius: 10px; font-size: 13px; color: var(--muted); cursor: pointer; transition: background .25s, color .25s; }
+.seg button[aria-pressed="true"] { background: rgba(255,255,255,.85); color: var(--ink); font-weight: 600; box-shadow: 0 2px 8px var(--shade); }
+.line { display: block; width: 100%; text-align: left; border: 0; background: none; font: 400 17px/1.6 var(--sans); color: var(--muted); padding: 9px 12px; border-radius: 12px; cursor: pointer; transition: background .2s, color .2s; }
+.line[aria-pressed="true"] { color: var(--ink); font-weight: 600; background: rgba(255,255,255,.45); }
+.memo { margin: 6px 0 10px; border-radius: 18px; padding: 14px 16px; }
+.memo label { font-size: 12px; font-weight: 600; color: var(--muted); }
+.memo textarea { display: block; width: 100%; box-sizing: border-box; margin-top: 4px; border: 0; background: none; resize: none; font: 400 15px/1.65 var(--sans); color: var(--ink); padding: 0; outline: 0; }
 .sheets { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: none; }
 .sheets::-webkit-scrollbar { display: none; }
-.sheet { flex: 0 0 100%; margin: 0; box-sizing: border-box; aspect-ratio: 1 / 1.3; max-height: 52vh; padding: 18px 16px; background: #F6F5F1; border-radius: 4px; box-shadow: 0 1px 4px rgba(30,37,34,.12); scroll-snap-align: start; display: flex; flex-direction: column; gap: 4px; overflow: hidden; }
-.sheet figcaption { font-family: var(--serif); font-size: 14px; font-weight: 700; text-align: center; margin-bottom: 8px; }
-.sheet .sys { height: 33px; flex: none; background: repeating-linear-gradient(transparent 0 7px, #8E948F 7px 8px); background-size: 100% 40px; background-repeat: no-repeat; position: relative; }
-.sheet .sys::before { content: ""; position: absolute; left: 0; top: 7px; bottom: 0; width: 1px; background: #8E948F; }
+.sheet { flex: 0 0 100%; margin: 0; box-sizing: border-box; aspect-ratio: 1 / 1.3; max-height: 52vh; padding: 20px 18px; border-radius: 20px; background: rgba(255,255,255,.78); box-shadow: 0 8px 24px var(--shade); scroll-snap-align: start; display: flex; flex-direction: column; gap: 4px; overflow: hidden; }
+.sheet figcaption { font-size: 14px; font-weight: 600; text-align: center; margin-bottom: 10px; }
+.sheet .sys { height: 33px; flex: none; position: relative; background: repeating-linear-gradient(transparent 0 7px, #A9B3BD 7px 8px) no-repeat; background-size: 100% 40px; }
+.sheet .sys::before { content: ""; position: absolute; left: 0; top: 7px; bottom: 0; width: 1px; background: #A9B3BD; }
 .sheet p { margin: 0 0 6px; font-size: 12px; color: var(--muted); }
-.pages { margin: 8px 0 0; font-size: 12px; color: var(--muted); text-align: center; font-variant-numeric: tabular-nums; }
-.card { padding: 14px 0; border-bottom: 1px solid var(--line); }
-.card b { font-size: 15px; } .card p { margin: 4px 0 0; font-size: 13px; color: var(--muted); }
-.seg { display: flex; gap: 6px; margin-top: 10px; }
-.seg button { flex: 1; height: 36px; border: 1px solid var(--line); background: none; border-radius: 8px; font-size: 13px; cursor: pointer; }
-.seg button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
+.pages { margin: 10px 0 0; font-size: 12px; color: var(--muted); text-align: center; font-variant-numeric: tabular-nums; }
+.stack { display: grid; gap: 12px; }
+.panel p { margin: 4px 0 0; font-size: 13px; color: var(--muted); line-height: 1.55; }
+.speed { margin-top: 12px; background: rgba(20,32,43,.05); }
 
-.dock { position: absolute; left: 0; right: 0; bottom: 0; padding: 0 max(12px, env(safe-area-inset-right, 0px)) calc(14px + env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px)); display: grid; gap: 10px; z-index: 5; pointer-events: none; }
+/* 아래 떠 있는 바 */
+.dock { position: absolute; left: 0; right: 0; bottom: 0; z-index: 5; display: grid; gap: 10px; pointer-events: none;
+  padding: 0 max(12px, env(safe-area-inset-right, 0px)) calc(14px + env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px)); }
 .dock > * { pointer-events: auto; }
-.gl { background: var(--glass); -webkit-backdrop-filter: blur(20px) saturate(1.4); backdrop-filter: blur(20px) saturate(1.4); border: 1px solid rgba(255,255,255,.6); box-shadow: 0 10px 28px rgba(30,37,34,.16); }
-.mini { position: relative; height: 60px; border-radius: 30px; display: flex; align-items: center; gap: 10px; padding: 0 6px 0 10px; overflow: hidden; }
+.mini { position: relative; height: 62px; border-radius: 31px; display: flex; align-items: center; gap: 4px; padding: 0 6px 0 9px; overflow: hidden; }
 .mini .open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; border: 0; background: none; padding: 0; text-align: left; cursor: pointer; height: 100%; }
-.mini .art { width: 40px; height: 40px; border-radius: 20px; flex: none; }
+.mini .art { width: 44px; height: 44px; border-radius: 22px; flex: none; transition: background 1s; box-shadow: inset 0 0 0 1px rgba(255,255,255,.6); }
 .mini .tt { min-width: 0; font-size: 14px; line-height: 1.3; }
-.mini .tt b { display: block; } .mini .tt span { display: block; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ib { width: 44px; height: 44px; display: inline-grid; place-items: center; border: 0; background: none; padding: 0; cursor: pointer; flex: none; border-radius: 50%; }
-.mini .prog { position: absolute; left: 24px; right: 24px; bottom: 0; height: 2px; background: var(--line); }
-.mini .prog i, .bar i { display: block; height: 100%; background: var(--fg); width: 0; }
+.mini .tt b { display: block; font-weight: 600; }
+.mini .tt span { display: block; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ib { width: 44px; height: 44px; display: inline-grid; place-items: center; border: 0; background: none; padding: 0; cursor: pointer; flex: none; border-radius: 50%; transition: transform .15s var(--spring), background .2s; }
+.ib:active { transform: scale(.9); }
+.mini .prog { position: absolute; left: 26px; right: 26px; bottom: 0; height: 2px; background: var(--line); border-radius: 1px; overflow: hidden; }
+.mini .prog i, .bar i { display: block; height: 100%; background: var(--ink); width: 0; border-radius: inherit; }
 .tabs { position: relative; height: 66px; border-radius: 33px; display: flex; align-items: center; padding: 0 6px; }
-.ind { position: absolute; top: 6px; left: 6px; height: 54px; border-radius: 27px; background: var(--accent-soft); }
+.ind { position: absolute; top: 6px; left: 6px; height: 54px; border-radius: 27px; background: rgba(255,255,255,.75); box-shadow: 0 4px 14px var(--shade), inset 0 1px 0 #fff; }
 .tab { position: relative; flex: 1; height: 54px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border: 0; background: none; font-size: 11px; color: var(--muted); cursor: pointer; transition: color .3s; }
-.tab svg { transition: transform .35s cubic-bezier(.34,1.5,.64,1); }
-.tab[aria-current="page"] { color: var(--accent); font-weight: 700; }
-.tab[aria-current="page"] svg { transform: translateY(-1px) scale(1.12); stroke-width: 2; }
+.tab svg { transition: transform .35s var(--spring); }
+.tab[aria-current="page"] { color: var(--ink); font-weight: 600; }
+.tab[aria-current="page"] svg { transform: translateY(-1px) scale(1.1); stroke-width: 2; }
 
-.player { position: absolute; inset: 0; z-index: 10; background: var(--bg); display: flex; flex-direction: column; transform: translateY(100%); transition: transform .45s cubic-bezier(.2,.8,.2,1); }
+/* 재생 화면: 같은 곡 색 바탕 위에 가사, 아래 유리 조작부 */
+.player { position: absolute; inset: 0; z-index: 10; display: flex; flex-direction: column; overflow: hidden; transform: translateY(100%); transition: transform .5s cubic-bezier(.2,.8,.2,1); }
 .player.open { transform: none; }
-.hero { position: relative; flex: 0 0 56%; overflow: hidden; background: linear-gradient(180deg, var(--m1) 0%, var(--m2) 55%, var(--m3) 100%); transition: background .8s; }
-.hero .light { position: absolute; right: -40px; top: 32%; width: 60%; height: 34%; background: repeating-linear-gradient(90deg, rgba(255,255,255,.55) 0 38px, transparent 38px 50px); transform: skewY(-14deg); filter: blur(5px); opacity: .5; }
-.hero canvas { position: absolute; inset: 0; width: 100%; height: 100%; mix-blend-mode: overlay; opacity: .22; }
-.hero .close { position: absolute; top: 12px; right: max(10px, env(safe-area-inset-right, 0px)); color: #fff; }
-.lyrics { position: absolute; inset: 64px 24px 24px; overflow: hidden; color: #fff; -webkit-mask-image: linear-gradient(transparent, #000 22%, #000 78%, transparent); mask-image: linear-gradient(transparent, #000 22%, #000 78%, transparent); }
-.lyrics ol { list-style: none; margin: 0; padding: 0; transition: transform .6s cubic-bezier(.2,.8,.2,1); }
-.lyrics li { height: 64px; display: grid; place-items: center; text-align: center; font-family: var(--serif); font-size: 16px; opacity: .45; transition: opacity .5s, font-size .5s; }
-.lyrics li.cur { opacity: 1; font-size: 23px; font-weight: 700; text-shadow: 0 1px 14px rgba(30,40,55,.35); }
-.bar { height: 2px; background: var(--line); }
-.times { display: flex; justify-content: space-between; padding: 8px 16px 0; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.meta { text-align: center; padding-top: 8px; }
-.meta h2 { margin: 0; font-family: var(--serif); font-size: 23px; }
-.meta p { margin: 4px 0 0; font-size: 14px; color: var(--muted); }
-.ctl { display: flex; justify-content: space-between; align-items: center; padding: 18px 14px 0; }
-.play { width: 80px; height: 80px; border: 1.3px solid var(--fg); }
-.foot { margin-top: auto; display: flex; justify-content: space-between; padding: 0 16px calc(18px + env(safe-area-inset-bottom, 0px)); font-size: 12px; color: var(--muted); }
-.foot .mood { color: var(--accent); }
-.on { background: rgba(30,37,34,.1); border-radius: 8px; }
+.player .ambient { inset: -30%; filter: blur(50px) saturate(1.3); }
+.top { display: flex; justify-content: space-between; align-items: center; padding: 10px max(10px, env(safe-area-inset-right, 0px)) 0 max(20px, env(safe-area-inset-left, 0px)); font-size: 13px; color: var(--muted); }
+.lyrics { position: relative; flex: 1; min-height: 0; margin: 0 24px; overflow: hidden; -webkit-mask-image: linear-gradient(transparent, #000 24%, #000 76%, transparent); mask-image: linear-gradient(transparent, #000 24%, #000 76%, transparent); }
+.lyrics ol { list-style: none; margin: 0; padding: 0; transition: transform .7s cubic-bezier(.2,.8,.2,1); }
+.lyrics li { height: 64px; display: grid; place-items: center; text-align: center; font-size: 17px; color: var(--muted); opacity: .55; transition: opacity .5s, transform .5s; }
+.lyrics li.cur { opacity: 1; color: var(--ink); font-size: 24px; font-weight: 700; letter-spacing: -.01em; }
+.console { margin: 0 max(12px, env(safe-area-inset-right, 0px)) calc(14px + env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px)); border-radius: 30px; padding: 18px 16px 14px; }
+.meta { display: flex; align-items: center; gap: 12px; }
+.meta .art { width: 52px; height: 52px; border-radius: 14px; flex: none; transition: background 1s; box-shadow: inset 0 0 0 1px rgba(255,255,255,.6); }
+.meta h2 { margin: 0; font-size: 19px; font-weight: 700; color: var(--ink); letter-spacing: -.01em; }
+.meta p { margin: 2px 0 0; font-size: 13px; color: var(--muted); }
+.bar { height: 3px; margin-top: 16px; background: rgba(20,32,43,.1); border-radius: 2px; overflow: hidden; }
+.times { display: flex; justify-content: space-between; margin-top: 6px; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.ctl { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; }
+.play { width: 68px; height: 68px; background: var(--ink); color: #fff; box-shadow: 0 8px 20px rgba(20,32,43,.25); }
+.on { background: rgba(255,255,255,.6); }
+.foot { display: flex; justify-content: space-between; margin-top: 8px; font-size: 11px; color: var(--muted); }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; } }
 </style>
 
 <div class="app" id="app">
+  <div class="ambient" aria-hidden="true"></div>
   <div class="pager" id="pager" aria-label="탭 화면, 옆으로 밀어서 넘기기">
     <section class="pane" aria-label="콘티">
       <p class="kicker">11월 16일 주일 · 2부 예배</p>
       <h1>이번 주 콘티</h1>
-      <div class="note"><b>단장님 가라사대</b>1·2번은 쉬지 않고 이어서. 3번 후렴은 두 번 반복하고 4번은 피아노만으로 시작해요.</div>
+      <div class="panel glass note"><b class="label">단장님 가라사대</b>1·2번은 쉬지 않고 이어서. 3번 후렴은 두 번 반복하고 4번은 피아노만으로 시작해요.</div>
       <h2>순서 · 5곡</h2>
       <ol class="rows" id="conti"></ol>
     </section>
     <section class="pane" aria-label="라이브러리">
       <p class="kicker">모든 곡 64 · 내 목록 2</p>
       <h1>라이브러리</h1>
-      <label class="search"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg><input id="q" type="search" placeholder="곡 제목, 가사, 아티스트" aria-label="곡 검색"></label>
+      <label class="search glass"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg><input id="q" type="search" placeholder="곡 제목, 가사, 아티스트" aria-label="곡 검색"></label>
       <div class="chips" id="chips"></div>
       <h2>내 목록</h2>
       <div class="lists">
-        <button class="new" type="button"><span class="cv"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></span>새 목록 만들기</button>
-        <div><span class="cv" style="background: linear-gradient(150deg, #A7B4C3, #C7C1B6);"></span>새벽 기도<br><small style="color: var(--muted);">8곡</small></div>
-        <div><span class="cv" style="background: linear-gradient(150deg, #B8A390, #8F8173);"></span>청년부 수련회<br><small style="color: var(--muted);">12곡</small></div>
+        <button class="new" type="button"><span class="cv glass"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></span>새 목록 만들기</button>
+        <div><span class="cv" style="background: linear-gradient(150deg, #9CC4F2, #B8E0EC);"></span>새벽 기도<br><small style="color: var(--muted);">8곡</small></div>
+        <div><span class="cv" style="background: linear-gradient(150deg, #F6C9A8, #F3A9B4);"></span>청년부 수련회<br><small style="color: var(--muted);">12곡</small></div>
       </div>
       <h2>모든 곡</h2>
       <ul class="rows" id="lib"></ul>
@@ -132,7 +151,7 @@ h2 { margin: 22px 0 8px; font-size: 15px; font-weight: 700; }
     <section class="pane" aria-label="묵상">
       <p class="kicker">주님의 시선 · 가사나 악보를 보며 생각을 적어요</p>
       <h1>묵상</h1>
-      <div class="seg" id="medMode" style="margin: 0 0 14px;"><button type="button" data-v="lines" aria-pressed="true">가사 줄</button><button type="button" data-v="sheet">악보 보기</button></div>
+      <div class="seg glass" id="medMode" style="margin-bottom: 14px;"><button type="button" data-v="lines" aria-pressed="true">가사 줄</button><button type="button" data-v="sheet">악보 보기</button></div>
       <div id="med"></div>
       <div id="sheetView" hidden>
         <div class="sheets" id="sheets" aria-label="악보, 옆으로 넘기기">
@@ -141,21 +160,23 @@ h2 { margin: 22px 0 8px; font-size: 15px; font-weight: 700; }
           <figure class="sheet"><figcaption>주님의 시선 · 2절</figcaption><div class="sys"></div><p>어둔 밤 지날 때도</p><div class="sys"></div><p>그 눈길 나를 떠나지 않네</p><div class="sys"></div><p>나는 서 있네 그 사랑 안에</p></figure>
         </div>
         <p class="pages" id="sheetCount">1 / 3 · 옆으로 넘겨요</p>
-        <div class="memo"><label for="sheetMemo" id="sheetLabel">1장에서 든 생각</label><textarea id="sheetMemo" rows="3">후렴에서 "두려움 없이"가 두 번 나오는 게 이번 주 나에게 하는 말 같다.</textarea></div>
+        <div class="memo glass"><label for="sheetMemo" id="sheetLabel">1장에서 든 생각</label><textarea id="sheetMemo" rows="3">후렴에서 "두려움 없이"가 두 번 나오는 게 이번 주 나에게 하는 말 같다.</textarea></div>
       </div>
     </section>
     <section class="pane" aria-label="연습">
-      <p class="kicker" style="color: var(--accent);">추천 탭 · 기능은 하나씩 채워요</p>
+      <p class="kicker">추천 탭 · 기능은 하나씩 채워요</p>
       <h1>연습</h1>
-      <div class="card"><b>구간 반복</b><p>어려운 부분만 A부터 B까지 계속 돌려요. 01:45 후렴 시작 – 02:41</p></div>
-      <div class="card"><b>속도</b><p>느리게 들으며 박자와 가사를 익혀요.</p>
-        <div class="seg" id="speed"><button type="button">0.75x</button><button type="button">0.9x</button><button type="button" aria-pressed="true">1.0x</button><button type="button">1.1x</button></div></div>
-      <div class="card"><b>이번 주 연습</b><p>주 이름 찬양 7번 · 주님의 시선 4번 · 하나님의 부르심 아직 안 들음</p></div>
+      <div class="stack">
+        <div class="panel glass"><b>구간 반복</b><p>어려운 부분만 A부터 B까지 계속 돌려요. 01:45 후렴 시작부터 02:41까지.</p></div>
+        <div class="panel glass"><b>속도</b><p>느리게 들으며 박자와 가사를 익혀요.</p>
+          <div class="seg speed" id="speed"><button type="button">0.75x</button><button type="button">0.9x</button><button type="button" aria-pressed="true">1.0x</button><button type="button">1.1x</button></div></div>
+        <div class="panel glass"><b>이번 주 연습</b><p>주 이름 찬양 7번 · 주님의 시선 4번 · 하나님의 부르심 아직 안 들음</p></div>
+      </div>
     </section>
   </div>
 
   <div class="dock">
-    <div class="mini gl">
+    <div class="mini glass">
       <button class="open" type="button" id="openPlayer" aria-label="플레이어 펼치기">
         <span class="art" id="miniArt"></span>
         <span class="tt"><b id="miniTitle"></b><span id="miniLine"></span></span>
@@ -164,47 +185,47 @@ h2 { margin: 22px 0 8px; font-size: 15px; font-weight: 700; }
       <button class="ib" type="button" id="miniNext" aria-label="다음 곡"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 5v14M5 5l9 7-9 7z"/></svg></button>
       <div class="prog"><i id="miniProg"></i></div>
     </div>
-    <nav class="tabs gl" aria-label="탭">
+    <nav class="tabs glass" aria-label="탭">
       <span class="ind" id="ind" aria-hidden="true"></span>
-      <button class="tab" type="button" data-i="0"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7a2 2 0 012-2h12a2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2zM8 3v4M16 3v4M8 11h8M8 15h5"/></svg>콘티</button>
-      <button class="tab" type="button" data-i="1"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4v16M9 4v16M13 5l5 14"/></svg>라이브러리</button>
-      <button class="tab" type="button" data-i="2"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6c-2-1.5-5-2-8-1.5v14c3-.5 6 0 8 1.5 2-1.5 5-2 8-1.5v-14c-3-.5-6 0-8 1.5zM12 6v14"/></svg>묵상</button>
-      <button class="tab" type="button" data-i="3"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4a8 8 0 100 16 8 8 0 000-16zM12 9a3 3 0 100 6 3 3 0 000-6z"/></svg>연습</button>
+      <button class="tab" type="button"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7a2 2 0 012-2h12a2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2zM8 3v4M16 3v4M8 11h8M8 15h5"/></svg>콘티</button>
+      <button class="tab" type="button"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4v16M9 4v16M13 5l5 14"/></svg>라이브러리</button>
+      <button class="tab" type="button"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6c-2-1.5-5-2-8-1.5v14c3-.5 6 0 8 1.5 2-1.5 5-2 8-1.5v-14c-3-.5-6 0-8 1.5zM12 6v14"/></svg>묵상</button>
+      <button class="tab" type="button"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4a8 8 0 100 16 8 8 0 000-16zM12 9a3 3 0 100 6 3 3 0 000-6z"/></svg>연습</button>
     </nav>
   </div>
 
   <section class="player" id="player" aria-label="재생 화면" aria-hidden="true">
-    <div class="hero" id="hero">
-      <div class="light"></div>
-      <canvas id="grain" aria-hidden="true"></canvas>
-      <button class="ib close" type="button" id="closePlayer" aria-label="플레이어 접기"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9l8 7 8-7"/></svg></button>
-      <div class="lyrics" aria-live="polite"><ol id="lyr"></ol></div>
+    <div class="ambient" aria-hidden="true"></div>
+    <div class="top"><span id="where">이번 주 콘티 · 3 / 5</span>
+      <button class="ib" type="button" id="closePlayer" aria-label="플레이어 접기"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 9l7 7 7-7"/></svg></button></div>
+    <div class="lyrics" aria-live="polite"><ol id="lyr"></ol></div>
+    <div class="console glass">
+      <div class="meta"><span class="art" id="bigArt"></span><div><h2 id="pTitle"></h2><p id="pSub"></p></div></div>
+      <div class="bar"><i id="prog"></i></div>
+      <div class="times"><span id="tNow">00:00</span><span>04:12</span></div>
+      <div class="ctl">
+        <button class="ib on" type="button" aria-label="한 곡 반복 켜짐"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M17 3l3 3-3 3M4 11V9a3 3 0 013-3h13M7 21l-3-3 3-3M20 13v2a3 3 0 01-3 3H4"/></svg></button>
+        <button class="ib" type="button" id="prev" aria-label="이전 곡"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5v14M19 5l-9 7 9 7z"/></svg></button>
+        <button class="ib play" type="button" id="bigPlay" aria-label="재생"><svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="width: 28px; height: 28px;"><path id="bigIcon" d="M8 5l11 7-11 7z"/></svg></button>
+        <button class="ib" type="button" id="next" aria-label="다음 곡"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 5v14M5 5l9 7-9 7z"/></svg></button>
+        <button class="ib" type="button" aria-label="묵상 메모 쓰기"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4z"/></svg></button>
+      </div>
+      <div class="foot"><span>싱크 0.0초</span><span id="mood"></span></div>
     </div>
-    <div class="bar"><i id="prog"></i></div>
-    <div class="times"><span id="tNow">00:00</span><span id="tAll">04:12</span></div>
-    <div class="meta"><h2 id="pTitle"></h2><p id="pSub"></p></div>
-    <div class="ctl">
-      <button class="ib on" type="button" aria-label="한 곡 반복 켜짐"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M17 3l3 3-3 3M4 11V9a3 3 0 013-3h13M7 21l-3-3 3-3M20 13v2a3 3 0 01-3 3H4"/></svg></button>
-      <button class="ib" type="button" id="prev" aria-label="이전 곡"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5v14M19 5l-9 7 9 7z"/></svg></button>
-      <button class="ib play" type="button" id="bigPlay" aria-label="재생"><svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="width: 30px; height: 30px;"><path id="bigIcon" d="M8 5l11 7-11 7z"/></svg></button>
-      <button class="ib" type="button" id="next" aria-label="다음 곡"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 5v14M5 5l9 7-9 7z"/></svg></button>
-      <button class="ib" type="button" aria-label="묵상 메모 쓰기" style="color: var(--accent);"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4z"/></svg></button>
-    </div>
-    <div class="foot"><span>싱크 0.0초</span><span class="mood" id="mood"></span></div>
   </section>
 </div>
 
 <script>
-// 예시 곡. 가사는 화면 확인용으로 지어낸 줄이에요.
+// 예시 곡. 가사는 화면 확인용으로 지어낸 줄이에요. m은 그 곡의 분위기 색 세 개예요.
 const SONGS = [
-  { title: '주 이름 찬양', artist: '마커스워십', key: 'A', tag: '경배', mood: '기쁜 찬양', m: ['#C2AE96', '#CDBFAE', '#9C8B78'], lines: ['주의 이름 높여', '온 땅이 노래해', '빛 되신 주님께', '영광 돌리네', '주 이름 찬양해'] },
-  { title: '나는 일어섭니다', artist: '피아워십', key: 'A', tag: '빠른 곡', mood: '다시 일어섬', m: ['#C9B89C', '#D3C8B5', '#A6957D'], lines: ['넘어진 자리에서', '나를 부르시네', '나는 일어섭니다', '주 손 붙들고', '다시 걸어가리'] },
-  { title: '주님의 시선', artist: 'Wait On You', key: 'G', tag: '고백', mood: '새벽 고백', m: ['#A7B4C3', '#B9C1CB', '#8E9DB0'], lines: ['내 영혼이 은총 입어', '주님의 시선이 머무는 곳에', '나는 서 있네 그 사랑 안에', '두려움 없이 나아가리', '주의 이름 높이며'] },
-  { title: '하나님의 부르심', artist: '피아워십', key: 'E', tag: '경배', mood: '고요한 부르심', m: ['#9EAEA5', '#B3BDB6', '#7E8F89'], lines: ['조용히 부르시는', '그 음성 따라', '내 삶을 드리네', '주 뜻 이루소서', '여기 있나이다'] },
-  { title: '이 세상은 내 집 아니네', artist: '마커스워십', key: 'D', tag: '고백', mood: '먼 본향', m: ['#ABA8B3', '#BEBBC4', '#858796'], lines: ['이 세상은 내 집 아니네', '나그네 길 걸어도', '본향을 향하여', '주 함께 가시네', '소망 안에 서리'] }
+  { title: '주 이름 찬양', artist: '마커스워십', key: 'A', tag: '경배', mood: '기쁜 찬양', m: ['#F6C9A8', '#FBE3B8', '#F3A9B4'], lines: ['주의 이름 높여', '온 땅이 노래해', '빛 되신 주님께', '영광 돌리네', '주 이름 찬양해'] },
+  { title: '나는 일어섭니다', artist: '피아워십', key: 'A', tag: '빠른 곡', mood: '다시 일어섬', m: ['#FBD98C', '#FCEFC4', '#F6B98E'], lines: ['넘어진 자리에서', '나를 부르시네', '나는 일어섭니다', '주 손 붙들고', '다시 걸어가리'] },
+  { title: '주님의 시선', artist: 'Wait On You', key: 'G', tag: '고백', mood: '새벽 고백', m: ['#9CC4F2', '#C9D9F5', '#B8E0EC'], lines: ['내 영혼이 은총 입어', '주님의 시선이 머무는 곳에', '나는 서 있네 그 사랑 안에', '두려움 없이 나아가리', '주의 이름 높이며'] },
+  { title: '하나님의 부르심', artist: '피아워십', key: 'E', tag: '경배', mood: '고요한 부르심', m: ['#A8DCCB', '#D3EEE4', '#9FCFE0'], lines: ['조용히 부르시는', '그 음성 따라', '내 삶을 드리네', '주 뜻 이루소서', '여기 있나이다'] },
+  { title: '이 세상은 내 집 아니네', artist: '마커스워십', key: 'D', tag: '고백', mood: '먼 본향', m: ['#C3BDEB', '#E2DEF5', '#A9C4EE'], lines: ['이 세상은 내 집 아니네', '나그네 길 걸어도', '본향을 향하여', '주 함께 가시네', '소망 안에 서리'] }
 ];
 const LEN = 252;
-const state = { song: 2, line: 0, playing: false, t: 74, tab: 0 };
+const state = { song: 2, line: 2, playing: false, t: 74 };
 const $ = (id) => document.getElementById(id);
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const art = (s) => `linear-gradient(150deg, ${s.m[0]}, ${s.m[2]})`;
@@ -213,11 +234,9 @@ const fmt = (s) => String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(Ma
 function row(s, i, numbered) {
   const li = document.createElement('li');
   li.className = 'row' + (i === state.song ? ' now' : '');
-  li.innerHTML = (numbered ? `<span class="n">${i + 1}</span>` : '') +
-    `<span class="thumb" style="background:${art(s)}"></span><span class="t"><b></b><span></span></span>`;
+  li.innerHTML = (numbered ? `<span class="n">${i + 1}</span>` : '') + `<span class="thumb" style="background:${art(s)}"></span><span class="t"><b></b><span></span></span>`;
   li.querySelector('b').textContent = s.title;
   li.querySelector('.t span').textContent = i === state.song && numbered ? `지금 재생 중 · 키 ${s.key}` : `${s.artist} · ${numbered ? '키 ' + s.key : s.tag}`;
-  li.style.cursor = 'pointer';
   li.addEventListener('click', () => { pick(i); openPlayer(); });
   return li;
 }
@@ -238,28 +257,28 @@ function renderChips() {
   }));
 }
 function renderMeditate() {
-  const s = SONGS[2];
-  const box = $('med'); box.replaceChildren();
-  s.lines.forEach((l, i) => {
+  const box = $('med');
+  const memo = document.createElement('div');
+  memo.className = 'memo glass';
+  memo.innerHTML = '<label for="memoText">이 줄에서 든 생각</label><textarea id="memoText" rows="3">이번 주 내내 불안했는데, 내가 어디 서 있는지보다 누가 나를 보고 계신지가 먼저라는 걸 다시 생각했다.</textarea>';
+  box.replaceChildren(...SONGS[2].lines.map((l, i) => {
     const b = document.createElement('button');
     b.className = 'line'; b.type = 'button'; b.textContent = l;
     b.setAttribute('aria-pressed', String(i === 2));
     b.addEventListener('click', () => { box.querySelectorAll('.line').forEach((x) => x.setAttribute('aria-pressed', String(x === b))); b.after(memo); });
-    box.append(b);
-  });
-  const memo = document.createElement('div');
-  memo.className = 'memo';
-  memo.innerHTML = '<label for="memoText">이 줄에서 든 생각</label><textarea id="memoText" rows="3">이번 주 내내 불안했는데, 내가 어디 서 있는지보다 누가 나를 보고 계신지가 먼저라는 걸 다시 생각했다.</textarea>';
+    return b;
+  }));
   box.children[2].after(memo);
 }
 
 function renderPlayer() {
   const s = SONGS[state.song];
-  const hero = $('hero');
-  hero.style.setProperty('--m1', s.m[0]); hero.style.setProperty('--m2', s.m[1]); hero.style.setProperty('--m3', s.m[2]);
+  const root = $('app').style;
+  root.setProperty('--m1', s.m[0]); root.setProperty('--m2', s.m[1]); root.setProperty('--m3', s.m[2]);
   $('pTitle').textContent = s.title; $('pSub').textContent = `${s.artist} · 키 ${s.key}`;
   $('mood').textContent = '분위기 · ' + s.mood;
-  $('miniTitle').textContent = s.title; $('miniArt').style.background = art(s);
+  $('where').textContent = `이번 주 콘티 · ${state.song + 1} / ${SONGS.length}`;
+  $('miniTitle').textContent = s.title; $('miniArt').style.background = art(s); $('bigArt').style.background = art(s);
   $('lyr').replaceChildren(...s.lines.map((l) => Object.assign(document.createElement('li'), { textContent: l })));
   renderLine();
 }
@@ -298,42 +317,30 @@ $('miniNext').addEventListener('click', () => pick(state.song + 1));
 $('next').addEventListener('click', () => pick(state.song + 1));
 $('prev').addEventListener('click', () => pick(state.song - 1));
 $('q').addEventListener('input', renderLists);
-// 묵상: 가사 줄과 악보 보기를 오간다. 악보는 넘길 때마다 그 장의 메모 칸 이름이 바뀐다.
-document.querySelectorAll('#medMode button').forEach((b) => b.addEventListener('click', () => {
-  document.querySelectorAll('#medMode button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
-  $('med').hidden = b.dataset.v !== 'lines';
-  $('sheetView').hidden = b.dataset.v !== 'sheet';
-}));
+for (const group of ['#speed', '#medMode']) {
+  document.querySelectorAll(group + ' button').forEach((b) => b.addEventListener('click', () => {
+    document.querySelectorAll(group + ' button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+    if (group === '#medMode') { $('med').hidden = b.dataset.v !== 'lines'; $('sheetView').hidden = b.dataset.v !== 'sheet'; }
+  }));
+}
 $('sheets').addEventListener('scroll', () => {
-  const s = $('sheets'), n = s.children.length;
-  const at = Math.round(s.scrollLeft / (s.clientWidth + 12)) + 1;
-  $('sheetCount').textContent = `${at} / ${n}` + (at === 1 ? ' · 옆으로 넘겨요' : '');
+  const s = $('sheets'), at = Math.round(s.scrollLeft / (s.clientWidth + 12)) + 1;
+  $('sheetCount').textContent = `${at} / ${s.children.length}` + (at === 1 ? ' · 옆으로 넘겨요' : '');
   $('sheetLabel').textContent = `${at}장에서 든 생각`;
 }, { passive: true });
-document.querySelectorAll('#speed button').forEach((b) => b.addEventListener('click', () => document.querySelectorAll('#speed button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)))));
 
-// 탭: 화면을 밀면 알약이 손가락을 따라오고, 탭을 누르면 그 화면으로 넘어간다.
+// 탭: 화면을 밀면 유리 알약이 손가락을 따라오고, 탭을 누르면 그 화면으로 넘어간다.
 const pager = $('pager'), tabs = [...document.querySelectorAll('.tab')], ind = $('ind'), panes = [...document.querySelectorAll('.pane')];
 function onScroll() {
-  const pos = pager.scrollLeft / pager.clientWidth;
-  const w = tabs[0].offsetWidth;
+  const pos = pager.scrollLeft / pager.clientWidth, w = tabs[0].offsetWidth, at = Math.round(pos);
   ind.style.width = w + 'px';
   ind.style.transform = `translateX(${pos * w}px)`;
-  const at = Math.round(pos);
   tabs.forEach((t, i) => (i === at ? t.setAttribute('aria-current', 'page') : t.removeAttribute('aria-current')));
   panes.forEach((p, i) => { const d = Math.min(1, Math.abs(pos - i)); p.style.opacity = 1 - d * 0.5; p.style.transform = `scale(${1 - d * 0.05})`; });
 }
 pager.addEventListener('scroll', onScroll, { passive: true });
 addEventListener('resize', () => { pager.scrollLeft = Math.round(pager.scrollLeft / pager.clientWidth) * pager.clientWidth; onScroll(); renderLine(); });
 tabs.forEach((t, i) => t.addEventListener('click', () => pager.scrollTo({ left: i * pager.clientWidth, behavior: reduce ? 'auto' : 'smooth' })));
-
-// 필름 결: 한 번 그린 잡음.
-(function grain() {
-  const c = $('grain'), w = Math.ceil(c.clientWidth * devicePixelRatio) || 440, h = Math.ceil(c.clientHeight * devicePixelRatio) || 480; c.width = w; c.height = h;
-  const ctx = c.getContext('2d'), img = ctx.createImageData(w, h);
-  for (let i = 0; i < img.data.length; i += 4) { const v = Math.random() * 255; img.data[i] = img.data[i + 1] = img.data[i + 2] = v; img.data[i + 3] = 255; }
-  ctx.putImageData(img, 0, 0);
-})();
 
 renderChips(); renderLists(); renderMeditate(); renderPlayer(); onScroll();
 </script>
