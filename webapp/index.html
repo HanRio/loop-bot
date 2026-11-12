@@ -4,437 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>플레이리스트</title>
-<script>
-  // 칠하기 전에 스킨을 정해 화면이 번쩍이지 않게 한다.
-  try { if (localStorage.getItem('loopbot.skin') !== 'neu') document.documentElement.dataset.skin = 'glass'; } catch {}
-</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.6/Sortable.min.js"></script>
-<style>
-  /* 뉴모피즘 토큰. 밝은 면과 어두운 면의 그림자 두 개로 올라온 면과 눌린 면을 만든다. */
-  :root {
-    --surface: #E0E5EC; --light: #FFFFFF; --dark: #A3B1C6;
-    --text: #2F3A4A; --hint: #566579; --accent: #2F5C9E; --danger: #A8261C;
-    --raise: 6px 6px 12px var(--dark), -6px -6px 12px var(--light);
-    --raise-sm: 3px 3px 6px var(--dark), -3px -3px 6px var(--light);
-    --press: inset 3px 3px 6px var(--dark), inset -3px -3px 6px var(--light);
-    --radius-lg: 24px; --radius-md: 16px; --radius-sm: 12px;
-    --ease: 200ms ease-in-out;
-    /* 전체 화면에서 상태 표시줄과 텔레그램 닫기·메뉴 버튼 자리. 텔레그램 밖에서는 기기 안전 영역을 쓴다. */
-    --inset-top: calc(var(--tg-safe-area-inset-top, env(safe-area-inset-top, 0px)) + var(--tg-content-safe-area-inset-top, 0px));
-    --inset-bottom: calc(var(--tg-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)) + var(--tg-content-safe-area-inset-bottom, 0px));
-    --inset-left: var(--tg-safe-area-inset-left, env(safe-area-inset-left, 0px));
-    --inset-right: var(--tg-safe-area-inset-right, env(safe-area-inset-right, 0px));
-  }
-  :root[data-theme="dark"] {
-    --surface: #2B3038; --light: #363C46; --dark: #1C2026;
-    --text: #E4E9F0; --hint: #A9B5C6; --accent: #8DB4EE; --danger: #F2988F;
-  }
-
-  /* manipulation: 두 번 눌러도 확대되지 않는다. 두 손가락 확대와 스크롤은 그대로다. */
-  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
-  [hidden] { display: none !important; }
-  body {
-    margin: 0; padding: calc(16px + var(--inset-top)) calc(16px + var(--inset-right)) 124px calc(16px + var(--inset-left));
-    background: var(--surface); color: var(--text);
-    font: 500 16px/1.5 -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
-  }
-  ul { list-style: none; margin: 0; padding: 0; }
-
-  /* 아이콘은 인라인 SVG 스프라이트. 이모지는 플랫폼마다 색이 달라 쓰지 않는다. */
-  .i {
-    width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2;
-    stroke-linecap: round; stroke-linejoin: round; display: block; margin: auto; pointer-events: none;
-  }
-
-  .picker-row { display: flex; gap: 8px; align-items: center; }
-  .select-wrap { flex: 1; min-width: 0; position: relative; }
-  .well { background: var(--surface); box-shadow: var(--press); border-radius: var(--radius-md); }
-  select {
-    appearance: none; -webkit-appearance: none; background: transparent; border: 0;
-    width: 100%; min-height: 48px; padding: 0 44px 0 16px;
-    font: inherit; color: inherit; font-weight: 600;
-  }
-  .chevron { position: absolute; right: 12px; top: 13px; color: var(--hint); margin: 0; }
-
-  .round, #toggle {
-    border: 0; border-radius: 50%; background: var(--surface); color: var(--text);
-    box-shadow: var(--raise-sm);
-  }
-  .round:active, #toggle:active { box-shadow: var(--press); }
-  .round { width: 48px; height: 48px; flex: none; }
-  .round.danger { color: var(--danger); }
-
-  #new-name {
-    width: 100%; min-height: 48px; padding: 0 16px; margin-top: 16px;
-    border: 0; border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--press);
-    color: inherit; font: inherit;
-  }
-  .buttons { display: flex; gap: 12px; margin-top: 16px; }
-  .buttons button {
-    flex: 1; min-height: 48px; border: 0; border-radius: var(--radius-md);
-    background: var(--surface); color: var(--text); font-weight: 600;
-    box-shadow: var(--raise-sm);
-  }
-  .buttons button:active { box-shadow: var(--press); }
-  .buttons button.primary { color: var(--accent); }
-
-  .card {
-    background: var(--surface); border-radius: var(--radius-lg); box-shadow: var(--raise);
-    padding: 16px 8px 8px; margin-top: 24px;
-  }
-  .card h2 { margin: 0 8px 8px; font-size: 13px; font-weight: 600; color: var(--hint); }
-  .guide-step { margin: 0 8px 8px; font-size: 14px; }
-  #guide { margin-top: 0; margin-bottom: 24px; padding-bottom: 16px; }
-  #guide .buttons { margin: 16px 8px 0; }
-  li {
-    display: flex; align-items: center; gap: 4px; min-height: 48px;
-    border-radius: var(--radius-sm); background: var(--surface);
-    transition: box-shadow var(--ease);
-  }
-  li + li { margin-top: 4px; }
-  li.current { box-shadow: var(--press); }
-  #library .title { padding-left: 8px; }
-  li.current .title { color: var(--accent); font-weight: 700; }
-  li.unplayable .title { color: var(--hint); }
-
-  .icon {
-    flex: none; width: 44px; height: 44px; border: 0; background: none; padding: 0;
-    color: var(--hint); border-radius: 50%;
-  }
-  button.icon:active { box-shadow: var(--press); }
-  button.icon:disabled { opacity: .35; }
-  .handle { cursor: grab; user-select: none; touch-action: none; display: flex; }
-  .title {
-    flex: 1; min-width: 0; min-height: 44px; padding: 0; border: 0; background: none;
-    font: inherit; line-height: 44px; color: inherit; text-align: left;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  }
-  .note { flex: none; font-size: 12px; color: var(--hint); }
-  .ghost { opacity: .5; }
-  .empty { color: var(--hint); padding: 8px; margin: 0; font-size: 14px; }
-  body > main > .empty:last-child { margin-top: 16px; }
-  .notice, #play-notice { color: var(--danger); font-size: 14px; }
-  .notice { margin: 12px 0 0; }
-  .notice:empty { display: none; }
-  #play-notice { margin: 0; min-height: 0; text-align: center; }
-
-  #bar {
-    position: fixed; left: 0; right: 0; bottom: 0; z-index: 2;
-    background: var(--surface); border-radius: 18px 18px 0 0;
-    box-shadow: 0 -4px 12px var(--dark);
-    padding: 4px 16px calc(6px + var(--inset-bottom));
-  }
-  /* 양쪽 칸 폭을 같게 해 이전·재생·다음이 항상 정가운데에 온다. 반복은 오른쪽 칸 끝에 붙인다. */
-  #bar-row { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 8px; }
-  #bar-top { min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
-  #now { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; }
-  #time { font-size: 12px; color: var(--hint); font-variant-numeric: tabular-nums; }
-
-  #seek {
-    -webkit-appearance: none; appearance: none;
-    display: block; width: 100%; height: 28px; margin: 0; background: none;
-  }
-  #seek::-webkit-slider-runnable-track {
-    height: 6px; border-radius: 3px; box-shadow: var(--press);
-    background: linear-gradient(var(--accent), var(--accent)) no-repeat 0 / var(--progress, 0%) 100%, var(--surface);
-  }
-  #seek::-moz-range-track {
-    height: 6px; border-radius: 3px; box-shadow: var(--press);
-    background: linear-gradient(var(--accent), var(--accent)) no-repeat 0 / var(--progress, 0%) 100%, var(--surface);
-  }
-  #seek::-webkit-slider-thumb {
-    -webkit-appearance: none; appearance: none;
-    width: 18px; height: 18px; margin-top: -6px; border: 0; border-radius: 50%;
-    background: var(--surface); box-shadow: var(--raise-sm);
-  }
-  #seek::-moz-range-thumb {
-    width: 18px; height: 18px; border: 0; border-radius: 50%;
-    background: var(--surface); box-shadow: var(--raise-sm);
-  }
-
-  #controls { display: flex; align-items: center; gap: 12px; }
-  #controls button {
-    width: 44px; height: 44px; padding: 0; border: 0; border-radius: 50%;
-    background: var(--surface); color: var(--text);
-    box-shadow: var(--raise-sm);
-  }
-  #controls button:active { box-shadow: var(--press); }
-  #controls #toggle { position: relative; width: 52px; height: 52px; box-shadow: var(--raise-sm); color: var(--accent); }
-  #controls #toggle:active, #controls #toggle[aria-pressed="true"] { box-shadow: var(--press); }
-  #controls #toggle .i { width: 26px; height: 26px; }
-  #toggle[aria-pressed="true"] .play-icon, #toggle[aria-pressed="false"] .pause-icon { display: none; }
-  /* 곡을 받는 동안 재생 버튼 둘레가 돈다 (motion-spinner) */
-  #toggle[aria-busy="true"]::after {
-    content: ""; position: absolute; inset: 3px; border-radius: 50%;
-    border: 3px solid transparent; border-top-color: var(--accent);
-    animation: spin 900ms linear infinite;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  #controls #repeat { position: absolute; top: 0; bottom: 0; right: 0; margin-block: auto; }
-  #controls #repeat[data-mode="off"] { color: var(--hint); }
-  #controls #repeat[data-mode="all"], #controls #repeat[data-mode="one"] { color: var(--accent); box-shadow: var(--press); }
-  #repeat[data-mode="one"]::after {
-    content: "1"; position: absolute; right: 8px; bottom: 6px; font-size: 10px; font-weight: 700;
-  }
-
-  /* 목록 / 가사집 전환, 공유 토글 */
-  .view-switch { display: flex; gap: 4px; padding: 4px; margin-top: 24px; }
-  .view-switch button {
-    flex: 1; min-height: 40px; border: 0; border-radius: var(--radius-sm); background: none;
-    color: var(--hint); font: inherit; font-weight: 600;
-  }
-  .view-switch button[aria-selected="true"] { color: var(--accent); }
-  .view-switch button { position: relative; z-index: 1; }
-  .view-switch { position: relative; }
-  .view-switch .pill {
-    position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc(50% - 6px);
-    border-radius: var(--radius-sm); background: var(--surface); box-shadow: var(--raise-sm);
-    transition: transform 280ms cubic-bezier(.22, 1, .36, 1);
-  }
-  #view-lyrics[aria-selected="true"] ~ .pill { transform: translateX(calc(100% + 4px)); }
-  #share-playlist[aria-pressed="true"] { color: var(--accent); box-shadow: var(--press); }
-
-  /* 가사집 카드 */
-  .text-button {
-    min-height: 44px; padding: 0 12px; border: 0; background: none;
-    color: var(--accent); font: inherit; font-weight: 600;
-  }
-  .text-button:disabled { opacity: .35; }
-  .lyric-title {
-    display: block; width: 100%; min-height: 44px; padding: 0 8px; border: 0; background: none;
-    color: inherit; font: inherit; font-weight: 700; text-align: left;
-    position: sticky; top: var(--inset-top); z-index: 1; background: var(--surface); border-radius: var(--radius-sm);
-  }
-  .lyric-card.current .lyric-title { color: var(--accent); }
-  /* 사진 넘기기(scroll-snap-carousel). 여러 장이면 다음 장 끝이 보여 옆으로 넘길 수 있음을 알린다. */
-  .sheet-wrap { position: relative; margin-top: 8px; }
-  .sheet-strip {
-    display: flex; gap: 8px; align-items: flex-start; overflow-x: auto;
-    scroll-snap-type: x mandatory; overscroll-behavior-inline: contain; scrollbar-width: none;
-  }
-  .sheet-strip::-webkit-scrollbar, .viewer-strip::-webkit-scrollbar { display: none; }
-  .sheet-count {
-    position: absolute; top: 8px; right: 8px; padding: 2px 10px; border-radius: 999px;
-    background: rgba(23, 32, 51, .62); color: #fff; font-size: 13px; font-weight: 600;
-    font-variant-numeric: tabular-nums; pointer-events: none;
-  }
-  .sheet {
-    display: block; flex: 0 0 100%; width: 100%; aspect-ratio: 4 / 3; padding: 0; border: 0;
-    scroll-snap-align: start; scroll-snap-stop: always;
-    border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--press); overflow: hidden;
-  }
-  .sheet-strip.multi .sheet { flex-basis: 92%; }
-  .sheet-strip.multi .sheet:last-child { scroll-snap-align: end; }
-  /* 사진을 받기 전에만 4:3 자리를 잡고, 받은 뒤에는 글자가 보이도록 원래 비율로 꽉 채운다. */
-  .sheet:has(img:not([hidden])) { aspect-ratio: auto; }
-  .sheet img { display: block; width: 100%; height: auto; }
-  .sheet.is-loading::before {
-    content: "사진 받는 중…"; display: grid; place-items: center; height: 100%;
-    color: var(--hint); font-size: 14px;
-  }
-  /* 화면에서 유일하게 색을 채운 버튼. 글자는 면 색이라 네 테마 모두 대비가 유지된다. */
-  .video-button {
-    display: flex; align-items: center; justify-content: center; gap: 8px;
-    width: calc(100% - 16px); min-height: 48px; margin: 12px 8px 0; padding: 0 16px; border: 0;
-    border-radius: var(--radius-md); background: var(--accent); color: var(--surface);
-    font: inherit; font-weight: 700; box-shadow: var(--raise-sm);
-  }
-  .video-button .i { flex: none; width: 20px; height: 20px; margin: 0; }
-  .note-label { display: block; margin: 12px 8px 0; font-size: 13px; font-weight: 600; color: var(--hint); }
-  .note-input {
-    display: block; width: 100%; margin-top: 6px; padding: 12px 16px; border: 0; border-radius: var(--radius-md);
-    color: inherit; font: inherit; font-size: 16px; resize: vertical;
-    min-height: 8em; field-sizing: content; scroll-margin-bottom: 16px;
-  }
-  /* 쓰는 동안 재생 바가 키보드 위를 가리지 않게 한다. 재생은 계속된다. */
-  body:has(.note-input:focus) #bar { display: none; }
-  .note-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 12px 8px 8px; }
-  .note-foot .text-button {
-    min-width: 88px; border-radius: var(--radius-sm); background: var(--surface); box-shadow: var(--raise-sm);
-  }
-  .note-foot .text-button:active { box-shadow: var(--press); }
-  .note-foot .text-button:disabled { box-shadow: none; }
-  .note-foot .note-delete { color: var(--danger); }
-  .note-status { margin-right: auto; font-size: 13px; color: var(--hint); }
-  .lyric-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 12px 8px 0; }
-  .video-input {
-    flex: 1 1 160px; min-width: 0; min-height: 44px; padding: 0 12px; border: 0; border-radius: var(--radius-sm);
-    background: var(--surface); box-shadow: var(--press); color: inherit; font: inherit; font-size: 16px;
-  }
-  .card-error { margin: 8px 8px 0; font-size: 14px; color: var(--danger); }
-  .card-error:empty { display: none; }
-
-  /* 전체 복사와 양식 버튼: 가사집이 보이는 동안 화면 오른쪽 아래에 뜬다. 입력 중에는 숨긴다. */
-  #lyrics-actions {
-    position: fixed; right: 16px; bottom: calc(112px + var(--inset-bottom)); z-index: 3;
-    display: flex; gap: 8px; align-items: center;
-  }
-  body.video-open #lyrics-actions { bottom: calc(16px + var(--inset-bottom)); }
-  body:has(.note-input:focus) #lyrics-actions { display: none; }
-  #copy-all {
-    min-height: 48px; padding: 0 20px; border: 0; border-radius: 999px;
-    background: var(--accent); color: var(--surface); font: inherit; font-weight: 700; box-shadow: var(--raise-sm);
-  }
-  #template-open {
-    min-height: 48px; padding: 0 16px; border: 0; border-radius: 999px;
-    background: var(--surface); color: var(--accent); font: inherit; font-weight: 600; box-shadow: var(--raise-sm);
-  }
-  body:has(#lyrics-actions:not([hidden])) { padding-bottom: 188px; }
-  body.video-open:has(#lyrics-actions:not([hidden])) { padding-bottom: 80px; }
-
-  /* 양식 창 */
-  .template-dialog {
-    width: min(480px, calc(100vw - 32px)); padding: 16px; border: 0; border-radius: var(--radius-lg);
-    background: var(--surface); color: var(--text); box-shadow: var(--raise);
-  }
-  .template-dialog::backdrop { background: rgba(23, 32, 51, .45); }
-  .template-dialog h2 { margin: 0 0 8px; font-size: 16px; }
-  .template-dialog p { margin: 0 0 12px; font-size: 14px; color: var(--hint); }
-  .template-dialog .card-error { color: var(--danger); }
-  #template-input {
-    display: block; width: 100%; padding: 12px 16px; border: 0; color: inherit; font: inherit; font-size: 16px; resize: vertical;
-  }
-
-  /* 사용자 관리 창 */
-  .users-form { display: flex; gap: 8px; align-items: center; }
-  #users-input { flex: 1; min-width: 0; min-height: 44px; padding: 0 12px; border: 0; color: inherit; font: inherit; font-size: 16px; }
-  .users-list { max-height: 40vh; overflow-y: auto; margin-top: 8px; }
-  .users-list li { padding-left: 8px; justify-content: space-between; flex-wrap: wrap; }
-  .user-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-  .user-badge { display: inline-flex; align-items: center; gap: 2px; margin-left: 6px; font-size: 12px; color: var(--accent); }
-  .user-badge .i { width: 14px; height: 14px; margin: 0; }
-
-  /* 참고 영상: 맨 위에 고정. 여는 동안 재생 바를 숨기므로 아래 여백을 줄인다. */
-  #video-panel {
-    position: sticky; top: 0; z-index: 5; margin: calc(-16px - var(--inset-top)) -16px 0; padding: calc(8px + var(--inset-top)) 16px 0;
-    background: var(--surface); box-shadow: var(--raise-sm);
-  }
-  .video-frame { position: relative; aspect-ratio: 16 / 9; overflow: hidden; border-radius: var(--radius-md); background: var(--dark); }
-  .video-frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
-  .video-foot { display: flex; justify-content: space-between; padding: 4px 0 8px; }
-  body.video-open { padding-bottom: 16px; }
-
-  /* 사진 크게 보기 */
-  .sheet-viewer {
-    width: 100vw; height: 100vh; max-width: none; max-height: none; margin: 0; padding: 0; border: 0;
-    background: var(--surface); overflow: hidden; touch-action: pan-x pan-y pinch-zoom;
-  }
-  .viewer-strip {
-    display: flex; height: 100%; overflow-x: auto;
-    scroll-snap-type: x mandatory; overscroll-behavior-inline: contain; scrollbar-width: none;
-  }
-  .viewer-page { flex: 0 0 100%; height: 100%; overflow: auto; scroll-snap-align: start; scroll-snap-stop: always; }
-  .sheet-viewer .sheet-count { position: fixed; top: calc(24px + var(--inset-top)); right: auto; left: 16px; z-index: 1; }
-  .sheet-viewer::backdrop { background: var(--surface); }
-  .viewer-page img { display: block; width: 100%; height: auto; }
-  .sheet-close { position: fixed; top: calc(12px + var(--inset-top)); right: 12px; z-index: 1; }
-
-  /* 칸 장치는 넓은 화면에서만 보인다. 좁은 화면에서는 칸 래퍼가 펼쳐져 예전처럼 한 줄로 쌓인다. */
-  .pane-grip, .desk-divider, #desk-reset { display: none; }
-  .desk, .desk-col, .desk-pane { display: contents; }
-
-  /* 넓은 화면(760px~): 목록은 재생 순서와 라이브러리를 나란히, 가사집 카드는 사진 칸과 영상·느낀점 칸으로 나뉜다.
-     구분선을 끌어 너비를, 손잡이를 끌어 패널 자리를 바꾼다. */
-  @media (min-width: 760px) {
-    #controls { gap: 24px; }
-    #app { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 24px; align-items: start; }
-    #app > * { grid-column: 1 / -1; }
-    #app > #queue-card { grid-column: 1; }
-    #app > #library-card { grid-column: 2; }
-    #app:has(#library-card[hidden]) > #queue-card { grid-column: 1 / -1; }
-    .desk { display: flex; align-items: flex-start; margin-top: 8px; }
-    .desk-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-    .desk-col:first-child { flex: 0 0 calc((100% - 17px) * var(--desk-ratio, .55)); }
-    .desk-col:last-child { flex: 1 1 0; }
-    .desk.single .desk-col { flex: 1 1 100%; }
-    .desk.single .desk-divider { display: none; }
-    .desk.single .desk-col:not(:has(> .desk-pane:not([hidden]))) { display: none; }
-    .desk-divider { display: block; flex: 0 0 17px; align-self: stretch; cursor: col-resize; touch-action: none; position: relative; }
-    .desk-divider::after {
-      content: ""; position: absolute; top: 8px; bottom: 8px; left: 50%; width: 3px; margin-left: -1.5px;
-      border-radius: 3px; background: var(--dark);
-    }
-    .desk-divider:hover::after, .desk-divider:focus-visible::after { background: var(--accent); }
-    .desk-pane { display: block; position: relative; min-width: 0; border-radius: var(--radius-md); }
-    /* 느낀점은 이름표가 이미 있어 손잡이를 그 줄 오른쪽에 겹친다. */
-    .desk-pane[data-pane="note"] .pane-grip { position: absolute; top: 0; right: 0; width: auto; z-index: 1; }
-    /* 영상을 연 카드에서는 여는 버튼이 필요 없다. 그 자리를 느낀점에 준다. */
-    .lyric-card:has(.desk-pane[data-pane="video"]:not([hidden])) .video-button { display: none; }
-    .pane-grip {
-      display: flex; align-items: center; gap: 6px; width: 100%; min-height: 32px; padding: 0 8px; border: 0;
-      background: none; color: var(--hint); font: inherit; font-size: 13px; font-weight: 600; cursor: grab; touch-action: none;
-    }
-    .pane-grip .i { width: 16px; height: 16px; margin: 0; }
-    .pane-grip:active { transform: none; }
-    .desk-pane[data-drop="before"] { box-shadow: 0 -3px 0 var(--accent); }
-    .desk-pane[data-drop="after"] { box-shadow: 0 3px 0 var(--accent); }
-    body.desk-dragging { user-select: none; cursor: grabbing; }
-    body.desk-dragging iframe { pointer-events: none; }
-    .desk .sheet-wrap { margin-top: 0; }
-    /* 영상 패널은 body에 남아 있고, 열면 칸의 영상 자리 위에 떠서 따라간다(video-float.js). */
-    #video-panel.floating { position: fixed; z-index: 5; margin: 0; padding: 0; background: var(--surface); box-shadow: var(--raise-sm); border-radius: var(--radius-md); }
-    #video-panel.floating .video-frame { width: 100%; }
-    #video-panel.floating .video-foot { padding: 4px 8px 8px; }
-    body.desk-dragging #video-panel { pointer-events: none; }
-    .lyric-card:has(.desk-pane[data-pane="video"]:not([hidden])) .video-button { display: none; }
-    .video-slot { display: block; }
-    /* 아래 몫: 재생 바와 전체 복사 버튼. 영상을 열면 재생 바가 숨는다. */
-    body { --below-room: 172px; }
-    body.video-open { --below-room: 76px; }
-    .desk:not(.single) .desk-col.follows:has(> .desk-pane[data-pane="note"]) { position: sticky; top: calc(52px + var(--inset-top)); display: flex; flex-direction: column; height: calc(100vh - 52px - var(--inset-top) - var(--below-room)); height: calc(100dvh - 52px - var(--inset-top) - var(--below-room)); overflow-y: auto; padding: 4px; margin: -4px; }
-    .desk:not(.single) .desk-col.follows > .desk-pane[data-pane="note"] { flex: 1 1 0; min-height: 200px; display: flex; flex-direction: column; }
-    .desk:not(.single) .desk-col.follows .lyric-side { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
-    .desk:not(.single) .desk-col.follows .note-label { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
-    .desk:not(.single) .desk-col.follows .note-input { flex: 1 1 0; min-height: 6em; field-sizing: fixed; resize: none; }
-    .note-input { min-height: 14em; max-height: 50vh; overflow: auto; }
-    .desk:not(.single) .desk-col.follows .note-input { max-height: none; }
-    #desk-reset { display: block; margin-right: auto; }
-  }
-
-  /* 화면 스킨 스위치 */
-  .page-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-  .skin-toggle {
-    display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 4px; border: 0; background: none;
-    color: var(--hint); font: inherit; font-size: 14px; font-weight: 600;
-  }
-  .skin-track {
-    position: relative; width: 44px; height: 26px; border-radius: 999px; background: var(--dark);
-    transition: background var(--ease);
-  }
-  .skin-track::after {
-    content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, .3); transition: transform 280ms cubic-bezier(.34, 1.56, .64, 1);
-  }
-  .skin-toggle[aria-checked="true"] .skin-track { background: var(--accent); }
-  .skin-toggle[aria-checked="true"] .skin-track::after { transform: translateX(18px); }
-
-  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-
-  /* 눌림 축소(press-scale) + 스프링 복귀, 탭 전환(motion-tab-transition). design-isms 수치 */
-  button { transition: transform 320ms cubic-bezier(.34, 1.56, .64, 1), box-shadow var(--ease), color var(--ease), opacity var(--ease); }
-  button:active:not(:disabled) { transform: scale(.94); transition: transform 90ms ease-out, box-shadow 90ms ease-out; }
-  button.title:active:not(:disabled), button.sheet:active:not(:disabled) { transform: scale(.985); }
-  #queue-card, #library-card, #lyrics, #guide { animation: panel-enter 220ms cubic-bezier(.22, 1, .36, 1); }
-  #toggle .i { animation: icon-pop 240ms cubic-bezier(.34, 1.56, .64, 1); }
-  @keyframes panel-enter { from { opacity: 0; transform: translateY(6px); } }
-  @keyframes icon-pop { from { opacity: .4; transform: scale(.7); } }
-  @media (prefers-reduced-motion: reduce) {
-    *, *::before, *::after { transition: none !important; animation: none !important; }
-    button:active:not(:disabled) { transform: none !important; }
-  }
-</style>
-<link rel="stylesheet" href="glass.css">
-<link rel="stylesheet" href="volume.css">
+<link rel="stylesheet" href="app.css">
 </head>
 <body ontouchstart="">
-<section id="video-panel" hidden>
-  <div id="video-frame" class="video-frame"></div>
-  <div class="video-foot">
-    <button id="video-youtube" class="text-button" type="button">유튜브에서 열기</button>
-    <button id="video-close" class="text-button" type="button">닫기</button>
-  </div>
-</section>
+<p id="fatal" class="empty" hidden></p>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z" fill="currentColor" stroke="none"/></symbol>
   <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5.5h2.8v13H8zM13.2 5.5H16v13h-2.8z" fill="currentColor" stroke="none"/></symbol>
@@ -452,88 +29,77 @@
   <symbol id="i-share" viewBox="0 0 24 24"><path d="M12 15V4M8 8l4-4 4 4M5 13v6h14v-6"/></symbol>
   <symbol id="i-crown" viewBox="0 0 24 24"><path d="M4 18h16M4 15l-1-9 5 4 4-6 4 6 5-4-1 9z"/></symbol>
 </svg>
-<p id="fatal" class="empty" hidden></p>
-<main id="app" hidden>
-  <section id="guide" class="card" hidden>
-    <h2>사용법</h2>
-    <p class="guide-step">1. 위쪽 칸에서 목록을 고르고 <b>가사집</b> 탭을 눌러요.</p>
-    <p class="guide-step">2. 가사 사진을 옆으로 넘겨 보고, <b>참고 영상 보기</b>로 영상을 틀어요.</p>
-    <p class="guide-step">3. 느낀점을 쓰면 저절로 저장돼요. <b>복사</b>로 한 곡만 가져가고, <b>지우기</b>로 지워요.</p>
-    <p class="guide-step">4. 오른쪽 아래 <b>전체 복사</b>를 누르면 이 목록의 느낀점이 한 번에 복사돼요. <b>양식</b>에서 복사 모양을 정할 수 있어요.</p>
-    <p class="guide-step">5. 큰 화면에서는 칸 위쪽 ≡ 손잡이를 끌어 위치를 옮기고, 가운데 선을 끌어 너비를 바꿔요.</p>
-    <p class="guide-step">6. 내 곡을 넣으려면 봇 채팅에 유튜브 링크나 음원 파일을 보내요. 곡을 누르면 재생되고, 화면을 꺼도 이어져요.</p>
-    <div class="buttons"><button id="guide-close" type="button" class="primary">알겠어요</button></div>
-  </section>
-  <div class="picker-row">
-    <div class="well select-wrap">
-      <select id="picker" aria-label="플레이리스트 고르기"></select>
-      <svg class="i chevron" aria-hidden="true"><use href="#i-chevron"/></svg>
-    </div>
-    <button id="share-playlist" class="round" type="button" aria-pressed="false" aria-label="공유하기" hidden><svg class="i" aria-hidden="true"><use href="#i-share"/></svg></button>
-    <button id="rename-playlist" class="round" type="button" aria-label="이름 바꾸기"><svg class="i" aria-hidden="true"><use href="#i-pencil"/></svg></button>
-    <button id="remove-playlist" class="round danger" type="button" aria-label="플레이리스트 삭제"><svg class="i" aria-hidden="true"><use href="#i-trash"/></svg></button>
+
+<div id="app" class="app" hidden>
+  <div id="ambient" class="ambient" aria-hidden="true"></div>
+  <p id="save-notice" class="notice" role="alert"></p>
+
+  <div id="pager" class="pager">
+    <section class="pane" id="tab-conti" aria-label="콘티"></section>
+    <section class="pane" id="tab-library" aria-label="라이브러리"></section>
+    <section class="pane" id="tab-meditate" aria-label="묵상"></section>
+    <section class="pane" id="tab-practice" aria-label="연습"></section>
   </div>
-  <form id="new-form" hidden>
-    <input id="new-name" maxlength="20" placeholder="플레이리스트 이름" aria-label="플레이리스트 이름" autocomplete="off">
-    <div class="buttons">
-      <button id="new-submit" type="submit" class="primary">만들기</button>
-      <button id="new-cancel" type="button">취소</button>
-    </div>
-  </form>
-  <div id="save-notice" class="notice" role="alert"></div>
-  <div id="view-switch" class="well view-switch" role="tablist" hidden>
-    <button id="view-list" type="button" role="tab" aria-selected="true">목록</button>
-    <button id="view-lyrics" type="button" role="tab" aria-selected="false">가사집</button>
-    <span class="pill" aria-hidden="true"></span>
-  </div>
-  <section id="queue-card" class="card">
-    <h2>재생 순서</h2>
-    <ul id="queue"></ul>
-    <p id="queue-empty" class="empty" hidden>아직 곡이 없어요. 아래 라이브러리에서 넣어보세요</p>
-  </section>
-  <div id="lyrics" hidden>
-    <p id="lyrics-empty" class="empty" hidden></p>
-  </div>
-  <section id="library-card" class="card">
-    <h2>라이브러리</h2>
-    <ul id="library"></ul>
-    <p id="library-empty" class="empty" hidden>라이브러리가 비었어요. 링크나 음원을 보내주세요</p>
-  </section>
-  <p class="empty">링크는 채팅에 붙여넣으면 추가돼요. 긴 곡은 채팅에서 /play로 들어요</p>
-  <div class="page-foot">
-    <button id="guide-open" class="text-button" type="button">사용법 보기</button>
-    <button id="users-open" class="text-button" type="button" hidden></button>
-    <button id="desk-reset" class="text-button" type="button"></button>
-    <button id="skin-toggle" class="skin-toggle" type="button" role="switch" aria-checked="false">
-      글래스 화면<span class="skin-track" aria-hidden="true"></span>
-    </button>
-  </div>
-</main>
-<div id="lyrics-actions" hidden>
-  <button id="template-open" type="button"></button>
-  <button id="copy-all" type="button"></button>
-</div>
-<footer id="bar" hidden>
-  <input id="seek" type="range" min="0" max="0" step="0.1" value="0" aria-label="재생 위치">
-  <div id="bar-row">
-    <div id="bar-top">
-      <span id="now"></span>
-      <span id="time">0:00 / 0:00</span>
-    </div>
-    <div id="controls">
-      <button id="prev" type="button" aria-label="이전 곡"><svg class="i" aria-hidden="true"><use href="#i-prev"/></svg></button>
-      <button id="toggle" type="button" aria-label="재생">
-        <svg class="i play-icon" aria-hidden="true"><use href="#i-play"/></svg>
-        <svg class="i pause-icon" aria-hidden="true"><use href="#i-pause"/></svg>
+
+  <div id="dock" class="dock">
+    <div id="mini" class="mini glass">
+      <button id="mini-open" class="open" type="button" aria-label="플레이어 펼치기">
+        <span id="mini-art" class="art"></span>
+        <span class="tt"><b id="mini-title"></b><span id="mini-sub"></span></span>
       </button>
-      <button id="next" type="button" aria-label="다음 곡"><svg class="i" aria-hidden="true"><use href="#i-next"/></svg></button>
-      <button id="repeat" type="button" aria-label="전체 반복"><svg class="i" aria-hidden="true"><use href="#i-repeat"/></svg></button>
-      <button id="volume" type="button" aria-label="볼륨" hidden><svg class="i" aria-hidden="true"><use id="volume-icon" href="#i-volume"/></svg></button>
-      <div id="volume-pop" hidden><input id="volume-range" type="range" min="0" max="1" step="0.01" value="1" aria-label="볼륨 크기"></div>
+      <button id="mini-play" class="ib" type="button" aria-label="재생"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path id="mini-play-icon" d="M8 5l11 7-11 7z"/></svg></button>
+      <button id="mini-next" class="ib" type="button" aria-label="다음 곡"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 5v14M5 5l9 7-9 7z"/></svg></button>
+      <div id="mini-prog" class="prog"><i></i></div>
     </div>
+    <nav id="tabs" class="tabs glass" aria-label="탭">
+      <span id="tab-ind" class="ind" aria-hidden="true"></span>
+      <button class="tab" type="button" data-tab="0"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7a2 2 0 012-2h12a2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2zM8 3v4M16 3v4M8 11h8M8 15h5"/></svg>콘티</button>
+      <button class="tab" type="button" data-tab="1"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4v16M9 4v16M13 5l5 14"/></svg>라이브러리</button>
+      <button class="tab" type="button" data-tab="2"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6c-2-1.5-5-2-8-1.5v14c3-.5 6 0 8 1.5 2-1.5 5-2 8-1.5v-14c-3-.5-6 0-8 1.5zM12 6v14"/></svg>묵상</button>
+      <button class="tab" type="button" data-tab="3"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4a8 8 0 100 16 8 8 0 000-16zM12 9a3 3 0 100 6 3 3 0 000-6z"/></svg>연습</button>
+    </nav>
   </div>
-  <p id="play-notice" role="alert"></p>
-</footer>
+
+  <section id="player" class="player" aria-label="재생 화면" aria-hidden="true">
+    <div class="top">
+      <button id="player-close" class="ib" type="button" aria-label="플레이어 접기"><svg class="i" aria-hidden="true"><use href="#i-chevron"/></svg></button>
+    </div>
+    <div id="player-hero">
+      <h1 id="player-title"></h1>
+      <p id="player-sub"></p>
+      <button id="player-sheet" class="chip" type="button">악보 보기</button>
+    </div>
+    <div class="console glass">
+      <div class="meta"><span id="player-art" class="art"></span></div>
+      <input id="seek" type="range" min="0" max="0" step="0.1" value="0" aria-label="재생 위치">
+      <div class="times"><span id="t-now">0:00</span><span id="t-all">0:00</span></div>
+      <div class="ctl">
+        <button id="repeat" class="ib" type="button" aria-label="전체 반복"><svg class="i" aria-hidden="true"><use href="#i-repeat"/></svg></button>
+        <button id="prev" class="ib" type="button" aria-label="이전 곡"><svg class="i" aria-hidden="true"><use href="#i-prev"/></svg></button>
+        <button id="play" class="ib play" type="button" aria-label="재생"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path id="play-icon" d="M8 5l11 7-11 7z"/></svg></button>
+        <button id="next" class="ib" type="button" aria-label="다음 곡"><svg class="i" aria-hidden="true"><use href="#i-next"/></svg></button>
+        <button id="volume" class="ib" type="button" aria-label="볼륨" hidden><svg class="i" aria-hidden="true"><use id="volume-icon" href="#i-volume"/></svg></button>
+        <div id="volume-pop" hidden><input id="volume-range" type="range" min="0" max="1" step="0.01" value="1" aria-label="볼륨 크기"></div>
+      </div>
+      <div class="foot"><button id="video-open" class="btn" type="button">참고 영상 보기</button></div>
+    </div>
+    <p id="play-notice" class="notice" role="alert"></p>
+  </section>
+
+  <section id="video-panel" hidden>
+    <div id="video-frame" class="video-frame"></div>
+    <div class="video-foot">
+      <button id="video-youtube" class="text-button" type="button">유튜브에서 열기</button>
+      <button id="video-close" class="text-button" type="button">닫기</button>
+    </div>
+  </section>
+</div>
+
+<dialog id="settings-dialog" class="menu" aria-label="설정">
+  <button id="settings-users" type="button" hidden>사용자 관리</button>
+  <p id="settings-help">목록은 콘티와 라이브러리 탭에서 고르고, 묵상 탭에서 곡마다 느낀점을 적어요. 내 곡은 봇 채팅에 유튜브 링크나 음원 파일을 보내면 들어와요.</p>
+  <button id="settings-close" type="button">닫기</button>
+</dialog>
 <dialog id="sheet-viewer" class="sheet-viewer" aria-label="가사 사진">
   <button id="sheet-viewer-close" class="round sheet-close" type="button" aria-label="닫기"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button>
   <div id="sheet-viewer-strip" class="viewer-strip"></div>

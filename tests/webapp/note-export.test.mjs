@@ -56,7 +56,7 @@ test('renderNotes with the default template gives title and feeling on two lines
   assert.equal(renderNotes(DEFAULT_TEMPLATE, [{ title: '제목', body: '내용' }]), '제목\n내용');
 });
 
-test('renderNotes skips blank-body rows and numbers only the included rows', () => {
+test('renderNotes skips blank-body rows but keeps playlist order numbers', () => {
   const template = '{번호}. {제목}\n{느낀점}';
   const rows = [
     { title: 'A', body: '  ' },
@@ -65,7 +65,7 @@ test('renderNotes skips blank-body rows and numbers only the included rows', () 
     { title: 'D', body: '  good  ' },
   ];
 
-  assert.equal(renderNotes(template, rows), '1. B\n좋다\n\n2. D\ngood');
+  assert.equal(renderNotes(template, rows), '2. B\n좋다\n\n4. D\ngood');
 });
 
 test('renderNotes joins songs with a blank line', () => {

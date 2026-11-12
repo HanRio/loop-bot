@@ -1,5 +1,5 @@
 // 볼륨 버튼과 슬라이더. 넓은 화면은 슬라이더를 항상 보이고, 좁은 화면은 버튼을 눌러 펼친다.
-import { $ } from './render.js';
+import { $ } from './dom.js';
 import { readLocal, writeLocal } from './store.js';
 
 const KEY_VOLUME = 'loopbot.player.volume';

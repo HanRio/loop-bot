@@ -36,6 +36,8 @@ export function createPlayer({
   let blobUrl = null;
   let loading = false;
   let loadingTimer = null;
+  // 곡을 바꾸면 요소의 재생 속도가 기본값으로 돌아가므로 따로 기억해 둔다.
+  let speed = 1;
 
   function setLoading(value) {
     clearTimeout(loadingTimer);
@@ -135,6 +137,7 @@ export function createPlayer({
     const previous = blobUrl;
     blobUrl = URL.createObjectURL(blob);
     audio.src = blobUrl;
+    audio.playbackRate = speed;
     if (previous) URL.revokeObjectURL(previous);
     if (session && typeof MediaMetadata !== 'undefined') {
       session.metadata = new MediaMetadata({ title: track.title });
@@ -200,9 +203,16 @@ export function createPlayer({
       audio.pause();
       return undefined;
     },
+    // 0..길이로 자른다. 길이를 모르면 위쪽은 막지 않는다.
     seek(sec) {
-      audio.currentTime = sec;
+      const end = Number.isFinite(audio.duration) ? audio.duration : Infinity;
+      audio.currentTime = Math.min(end, Math.max(0, sec));
     },
+    setRate(rate) {
+      speed = rate;
+      audio.playbackRate = rate;
+    },
+    rate: () => audio.playbackRate,
     position: () => audio.currentTime,
     duration: () => (Number.isFinite(audio.duration) ? audio.duration : 0),
     isPlaying: () => !audio.paused,

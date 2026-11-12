@@ -1,6 +1,6 @@
 // 관리자의 사용자 관리 창. 목록은 서버 응답을 따른다. 글자는 COPY와 textContent로만 넣는다.
 import { COPY } from './copy.js';
-import { $ } from './render.js';
+import { $ } from './dom.js';
 import { cleanUsername, userRowActions, withRow } from './users-logic.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -44,7 +44,7 @@ function badgeFor(row) {
 }
 
 export function createUsersAdmin({ api }) {
-  const open = $('users-open');
+  const open = $('settings-users');
   const dialog = $('users-dialog');
   const form = $('users-form');
   const input = $('users-input');
