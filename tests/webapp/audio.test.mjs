@@ -138,3 +138,48 @@ test('canSetVolume leaves the current volume unchanged', () => {
   player.canSetVolume();
   assert.equal(player.volume(), 0.3);
 });
+
+// 곡을 바꿀 때 브라우저처럼 src를 넣으면 재생 속도가 기본값(1)으로 돌아가는 요소.
+function playerWithAudio(options = {}) {
+  const Normal = globalThis.Audio;
+  let element;
+  globalThis.Audio = class extends Normal {
+    constructor() {
+      super();
+      element = this;
+    }
+    set src(value) {
+      this.playbackRate = 1;
+      this._src = value;
+    }
+    get src() {
+      return this._src;
+    }
+  };
+  try {
+    const player = createPlayer({ api: { file: async () => blob }, ...options });
+    return { player, audio: element };
+  } finally {
+    globalThis.Audio = Normal;
+  }
+}
+
+test('setRate keeps the rate after the track changes', async () => {
+  const { player, audio } = playerWithAudio();
+  player.setRate(1.5);
+  await player.play({ id: 1, title: 'a' });
+  await player.play({ id: 2, title: 'b' });
+  assert.equal(audio.playbackRate, 1.5);
+  assert.equal(player.rate(), 1.5);
+});
+
+test('seek clamps the position to 0..duration', () => {
+  const { player, audio } = playerWithAudio();
+  audio.duration = 100;
+  player.seek(150);
+  assert.equal(audio.currentTime, 100);
+  player.seek(-5);
+  assert.equal(audio.currentTime, 0);
+  player.seek(42);
+  assert.equal(audio.currentTime, 42);
+});
