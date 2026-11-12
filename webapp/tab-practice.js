@@ -50,6 +50,35 @@ export function createPractice({ player }) {
     const a = loop.a === null ? '--:--' : mmss(loop.a);
     const b = loop.b === null ? '--:--' : mmss(loop.b);
     status.textContent = `${mmss(position)} · A ${a} · B ${b}`;
+    paintBar(position);
+  }
+
+  // 구간 막대: 지금 위치를 끌어 옮기고, A~B 구간을 색으로 보여 준다.
+  const bar = el('input', 'loopbar');
+  bar.type = 'range';
+  bar.min = '0';
+  bar.step = '0.1';
+  bar.setAttribute('aria-label', '구간 반복 위치');
+  let dragging = false;
+  bar.addEventListener('pointerdown', () => { dragging = true; });
+  bar.addEventListener('input', () => {
+    dragging = true;
+    player.seek(Number(bar.value));
+    paintStatus(Number(bar.value));
+  });
+  bar.addEventListener('change', () => { dragging = false; });
+  bar.addEventListener('pointerup', () => { dragging = false; });
+
+  const pct = (sec, total) => `${total > 0 ? Math.min(100, (sec / total) * 100) : 0}%`;
+  function paintBar(position) {
+    const total = player.duration();
+    bar.max = String(total || 0);
+    bar.disabled = !total;
+    if (!dragging) bar.value = String(position);
+    bar.style.setProperty('--progress', pct(position, total));
+    bar.style.setProperty('--a', loop.a === null ? '0%' : pct(loop.a, total));
+    // B가 없으면 A부터 끝까지가 아니라 A 한 점만 표시한다.
+    bar.style.setProperty('--b', loop.b === null ? (loop.a === null ? '0%' : pct(loop.a, total)) : pct(loop.b, total));
   }
 
   function setLoop(next) {
@@ -89,7 +118,7 @@ export function createPractice({ player }) {
     button('B 지점', () => setLoop({ ...loop, b: player.position() }), 'btn'),
     button('해제', () => setLoop({ a: null, b: null }), 'btn'),
   );
-  loopPanel.append(el('h2', '', '구간 반복'), abRow, status);
+  loopPanel.append(el('h2', '', '구간 반복'), bar, abRow, status);
 
   root.replaceChildren(
     el('p', 'kicker', KICKER),

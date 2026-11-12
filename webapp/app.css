@@ -179,7 +179,28 @@ h3 { margin: 0 0 2px; font-size: 20px; font-weight: 700; letter-spacing: -.01em;
 
 /* 구간 반복 A/B/해제 */
 .speed { margin-top: 12px; background: rgba(20,32,43,.05); }
+.panel + .panel { margin-top: 14px; }
 .ab { display: flex; gap: 8px; margin-top: 12px; }
+/* 연습 탭 구간 막대: 진한 부분은 지금 위치, 색 띠는 A~B 구간 */
+.loopbar { -webkit-appearance: none; appearance: none; display: block; width: 100%; height: 32px; margin: 10px 0 0; background: none; }
+.loopbar:disabled { opacity: .4; }
+.loopbar::-webkit-slider-runnable-track {
+  height: 6px; border-radius: 3px;
+  background:
+    linear-gradient(90deg, transparent var(--a, 0%), rgba(84,120,230,.45) var(--a, 0%), rgba(84,120,230,.45) var(--b, 0%), transparent var(--b, 0%)),
+    linear-gradient(var(--ink), var(--ink)) no-repeat 0 / var(--progress, 0%) 100%, rgba(20,32,43,.1);
+}
+.loopbar::-moz-range-track {
+  height: 6px; border-radius: 3px;
+  background:
+    linear-gradient(90deg, transparent var(--a, 0%), rgba(84,120,230,.45) var(--a, 0%), rgba(84,120,230,.45) var(--b, 0%), transparent var(--b, 0%)),
+    linear-gradient(var(--ink), var(--ink)) no-repeat 0 / var(--progress, 0%) 100%, rgba(20,32,43,.1);
+}
+.loopbar::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; width: 20px; height: 20px; margin-top: -7px; border: 0; border-radius: 50%;
+  background: #fff; box-shadow: 0 2px 6px rgba(20,32,43,.25);
+}
+.loopbar::-moz-range-thumb { width: 20px; height: 20px; border: 0; border-radius: 50%; background: #fff; box-shadow: 0 2px 6px rgba(20,32,43,.25); }
 .ab .btn { flex: 1; }
 
 /* 버튼 */
