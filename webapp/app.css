@@ -535,3 +535,5 @@ button:active:not(:disabled) { transform: scale(.94); transition: transform 90ms
 .video-link .search { flex: 1; min-width: 0; margin: 0; height: auto; padding: 0; border: 0; background: none; box-shadow: none; }
 .video-link .search input { width: 100%; }
 .video-link .notice { flex-basis: 100%; }
+/* 가사 조절 접기 버튼: 작고 조용하게 */
+#player-hero .lyr-toggle { align-self: center; margin: 8px 0 0; height: 28px; padding: 0 12px; font-size: 12px; color: var(--muted); }

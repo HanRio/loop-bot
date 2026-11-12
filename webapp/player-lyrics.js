@@ -6,7 +6,7 @@ const LIMIT_MS = 30000;
 const SAVE_DELAY_MS = 600;
 const REST = '♪';
 const LABEL = {
-  earlier: '−0.5초', later: '+0.5초', find: '다른 가사 찾기', findBare: '가사 찾기', sheetTitle: '다른 가사 찾기', search: '곡명 검색',
+  earlier: '−0.5초', later: '+0.5초', find: '다른 가사 찾기', findBare: '가사 찾기', more: '가사 조절', less: '접기', sheetTitle: '다른 가사 찾기', search: '곡명 검색',
   close: '닫기', none: '찾은 가사가 없어요', noSynced: '싱크가 있는 가사가 아니에요', failed: '불러오지 못했어요', loading: '찾는 중이에요',
 };
 
@@ -48,6 +48,16 @@ export function createPlayerLyrics({ api, player, canEdit, onError }) {
   const find = el('button', 'chip', LABEL.find);
   for (const b of [earlier, later, find]) b.type = 'button';
   edit.append(earlier, offsetLabel, later, find);
+  // 싱크·다른 가사 찾기는 평소엔 접어 두고, 작은 버튼을 눌러야 펼친다.
+  const toggle = el('button', 'chip lyr-toggle', LABEL.more);
+  toggle.type = 'button';
+  toggle.setAttribute('aria-expanded', 'false');
+  edit.before(toggle);
+  let editOpen = false;
+  toggle.addEventListener('click', () => {
+    editOpen = !editOpen;
+    paintEdit();
+  });
   // 가사가 없는 곡에서도 곡 주인은 직접 찾을 수 있게, 제목 아래에 버튼을 둔다.
   const findBare = el('button', 'chip', LABEL.findBare);
   findBare.type = 'button';
@@ -70,7 +80,10 @@ export function createPlayerLyrics({ api, player, canEdit, onError }) {
   }
 
   function paintEdit() {
-    edit.hidden = !canEdit();
+    toggle.hidden = !canEdit();
+    toggle.setAttribute('aria-expanded', String(editOpen));
+    toggle.textContent = editOpen ? LABEL.less : LABEL.more;
+    edit.hidden = !canEdit() || !editOpen;
     offsetLabel.textContent = syncText(active?.offsetMs ?? 0);
   }
 
@@ -114,6 +127,7 @@ export function createPlayerLyrics({ api, player, canEdit, onError }) {
     }
     flush();
     currentId = id;
+    editOpen = false; // 곡이 바뀌면 다시 접는다.
     active = null;
     showTitle();
     if (id === null) return;
