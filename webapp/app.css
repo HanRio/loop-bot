@@ -254,6 +254,7 @@ body:has(textarea:focus, input[type=text]:focus) #dock { display: none; }
 .times { display: flex; justify-content: space-between; margin-top: 6px; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .ctl { position: relative; display: flex; justify-content: space-between; align-items: center; margin-top: 6px; }
 .ctl .ib { color: var(--ink); }
+.ctl .play { color: #fff; }
 .play { width: 68px; height: 68px; background: var(--ink); color: #fff; box-shadow: 0 8px 20px rgba(20,32,43,.25); }
 .play svg.i { width: 28px; height: 28px; }
 .on { background: rgba(255,255,255,.6); }
@@ -418,3 +419,14 @@ button:active:not(:disabled) { transform: scale(.94); transition: transform 90ms
   button:active:not(:disabled) { transform: none !important; }
   .pane { will-change: auto; }
 }
+
+/* 조립 단계에서 더한 규칙 */
+.acts { display: flex; align-items: center; gap: 8px; }
+.sheet > button { display: block; width: 100%; padding: 0; border: 0; background: none; }
+.slide .stack[hidden] { display: none; }
+.slide .memo { margin-top: 14px; }
+.panel h2 { margin: 0 0 4px; font-size: 15px; }
+.video-link { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 0 0; }
+.video-link .search { flex: 1; min-width: 0; margin: 0; }
+.video-link .search input { width: 100%; }
+.video-link .notice { flex-basis: 100%; }

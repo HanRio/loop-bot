@@ -44,7 +44,7 @@ function badgeFor(row) {
 }
 
 export function createUsersAdmin({ api }) {
-  const open = $('users-open');
+  const open = $('settings-users');
   const dialog = $('users-dialog');
   const form = $('users-form');
   const input = $('users-input');

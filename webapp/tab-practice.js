@@ -20,8 +20,8 @@ function el(tag, className, text) {
   return node;
 }
 
-function button(label, onClick) {
-  const node = el('button', '', label);
+function button(label, onClick, className = '') {
+  const node = el('button', className, label);
   node.type = 'button';
   node.addEventListener('click', onClick);
   return node;
@@ -83,9 +83,9 @@ export function createPractice({ player }) {
   const abRow = el('div', 'ab');
   abRow.setAttribute('aria-label', '구간 반복');
   abRow.append(
-    button('A 지점', () => setLoop({ ...loop, a: player.position() })),
-    button('B 지점', () => setLoop({ ...loop, b: player.position() })),
-    button('해제', () => setLoop({ a: null, b: null })),
+    button('A 지점', () => setLoop({ ...loop, a: player.position() }), 'btn'),
+    button('B 지점', () => setLoop({ ...loop, b: player.position() }), 'btn'),
+    button('해제', () => setLoop({ a: null, b: null }), 'btn'),
   );
   loopPanel.append(el('h2', '', '구간 반복'), abRow, status);
 
