@@ -84,7 +84,6 @@ h3 { margin: 0 0 2px; font-size: 20px; font-weight: 700; letter-spacing: -.01em;
 .row .t { flex: 1; min-width: 0; }
 .row .t > b { display: block; font-size: 15px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .row .t > b.run { text-overflow: clip; }
-.row .t > b.run > span { display: inline-block; will-change: transform; }
 .row .t > span { display: block; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .row.now { background: rgba(255,255,255,.4); border-color: transparent; }
 .row.now .t b { font-weight: 700; }
