@@ -1,7 +1,7 @@
 // 가사집의 전체 복사와 복사 양식 창. 양식은 로컬에 두고, 텔레그램 클라우드를 쓸 수 있으면 거기에도 맞춘다. 글자는 COPY와 textContent로만 넣는다.
 import { COPY } from './copy.js';
 import { DEFAULT_TEMPLATE, TEMPLATE_MAX, renderNotes, validTemplate } from './note-export.js';
-import { $ } from './render.js';
+import { $ } from './dom.js';
 import { readLocal, writeLocal } from './store.js';
 
 const TEMPLATE_KEY = 'loopbot_copy_template';
