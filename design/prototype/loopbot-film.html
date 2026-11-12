@@ -162,7 +162,7 @@ h2 { margin: 26px 0 6px; font-size: 13px; font-weight: 600; color: var(--muted);
       <p class="kicker" id="medKicker"></p>
       <h1>묵상</h1>
       <div class="seg glass" id="medMode" style="margin-bottom: 14px;"><button type="button" data-v="lines" aria-pressed="true">가사</button><button type="button" data-v="sheet">악보</button></div>
-      <div class="copyrow"><button type="button" class="chip" id="copyAll">전체 복사</button><button type="button" class="chip" id="copyForm">복사 양식</button><span id="copyMsg" role="status"></span></div>
+      <div class="copyrow"><button type="button" class="chip" id="copyAll">전체 복사</button><button type="button" class="chip" id="copyForm">느낀점 양식</button><span id="copyMsg" role="status"></span></div>
       <div class="songs" id="songs" aria-label="곡, 옆으로 넘기기"></div>
       <div class="dots" id="dots" aria-hidden="true"></div>
     </section>
@@ -348,7 +348,7 @@ $('copyAll').addEventListener('click', () => {
   const text = SONGS.map((s, i) => NOTES[i] ? `${s.title}\n${NOTES[i]}` : '').filter(Boolean).join('\n\n');
   navigator.clipboard?.writeText(text).then(() => say('목록의 느낀점을 복사했어요'), () => say('복사하지 못했어요'));
 });
-$('copyForm').addEventListener('click', () => say('양식 창: 실제 앱의 복사 양식 설정이 그대로 열려요'));
+$('copyForm').addEventListener('click', () => say('느낀점 양식 창: 실제 앱의 양식 설정이 그대로 열려요'));
 $('songs').addEventListener('scroll', medScroll, { passive: true });
 
 // 탭: 화면 전환은 아래 탭 버튼으로만 한다. 화면을 밀어도 탭은 바뀌지 않는다.
