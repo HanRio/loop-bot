@@ -6,7 +6,7 @@ const LIMIT_MS = 30000;
 const SAVE_DELAY_MS = 600;
 const REST = '♪';
 const LABEL = {
-  earlier: '−0.5초', later: '+0.5초', find: '다른 가사 찾기', sheetTitle: '다른 가사 찾기', search: '곡명 검색',
+  earlier: '−0.5초', later: '+0.5초', find: '다른 가사 찾기', findBare: '가사 찾기', sheetTitle: '다른 가사 찾기', search: '곡명 검색',
   close: '닫기', none: '찾은 가사가 없어요', noSynced: '싱크가 있는 가사가 아니에요', failed: '불러오지 못했어요', loading: '찾는 중이에요',
 };
 
@@ -48,6 +48,11 @@ export function createPlayerLyrics({ api, player, canEdit, onError }) {
   const find = el('button', 'chip', LABEL.find);
   for (const b of [earlier, later, find]) b.type = 'button';
   edit.append(earlier, offsetLabel, later, find);
+  // 가사가 없는 곡에서도 곡 주인은 직접 찾을 수 있게, 제목 아래에 버튼을 둔다.
+  const findBare = el('button', 'chip', LABEL.findBare);
+  findBare.type = 'button';
+  findBare.hidden = true;
+  sub.after(findBare);
 
   function flush() {
     clearTimeout(timer);
@@ -61,6 +66,7 @@ export function createPlayerLyrics({ api, player, canEdit, onError }) {
     box.hidden = true;
     title.hidden = false;
     sub.hidden = false;
+    findBare.hidden = currentId === null || !canEdit();
   }
 
   function paintEdit() {
@@ -84,6 +90,7 @@ export function createPlayerLyrics({ api, player, canEdit, onError }) {
     lastIndex = -2;
     title.hidden = true;
     sub.hidden = true;
+    findBare.hidden = true;
     box.hidden = false;
     paintEdit();
     tick(player.position());
@@ -211,6 +218,7 @@ export function createPlayerLyrics({ api, player, canEdit, onError }) {
     search(undefined);
   }
   find.addEventListener('click', openFinder);
+  findBare.addEventListener('click', openFinder);
 
   document.addEventListener('visibilitychange', () => { if (document.hidden) flush(); });
   window.addEventListener('pagehide', flush);
