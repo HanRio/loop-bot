@@ -94,7 +94,13 @@ h3 { margin: 0 0 2px; font-size: 20px; font-weight: 700; letter-spacing: -.01em;
 }
 .row .drag { cursor: grab; }
 .row .more:active { background: rgba(255,255,255,.5); }
-.row.sortable-ghost { opacity: .5; }
+.row.ghost { opacity: 1; background: rgba(20,32,43,.05); border-color: transparent; }
+.row.ghost > * { visibility: hidden; }
+.row.lift {
+  opacity: 1 !important; background: rgba(255,255,255,.96); border-color: transparent; border-radius: 16px;
+  box-shadow: 0 16px 36px rgba(20,32,43,.18); font-family: var(--sans); color: var(--ink); list-style: none;
+}
+.row.lift .drag { cursor: grabbing; }
 
 /* 검색, 칩, 목록 가로 칸 */
 .search {

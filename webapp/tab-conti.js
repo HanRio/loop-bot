@@ -103,8 +103,15 @@ export function createConti({ onPlay, onReorder, onRemove, onOpenLists, onListMe
     if (!enabled || !window.Sortable) return;
     sortable = window.Sortable.create(list, {
       handle: '.drag',
-      animation: 150,
+      // 다른 줄이 부드럽게 비켜나고, 끄는 줄은 불투명한 카드로 손가락을 따라온다.
+      animation: 260,
+      easing: 'cubic-bezier(.2, .8, .2, 1)',
+      forceFallback: true,
+      fallbackOnBody: true,
+      fallbackTolerance: 3,
       ghostClass: 'ghost',
+      chosenClass: 'chosen',
+      fallbackClass: 'lift',
       onEnd: ({ oldIndex, newIndex }) => {
         // 제자리에 놓아도 다시 그리게 한다. 끄는 동안 건너뛴 렌더가 있을 수 있다.
         onReorder(moveItem(view.trackIds, oldIndex, newIndex));
