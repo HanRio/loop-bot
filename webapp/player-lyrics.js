@@ -29,7 +29,6 @@ function toEntry(data) {
 
 export function createPlayerLyrics({ api, player, canEdit, onError }) {
   const box = document.getElementById('player-lyrics');
-  const title = document.getElementById('player-title');
   const sub = document.getElementById('player-sub');
   const list = box.querySelector('.lyr-lines');
   const edit = box.querySelector('.lyr-edit');
@@ -74,8 +73,6 @@ export function createPlayerLyrics({ api, player, canEdit, onError }) {
 
   function showTitle() {
     box.hidden = true;
-    title.hidden = false;
-    sub.hidden = false;
     findBare.hidden = currentId === null || !canEdit();
   }
 
@@ -101,8 +98,6 @@ export function createPlayerLyrics({ api, player, canEdit, onError }) {
     list.replaceChildren(...nodes);
     list.scrollTop = 0;
     lastIndex = -2;
-    title.hidden = true;
-    sub.hidden = true;
     findBare.hidden = true;
     box.hidden = false;
     paintEdit();
