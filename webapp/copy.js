@@ -52,7 +52,7 @@ export const COPY = {
   copyAllEmpty: '복사할 느낀점이 없어요',
   copyFailedShort: '복사하지 못했어요',
   templateEdit: '느낀점 양식',
-  templateTitle: '복사 양식',
+  templateTitle: '느낀점 양식',
   templateHelp: '곡마다 이 양식으로 적어요. {제목}, {느낀점}, {번호}를 쓰면 그 자리에 들어가고, 곡 사이는 한 줄 띄워요.',
   templateInvalid: '{느낀점}이 꼭 들어가야 해요',
   templateDefault: '기본값으로',

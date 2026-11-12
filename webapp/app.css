@@ -94,15 +94,22 @@ h3 { margin: 0 0 2px; font-size: 20px; font-weight: 700; letter-spacing: -.01em;
   flex: none; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 50%; background: none;
   color: var(--muted); display: grid; place-items: center;
 }
-.row .drag { cursor: grab; }
+.row .drag { cursor: grab; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+/* 손잡이를 누르는 순간 줄이 살짝 떠오른다. 끌기 시작하면 이 줄은 빈 자리가 되고 떠오른 카드가 손가락을 따라온다. */
+.row.chosen {
+  position: relative; z-index: 2; border-color: transparent; border-radius: 16px; background: #fff;
+  transform: scale(1.02); box-shadow: 0 14px 32px rgba(20,32,43,.16); transition: transform .18s ease-out, box-shadow .18s;
+}
 .row .more:active { background: rgba(255,255,255,.5); }
-.row.ghost { opacity: 1; background: rgba(20,32,43,.05); border-color: transparent; }
+.row.ghost { opacity: 1; background: rgba(20,32,43,.05); border-color: transparent; transform: none; box-shadow: none; }
 .row.ghost > * { visibility: hidden; }
 .row.lift {
   opacity: 1 !important; background: rgba(255,255,255,.96); border-color: transparent; border-radius: 16px;
   box-shadow: 0 16px 36px rgba(20,32,43,.18); font-family: var(--sans); color: var(--ink); list-style: none;
 }
 .row.lift .drag { cursor: grabbing; }
+/* 끄는 카드는 손가락 위치를 바로 따라가야 한다. 줄의 transform 전환이 남아 있으면 뒤처졌다가 툭 떨어진다. */
+.row.lift, .row.lift * { transition: none !important; }
 
 /* 검색, 칩, 목록 가로 칸 */
 .search {
@@ -335,7 +342,15 @@ body:has(textarea:focus, input:focus:not([type=range]):not([type=checkbox])) #do
 }
 .video-frame { position: relative; aspect-ratio: 16 / 9; overflow: hidden; border-radius: 16px; background: #14202B; }
 .video-frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
-.video-foot { display: flex; justify-content: space-between; padding: 4px 0 8px; }
+.video-foot { display: flex; gap: 8px; justify-content: space-between; padding: 10px 0 12px; }
+.video-foot .text-button, .video-link button {
+  min-height: 40px; padding: 0 16px; border: 0; border-radius: 999px; background: rgba(255,255,255,.75);
+  box-shadow: inset 0 0 0 1px var(--line); color: var(--ink); font: 600 14px var(--sans); cursor: pointer;
+}
+.video-link input {
+  flex: 1; min-width: 0; min-height: 40px; padding: 0 14px; border: 0; border-radius: 999px; background: #fff;
+  box-shadow: inset 0 0 0 1px var(--line); font: 400 16px var(--sans); color: var(--ink); outline: none;
+}
 
 /* 알림 */
 .notice { margin: 0; font-size: 14px; color: var(--danger); }
@@ -345,50 +360,84 @@ body:has(textarea:focus, input:focus:not([type=range]):not([type=checkbox])) #do
 }
 #play-notice { margin-top: 6px; min-height: 0; text-align: center; }
 
-/* 설정 시트, 메뉴 시트: 아래에서 올라오는 유리 시트 */
-.menu {
-  width: min(440px, 100%); max-width: 100%; margin: auto auto 0; padding: 8px 8px calc(8px + var(--inset-bottom));
-  border: 0; border-radius: 24px 24px 0 0; background: rgba(255,255,255,.92); color: var(--ink);
-  box-shadow: 0 -12px 32px var(--shade);
+/* 시트: 설정, 메뉴, 이름, 목록 고르기, 양식, 사용자 관리를 모두 같은 유리 카드로 띄운다 */
+.menu, .template-dialog {
+  box-sizing: border-box; width: min(440px, calc(100% - 16px)); max-width: none;
+  max-height: calc(100% - var(--inset-top) - 24px); overflow-y: auto;
+  margin: auto auto calc(8px + var(--inset-bottom)); padding: 22px 14px 14px;
+  border: 1px solid var(--rim); border-radius: 28px; color: var(--ink); font-family: var(--sans);
+  background: rgba(248,250,252,.86); -webkit-backdrop-filter: blur(28px) saturate(1.8); backdrop-filter: blur(28px) saturate(1.8);
+  box-shadow: 0 24px 60px rgba(20,32,43,.22), inset 0 1px 0 rgba(255,255,255,.9);
 }
-.menu::backdrop { background: rgba(20,32,43,.25); }
-.menu button {
-  display: block; width: 100%; min-height: 48px; padding: 0 16px; border: 0; border-radius: 14px; background: none;
-  font-size: 16px; text-align: left; cursor: pointer;
+@supports not (backdrop-filter: blur(1px)) {
+  .menu, .template-dialog { background: rgba(250,251,253,.98); }
 }
-.menu button:active { background: rgba(255,255,255,.45); }
-.menu .danger { color: var(--danger); }
-.menu p { margin: 0; padding: 8px 16px; font-size: 14px; color: var(--muted); line-height: 1.6; }
-.menu input {
-  display: block; width: 100%; min-height: 48px; margin: 8px 0; padding: 0 14px; border: 0; border-radius: 14px;
-  background: rgba(255,255,255,.7); box-shadow: inset 0 0 0 1px var(--line);
-}
+.menu::backdrop, .template-dialog::backdrop { background: rgba(20,32,43,.28); }
+.menu[open], .template-dialog[open] { animation: sheet-in .32s cubic-bezier(.2,.8,.2,1); }
+@keyframes sheet-in { from { transform: translateY(24px); opacity: 0; } }
 
-/* 양식·사용자 관리 창 */
-.template-dialog {
-  width: min(480px, calc(100vw - 32px)); padding: 16px; border: 0; border-radius: 24px;
-  background: rgba(255,255,255,.92); color: var(--ink); box-shadow: 0 12px 32px var(--shade);
+.menu h2, .template-dialog h2 { margin: 0 6px 6px; font-size: 17px; font-weight: 700; letter-spacing: -.01em; color: var(--ink); }
+.menu p, .template-dialog p { margin: 0 6px 12px; padding: 0; font-size: 13px; line-height: 1.6; color: var(--muted); }
+.menu p.kicker { margin: 14px 6px 6px; font-size: 12px; font-weight: 600; }
+
+/* 시트 안의 줄 버튼 */
+.menu > button {
+  display: flex; align-items: center; width: 100%; min-height: 52px; margin-top: 6px; padding: 0 16px;
+  border: 0; border-radius: 16px; background: rgba(255,255,255,.78); box-shadow: inset 0 0 0 1px var(--line);
+  font: 500 16px var(--sans); color: var(--ink); text-align: left; cursor: pointer;
+  transition: transform .15s var(--spring), background .2s;
 }
-.template-dialog::backdrop { background: rgba(20,32,43,.3); }
-.template-dialog h2 { margin: 0 0 8px; font-size: 16px; color: var(--ink); }
-.template-dialog p { margin: 0 0 12px; font-size: 14px; color: var(--muted); }
-.template-dialog .card-error { color: var(--danger); }
-#template-input {
-  display: block; width: 100%; padding: 12px 16px; border: 0; background: none; font-size: 16px; resize: vertical;
+.menu > button:active { transform: scale(.98); background: #fff; }
+.menu > button.danger, .menu .danger { color: var(--danger); }
+.menu > button:last-child { justify-content: center; margin-top: 10px; background: none; box-shadow: none; color: var(--muted); }
+
+/* 시트 안의 입력 칸 */
+.menu input, .template-dialog input, #template-input {
+  box-sizing: border-box; display: block; width: 100%; min-height: 48px; margin: 0; padding: 0 14px;
+  border: 0; border-radius: 14px; background: #fff; box-shadow: inset 0 0 0 1px var(--line);
+  font: 400 16px var(--sans); color: var(--ink); outline: none;
 }
-.card-error { margin: 8px 0 0; font-size: 14px; color: var(--danger); }
+.menu input:focus, .template-dialog input:focus, #template-input:focus { box-shadow: inset 0 0 0 2px var(--ink); }
+.menu .search { padding: 0; height: auto; background: none; box-shadow: none; border: 0; }
+#template-input { min-height: 140px; padding: 12px 14px; line-height: 1.6; resize: vertical; }
+
+/* 시트 아래 버튼 줄: 취소·기본값은 연한 알약, 확인·저장은 먹색 */
+.buttons, .menu .acts { display: flex; gap: 8px; margin-top: 14px; }
+.buttons button, .menu .acts button {
+  flex: 1; min-height: 48px; padding: 0 12px; border: 0; border-radius: 16px;
+  background: rgba(20,32,43,.06); box-shadow: none; color: var(--ink); font: 600 15px var(--sans); cursor: pointer;
+  transition: transform .15s var(--spring);
+}
+.buttons button:active, .menu .acts button:active { transform: scale(.97); }
+.buttons button.primary, .menu .acts button[type=submit] { background: var(--ink); color: #fff; }
+.buttons button:disabled, .menu .acts button:disabled { opacity: .35; }
+
+.card-error { margin: 8px 6px 0; font-size: 13px; color: var(--danger); }
 .card-error:empty { display: none; }
-.buttons { display: flex; gap: 12px; margin-top: 16px; }
-.buttons button {
-  flex: 1; min-height: 48px; border: 0; border-radius: 16px; background: var(--glass-strong); color: var(--ink);
-  font-weight: 600; box-shadow: 0 2px 10px var(--shade); cursor: pointer;
-}
-.buttons button.primary { background: var(--ink); color: #fff; }
+
+/* 사용자 관리 */
 .users-form { display: flex; gap: 8px; align-items: center; }
-#users-input { flex: 1; min-width: 0; min-height: 44px; padding: 0 12px; border: 0; background: none; font-size: 16px; }
-.users-list { max-height: 40vh; overflow-y: auto; margin-top: 8px; }
-.users-list li { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 8px; flex-wrap: wrap; justify-content: space-between; }
-.user-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.users-form input { flex: 1; min-width: 0; }
+.users-form button {
+  flex: none; min-height: 48px; padding: 0 18px; border: 0; border-radius: 14px;
+  background: var(--ink); color: #fff; font: 600 15px var(--sans); cursor: pointer;
+}
+.users-list { list-style: none; max-height: 40vh; overflow-y: auto; margin: 10px 0 0; padding: 0; }
+.users-list li {
+  display: flex; align-items: center; gap: 8px; min-height: 52px; padding: 4px 6px;
+  border-bottom: 1px solid var(--line); flex-wrap: wrap; justify-content: space-between;
+}
+.users-list li:last-child { border-bottom: 0; }
+.user-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 15px; }
+.users-list .text-button {
+  min-height: 34px; padding: 0 12px; border-radius: 999px; background: rgba(20,32,43,.06); font-size: 13px;
+}
+.users-list .icon {
+  width: 34px; height: 34px; padding: 0; border: 0; border-radius: 50%; display: grid; place-items: center;
+  background: rgba(20,32,43,.06); color: var(--muted); cursor: pointer;
+}
+.users-list .icon .i { width: 16px; height: 16px; }
+.users-list span:not(.user-name):not(.user-badge) { font-size: 12px; color: var(--muted); }
 .user-badge { display: inline-flex; align-items: center; gap: 2px; margin-left: 6px; font-size: 12px; color: var(--muted); }
 .user-badge .i { width: 14px; height: 14px; margin: 0; }
 
@@ -443,6 +492,6 @@ button:active:not(:disabled) { transform: scale(.94); transition: transform 90ms
 .slide .memo { margin-top: 14px; }
 .panel h2 { margin: 0 0 4px; font-size: 15px; }
 .video-link { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 0 0; }
-.video-link .search { flex: 1; min-width: 0; margin: 0; }
+.video-link .search { flex: 1; min-width: 0; margin: 0; height: auto; padding: 0; border: 0; background: none; box-shadow: none; }
 .video-link .search input { width: 100%; }
 .video-link .notice { flex-basis: 100%; }
