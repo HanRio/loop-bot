@@ -351,6 +351,10 @@ def test_on_audio_deletes_user_message_and_confirms_with_send_message(monkeypatc
     class Store:
         def add_track(self, *a):
             events.append(("add", a))
+            return SimpleNamespace(id=1)
+
+        def save_lyrics(self, *a):
+            pass
 
     async def delete():
         events.append(("delete",))
@@ -362,7 +366,13 @@ def test_on_audio_deletes_user_message_and_confirms_with_send_message(monkeypatc
     update = SimpleNamespace(effective_message=SimpleNamespace(audio=media, delete=delete),
                              effective_user=SimpleNamespace(id=1), effective_chat=SimpleNamespace(id=5, type="private"))
     context = SimpleNamespace(bot_data={"store": Store()}, bot=SimpleNamespace(send_message=send_message))
-    asyncio.run(handlers.on_audio(update, context))
+    monkeypatch.setattr(handlers.lyrics, "search", lambda *a: None)
+
+    async def run():
+        await handlers.on_audio(update, context)
+        await handlers.drain_background()
+
+    asyncio.run(run())
     assert events == [
         ("add", (1, "곡", "F", 7, None)),
         ("delete",),
@@ -404,7 +414,12 @@ def test_fetch_one_deletes_upload_after_adding_track(monkeypatch, tmp_path):
         "lock": asyncio.Lock(),
         "store": Store(),
     })
-    outcome = asyncio.run(handlers._fetch_one(msg, context, 1, "https://youtu.be/a"))
+    async def run():
+        outcome = await handlers._fetch_one(msg, context, 1, "https://youtu.be/a")
+        await handlers.drain_background()
+        return outcome
+
+    outcome = asyncio.run(run())
     assert outcome == Added("https://youtu.be/a", "곡")
     assert events == ["add", "delete"]
 
@@ -802,7 +817,12 @@ def _fetch_one_with(monkeypatch, tmp_path, search, save, audio_extra=None):
         return SimpleNamespace(audio=SimpleNamespace(file_id="F"), delete=delete)
 
     context = SimpleNamespace(bot_data={"cfg": SimpleNamespace(ytdlp_cookies=None), "lock": asyncio.Lock(), "store": Store()})
-    return asyncio.run(handlers._fetch_one(SimpleNamespace(reply_audio=reply_audio), context, 1, "https://youtu.be/a"))
+    async def run():
+        outcome = await handlers._fetch_one(SimpleNamespace(reply_audio=reply_audio), context, 1, "https://youtu.be/a")
+        await handlers.drain_background()
+        return outcome
+
+    return asyncio.run(run())
 
 
 def test_fetch_one_saves_found_lyrics(monkeypatch, tmp_path):
@@ -820,6 +840,18 @@ def test_fetch_one_saves_none_when_not_found(monkeypatch, tmp_path):
     saved = []
     _fetch_one_with(monkeypatch, tmp_path, lambda *a: None, lambda self, *a: saved.append(a))
     assert saved == [(42, None)]
+
+
+def test_fetch_one_does_not_save_when_lyrics_unavailable(monkeypatch, tmp_path):
+    from loopbot.lyrics import LyricsUnavailable
+
+    def down(*a):
+        raise LyricsUnavailable("down")
+
+    saved = []
+    outcome = _fetch_one_with(monkeypatch, tmp_path, down, lambda self, *a: saved.append(a))
+    assert outcome.title == "곡"
+    assert saved == []
 
 
 def test_fetch_one_still_added_when_save_lyrics_raises(monkeypatch, tmp_path):
@@ -858,6 +890,10 @@ def test_on_audio_searches_and_saves_lyrics(monkeypatch):
     update = SimpleNamespace(effective_message=SimpleNamespace(audio=media, delete=delete),
                              effective_user=SimpleNamespace(id=1), effective_chat=SimpleNamespace(id=5, type="private"))
     context = SimpleNamespace(bot_data={"store": Store()}, bot=SimpleNamespace(send_message=send_message))
-    asyncio.run(handlers.on_audio(update, context))
+    async def run():
+        await handlers.on_audio(update, context)
+        await handlers.drain_background()
+
+    asyncio.run(run())
     assert args == [("가수 - 곡", "가수", 7)]
     assert saved == [(9, None)]

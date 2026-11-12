@@ -18,18 +18,18 @@ export function cleanTitle(title: string): string {
   let t = title.replace(/\[[^\]]*\]/g, "");
   t = t.split("|")[0].split(" / ")[0].replace(/\([^)]*\)/g, "");
   const pieces = t.split(" - ").map((p) => p.trim()).filter((p) => p !== "");
-  if (pieces.length === 0) return "";
+  if (pieces.length === 0) return title.trim();
   const kept = pieces.filter((p) => !p.includes("LIVE WORSHIP") && !p.includes("워십"));
   const pool = kept.length > 0 ? kept : pieces;
   let best = pool[pool.length - 1];
-  let bestCount = hangulCount(best);
+  let bestCount = 0;
   for (const p of pool) {
     if (hangulCount(p) > bestCount) {
       best = p;
       bestCount = hangulCount(p);
     }
   }
-  return best.replace(/^\d+\s*\.\s*|^\d+\s+/, "").replace(/\s+/g, " ").trim();
+  return best.replace(/^\d+\s*\.?\s+/, "").replace(/\s+/g, " ").trim();
 }
 
 async function lrclibGet(url: string, fetchFn: typeof fetch): Promise<Response> {

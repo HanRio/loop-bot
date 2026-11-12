@@ -9,6 +9,9 @@ const CASES: [string, string][] = [
   ["WECCLESIA 위클레시아 - 예수 늘 함께하시네 | Jesus", "예수 늘 함께하시네"],
   ["[LIVE] 예수, 늘 함께하시네 - 마커스워십 정규 앨범 실황 (Official Live Video)", "예수, 늘 함께하시네"],
   ["Way Maker", "Way Maker"],
+  ["찬양 - 은혜", "찬양"],
+  ["   ", ""],
+  ["1 . 나는 일어섭니다", "나는 일어섭니다"],
 ];
 
 for (const [input, want] of CASES) {

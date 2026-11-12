@@ -34,8 +34,12 @@ def main() -> None:
                 continue
             if index:
                 time.sleep(PAUSE_SECONDS)
-            found = lyrics.search(title, None, duration)
-            store.save_lyrics(track_id, found)
+            try:
+                found = lyrics.search(title, None, duration)
+                store.save_lyrics(track_id, found)
+            except Exception:
+                print(f"{track_id} 실패")
+                continue
             print(f"{track_id} {'찾음' if found else '없음'}")
     finally:
         store.close()

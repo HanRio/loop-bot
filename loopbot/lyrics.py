@@ -19,6 +19,10 @@ class Lyrics:
     synced: str
 
 
+class LyricsUnavailable(Exception):
+    """LRCLIB could not be reached or gave an unusable answer; nothing is known about the track."""
+
+
 def clean_title(title: str, performer: str | None) -> str:
     text = re.sub(r"\[[^\]]*\]", "", title)
     text = text.split("|")[0].split(" / ")[0]
@@ -29,7 +33,7 @@ def clean_title(title: str, performer: str | None) -> str:
     if not pieces:
         return title.strip()
     best = max(pieces, key=lambda p: len(_HANGUL.findall(p))) if any(_HANGUL.search(p) for p in pieces) else pieces[-1]
-    best = re.sub(r"^\d+(\.|\s)\s*", "", best)
+    best = re.sub(r"^\d+\s*\.?\s+", "", best)
     return re.sub(r"\s+", " ", best).strip()
 
 
@@ -51,9 +55,9 @@ def search(title: str, artist: str | None, duration: int | None, fetch: Callable
     url = SEARCH_URL + "?" + urllib.parse.urlencode({"q": clean_title(title, artist)})
     try:
         found = fetch(url)
-    except (OSError, TimeoutError, ValueError):
-        return None
+    except Exception as e:
+        raise LyricsUnavailable(str(e)) from e
     if not isinstance(found, list):
-        return None
+        raise LyricsUnavailable("bad body")
     best = pick_best([c for c in found if isinstance(c, dict)], duration)
     return Lyrics(best["id"], best["syncedLyrics"]) if best else None

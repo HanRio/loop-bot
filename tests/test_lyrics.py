@@ -1,8 +1,9 @@
+import http.client
 from urllib.parse import parse_qs, urlparse
 
 import pytest
 
-from loopbot.lyrics import Lyrics, clean_title, pick_best, search
+from loopbot.lyrics import Lyrics, LyricsUnavailable, clean_title, pick_best, search
 
 
 @pytest.mark.parametrize("title,performer,expected", [
@@ -13,6 +14,9 @@ from loopbot.lyrics import Lyrics, clean_title, pick_best, search
     ("WECCLESIA 위클레시아 - 예수 늘 함께하시네 | Jesus", None, "예수 늘 함께하시네"),
     ("[LIVE] 예수, 늘 함께하시네 - 마커스워십 정규 앨범 실황 (Official Live Video)", None, "예수, 늘 함께하시네"),
     ("Way Maker", None, "Way Maker"),
+    ("찬양 - 은혜", None, "찬양"),
+    ("   ", None, ""),
+    ("1 . 나는 일어섭니다", None, "나는 일어섭니다"),
 ])
 def test_clean_title(title, performer, expected):
     assert clean_title(title, performer) == expected
@@ -41,9 +45,19 @@ def test_search_uses_cleaned_title_as_q():
     assert parse_qs(urlparse(urls[0]).query)["q"] == ["빛으로 비추시네"]
 
 
-@pytest.mark.parametrize("exc", [OSError, TimeoutError, ValueError])
-def test_search_returns_none_on_fetch_error(exc):
+@pytest.mark.parametrize("exc", [OSError, TimeoutError, ValueError, http.client.IncompleteRead])
+def test_search_raises_unavailable_on_fetch_error(exc):
     def fetch(url):
-        raise exc()
+        raise exc(b"") if exc is http.client.IncompleteRead else exc()
 
-    assert search("x", None, 1, fetch) is None
+    with pytest.raises(LyricsUnavailable):
+        search("x", None, 1, fetch)
+
+
+def test_search_raises_unavailable_on_non_list_body():
+    with pytest.raises(LyricsUnavailable):
+        search("x", None, 1, lambda url: {"a": 1})
+
+
+def test_search_returns_none_when_no_candidate():
+    assert search("x", None, 1, lambda url: []) is None

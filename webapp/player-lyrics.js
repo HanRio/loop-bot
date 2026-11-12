@@ -115,6 +115,7 @@ export function createPlayerLyrics({ api, player, canEdit, onError }) {
       try {
         entry = toEntry(await api.lyrics(id));
       } catch {
+        if (currentId === id) currentId = null; // 다음 show(id)에서 다시 시도한다.
         return; // 404나 실패는 제목만 보여 준다.
       }
       if (currentId !== id) return; // 그 사이 다른 곡으로 넘어갔다.
@@ -210,6 +211,9 @@ export function createPlayerLyrics({ api, player, canEdit, onError }) {
     search(undefined);
   }
   find.addEventListener('click', openFinder);
+
+  document.addEventListener('visibilitychange', () => { if (document.hidden) flush(); });
+  window.addEventListener('pagehide', flush);
 
   return { show, tick };
 }

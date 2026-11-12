@@ -328,13 +328,27 @@ async def on_chat_play(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await query.answer()
 
 
-async def _save_lyrics(context: ContextTypes.DEFAULT_TYPE, track, query: str, artist: str | None, duration: int | None) -> None:
+_bg_tasks: set[asyncio.Task] = set()
+
+
+async def drain_background() -> None:
+    await asyncio.gather(*_bg_tasks)
+
+
+async def _save_lyrics(context: ContextTypes.DEFAULT_TYPE, track_id: int, query: str, artist: str | None, duration: int | None) -> None:
     try:
-        track_id = track.id
         found = await asyncio.to_thread(lyrics.search, query, artist, duration)
         context.bot_data["store"].save_lyrics(track_id, found)
+    except lyrics.LyricsUnavailable:
+        logging.warning("lyrics unavailable, will retry later: %s", query, exc_info=True)
     except Exception:
         logging.exception("lyrics failed: %s", query)
+
+
+def _start_lyrics(context: ContextTypes.DEFAULT_TYPE, track, query: str, artist: str | None, duration: int | None) -> None:
+    task = asyncio.create_task(_save_lyrics(context, track.id, query, artist, duration))
+    _bg_tasks.add(task)
+    task.add_done_callback(_bg_tasks.discard)
 
 
 async def _fetch_one(msg: Message, context: ContextTypes.DEFAULT_TYPE, user_id: int, url: str) -> Outcome:
@@ -358,7 +372,7 @@ async def _fetch_one(msg: Message, context: ContextTypes.DEFAULT_TYPE, user_id: 
         title = title_for_audio(audio.title, audio.performer, None)
         track = context.bot_data["store"].add_track(user_id, title, sent.audio.file_id, audio.duration, url)
         await _best_effort(sent.delete(), "upload delete")
-        await _save_lyrics(context, track, audio.track or title, audio.artist or audio.performer, audio.duration)
+        _start_lyrics(context, track, audio.track or title, audio.artist or audio.performer, audio.duration)
     except FetchError as e:
         return Failed(url, str(e))
     except TimedOut:
@@ -413,7 +427,7 @@ async def on_audio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     track = context.bot_data["store"].add_track(user_id, title, media.file_id, duration, None)
     await _best_effort(msg.delete(), "audio delete")
     await _send(context, update.effective_chat, f"✅ 추가됨: {title}")
-    await _save_lyrics(context, track, title, getattr(media, "performer", None), duration)
+    _start_lyrics(context, track, title, getattr(media, "performer", None), duration)
 
 
 async def on_unauthorized(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
