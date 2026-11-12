@@ -193,6 +193,7 @@ export function createMeditate({ api, onError, onMediaChange }) {
   templateOpen.id = 'template-open';
   copyrow.append(copyAll, templateOpen);
   const box = el('div', 'songs');
+  box.setAttribute('role', 'group');
   box.setAttribute('aria-label', TEXT.songs);
   const dots = el('div', 'dots');
   dots.setAttribute('aria-hidden', 'true');

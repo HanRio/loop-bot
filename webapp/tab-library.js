@@ -1,7 +1,7 @@
 // 라이브러리 탭: 검색, 내 목록과 공유받은 목록 칸, 모든 곡 줄. 글자는 모두 textContent로 넣는다.
 import { moodFor } from './ui-logic.js';
 import { $ } from './dom.js';
-import { icon, iconButton } from './menus.js';
+import { icon, iconButton, pressable } from './menus.js';
 
 const NO_TRACK_TEXT = '아직 곡이 없어요.';
 const NO_MATCH_TEXT = '찾는 곡이 없어요.';
@@ -72,6 +72,7 @@ export function createLibrary({ onPlay, onOpenList, onNewList, onTrackMenu }) {
     const li = el('li', 'row');
     li.dataset.id = String(track.id);
     li.classList.toggle('now', track.id === next.currentId);
+    if (track.id === next.currentId) li.setAttribute('aria-current', 'true');
     li.classList.toggle('off', next.unplayable.has(track.id));
 
     const thumb = el('span', 'thumb');
@@ -80,6 +81,7 @@ export function createLibrary({ onPlay, onOpenList, onNewList, onTrackMenu }) {
     text.append(el('b', null, track.title));
     if (next.unplayable.has(track.id)) text.append(el('span', null, UNPLAYABLE_TEXT));
 
+    pressable(text, `${track.title} 재생`);
     li.append(thumb, text, iconButton('more', '곡 메뉴', () => onTrackMenu(track.id), 'more'));
     li.addEventListener('click', () => onPlay(track.id));
     return li;

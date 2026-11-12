@@ -70,6 +70,7 @@ export function createPractice({ player }) {
   }
 
   const speedRow = el('div', 'seg speed');
+  speedRow.setAttribute('role', 'group');
   speedRow.setAttribute('aria-label', '재생 속도');
   speedRow.append(...speedButtons);
   const speedPanel = el('section', 'panel glass');
@@ -81,6 +82,7 @@ export function createPractice({ player }) {
 
   const loopPanel = el('section', 'panel glass');
   const abRow = el('div', 'ab');
+  abRow.setAttribute('role', 'group');
   abRow.setAttribute('aria-label', '구간 반복');
   abRow.append(
     button('A 지점', () => setLoop({ ...loop, a: player.position() }), 'btn'),

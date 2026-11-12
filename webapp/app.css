@@ -193,7 +193,7 @@ h3 { margin: 0 0 2px; font-size: 20px; font-weight: 700; letter-spacing: -.01em;
 }
 .dock > * { pointer-events: auto; }
 /* 메모를 쓰는 동안 키보드 위로 바가 올라오지 않게 숨긴다 */
-body:has(textarea:focus, input[type=text]:focus) #dock { display: none; }
+body:has(textarea:focus, input:focus:not([type=range]):not([type=checkbox])) #dock { visibility: hidden; }
 .mini { position: relative; height: 62px; border-radius: 31px; display: flex; align-items: center; gap: 4px; padding: 0 6px 0 9px; overflow: hidden; }
 .mini .open {
   flex: 1; min-width: 0; height: 100%; display: flex; align-items: center; gap: 10px; border: 0; background: none;

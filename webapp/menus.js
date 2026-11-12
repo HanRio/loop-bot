@@ -18,6 +18,19 @@ function el(tag, className, text) {
 }
 
 // 고정 SVG 아이콘. 경로는 이 파일의 상수에서만 온다.
+// 줄의 제목 칸을 키보드로도 누를 수 있게 한다 (Enter, Space).
+export function pressable(node, label) {
+  node.tabIndex = 0;
+  node.setAttribute('role', 'button');
+  node.setAttribute('aria-label', label);
+  node.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    node.click();
+  });
+  return node;
+}
+
 export function icon(name) {
   const svg = document.createElementNS(SVG_NS, 'svg');
   svg.setAttribute('class', 'i');
@@ -43,8 +56,9 @@ export function iconButton(name, label, onClick, className = 'ib') {
 }
 
 // 시트형 dialog를 만들어 붙이고 연다. 바깥을 누르거나 Esc로 닫힌다.
-function makeDialog(children, onClose) {
+function makeDialog(children, onClose, label = '메뉴') {
   const dialog = el('dialog', 'menu');
+  dialog.setAttribute('aria-label', label);
   dialog.append(...children);
   dialog.addEventListener('click', (event) => {
     // 키보드 Enter로 누른 버튼의 click은 좌표가 0이라 바깥으로 오인하니 dialog 자신을 누른 경우만 본다.
@@ -89,7 +103,7 @@ export function openListPicker({ playlists, sharedPlaylists, currentId }) {
     const close = textButton(LABEL.close);
     close.addEventListener('click', () => dialog.close());
     children.push(close);
-    const dialog = makeDialog(children, () => resolve(chosen));
+    const dialog = makeDialog(children, () => resolve(chosen), '목록 고르기');
   });
 }
 
@@ -142,7 +156,7 @@ export function askName({ value = '', title, max }) {
       dialog.close();
     });
 
-    const dialog = makeDialog([el('h2', null, title), form], () => resolve(result));
+    const dialog = makeDialog([el('h2', null, title), form], () => resolve(result), title);
     syncSubmit();
     input.select();
   });

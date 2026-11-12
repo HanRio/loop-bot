@@ -24,6 +24,7 @@ export function createShell({ onTab = () => {} } = {}) {
     const pos = width ? pager.scrollLeft / width : 0;
     const at = tabFromScroll(pager.scrollLeft, width, buttons.length);
     const tabWidth = buttons[0]?.offsetWidth ?? 0;
+    if (!tabWidth) return tabFromScroll(pager.scrollLeft, width, buttons.length);
 
     indicator.style.width = `${tabWidth}px`;
     indicator.style.transform = `translateX(${indicatorX(pager.scrollLeft, width, tabWidth)}px)`;
@@ -56,7 +57,7 @@ export function createShell({ onTab = () => {} } = {}) {
   function goTab(i) {
     const at = Math.min(buttons.length - 1, Math.max(0, i));
     target = at;
-    moving = !reducedMotion();
+    moving = !reducedMotion() && Math.abs(pager.scrollLeft - at * pager.clientWidth) >= 1;
     pager.scrollTo({ left: at * pager.clientWidth, behavior: reducedMotion() ? 'auto' : 'smooth' });
   }
 

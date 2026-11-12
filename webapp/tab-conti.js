@@ -1,7 +1,7 @@
 // 콘티 탭: 고른 목록의 곡 순서. 내 목록만 끌어서 순서를 바꾸고 곡을 뺀다. 글자는 모두 textContent로 넣는다.
 import { moodFor } from './ui-logic.js';
 import { $ } from './dom.js';
-import { icon, iconButton, openMenu } from './menus.js';
+import { icon, iconButton, openMenu, pressable } from './menus.js';
 
 const NO_TRACK_TEXT = '곡이 없어요. 라이브러리에서 곡을 담아 보세요.';
 const UNPLAYABLE_TEXT = '채팅 재생만 가능';
@@ -34,6 +34,8 @@ function dragHandle() {
   handle.append(icon('grip'));
   handle.setAttribute('role', 'img');
   handle.setAttribute('aria-label', '끌어서 순서 바꾸기');
+  // 손잡이를 눌렀다 뗀 것은 재생으로 치지 않는다.
+  handle.addEventListener('click', (event) => event.stopPropagation());
   return handle;
 }
 
@@ -72,6 +74,7 @@ export function createConti({ onPlay, onReorder, onRemove, onOpenLists, onListMe
     const li = el('li', 'row');
     li.dataset.id = String(id);
     li.classList.toggle('now', id === next.currentId);
+    if (id === next.currentId) li.setAttribute('aria-current', 'true');
     li.classList.toggle('off', next.unplayable.has(id));
 
     const thumb = el('span', 'thumb');
@@ -81,6 +84,7 @@ export function createConti({ onPlay, onReorder, onRemove, onOpenLists, onListMe
     const sub = rowSubtext(next, id);
     if (sub) text.append(el('span', null, sub));
 
+    pressable(text, `${next.titles.get(id) ?? ''} 재생`);
     li.append(el('span', 'n', String(index + 1)), thumb, text);
     if (next.isOwn) {
       li.prepend(dragHandle());
@@ -102,7 +106,7 @@ export function createConti({ onPlay, onReorder, onRemove, onOpenLists, onListMe
       animation: 150,
       ghostClass: 'ghost',
       onEnd: ({ oldIndex, newIndex }) => {
-        if (oldIndex === newIndex) return;
+        // 제자리에 놓아도 다시 그리게 한다. 끄는 동안 건너뛴 렌더가 있을 수 있다.
         onReorder(moveItem(view.trackIds, oldIndex, newIndex));
       },
     });

@@ -114,7 +114,9 @@ const titleMap = () => new Map(allTracks().map((t) => [t.id, t.title]));
 const findPlaylist = (id) => model.playlists.find((p) => p.id === id) ?? model.sharedPlaylists.find((p) => p.id === id);
 const isOwnId = (id) => model.playlists.some((p) => p.id === id);
 // 재생 중인 목록이 지워졌으면 빈 목록이 되어 다음 곡이 없고 멈춘다.
-const playlistIds = (id) => findPlaylist(id)?.track_ids ?? [];
+// 라이브러리에서 목록 밖 곡을 틀면 라이브러리 전체를 큐로 쓴다.
+const LIBRARY_QUEUE = 'library';
+const playlistIds = (id) => (id === LIBRARY_QUEUE ? model.library.map((t) => t.id) : findPlaylist(id)?.track_ids ?? []);
 const viewedIds = () => playlistIds(model.viewedId);
 const playingIds = () => playlistIds(playback.playingPlaylistId ?? model.viewedId);
 // 내 목록만 돌려준다. 편집과 이름 바꾸기는 이것만 건드린다.
@@ -516,7 +518,7 @@ function onPlayRow(id) {
   if (playback.unplayable.has(id)) return;
   // 영상이 열려 있으면 닫고 그 곡을 튼다.
   closeVideo();
-  playback.playingPlaylistId = model.viewedId;
+  playback.playingPlaylistId = viewedIds().includes(id) ? model.viewedId : LIBRARY_QUEUE;
   userMove(id);
 }
 
