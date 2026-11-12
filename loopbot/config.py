@@ -1,8 +1,6 @@
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-DEFAULT_APPLE_WEBAPP_URL = "https://hanrio.github.io/loop-bot-apple/v.apple/"
-
 REQUIRED_KEYS = ("BOT_TOKEN", "ALLOWED_USER_IDS", "WEBAPP_URL", "DATABASE_URL")
 
 
@@ -14,7 +12,6 @@ class Config:
     webapp_url: str
     ytdlp_cookies: str | None
     database_url: str
-    apple_webapp_url: str = DEFAULT_APPLE_WEBAPP_URL
 
     def is_allowed(self, user_id: int, username: str | None) -> bool:
         return user_id in self.allowed_user_ids or (username or "").lower() in self.allowed_usernames
@@ -39,5 +36,4 @@ def load_config(env: Mapping[str, str]) -> Config:
         webapp_url=env["WEBAPP_URL"],
         ytdlp_cookies=env.get("YTDLP_COOKIES") or None,
         database_url=env["DATABASE_URL"],
-        apple_webapp_url=env.get("APPLE_WEBAPP_URL") or DEFAULT_APPLE_WEBAPP_URL,
     )

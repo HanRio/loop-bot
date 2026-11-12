@@ -897,24 +897,3 @@ def test_on_audio_searches_and_saves_lyrics(monkeypatch):
     asyncio.run(run())
     assert args == [("가수 - 곡", "가수", 7)]
     assert saved == [(9, None)]
-
-
-def test_apple_replies_with_web_app_button_to_configured_url():
-    import asyncio
-
-    from loopbot import handlers
-
-    sent = []
-
-    class Msg:
-        async def reply_text(self, text, reply_markup=None):
-            sent.append((text, reply_markup))
-
-    context = SimpleNamespace(bot_data={"cfg": SimpleNamespace(apple_webapp_url="https://y.io/v/")})
-    asyncio.run(handlers.apple(SimpleNamespace(effective_message=Msg()), context))
-
-    [(text, markup)] = sent
-    assert text == "새 디자인(v.apple)을 실제 데이터로 열어요. 지금 메뉴 버튼은 그대로예요."
-    [[button]] = markup.inline_keyboard
-    assert button.text == "🍎 v.apple 열기"
-    assert button.web_app.url == "https://y.io/v/"

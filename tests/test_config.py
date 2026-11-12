@@ -46,8 +46,3 @@ def test_is_allowed_rejects_empty_username_when_list_is_blank():
     cfg = load_config({**BASE, "ALLOWED_USERNAMES": " , "})
     assert not cfg.is_allowed(99, None)
     assert not cfg.is_allowed(99, "")
-
-
-def test_apple_webapp_url_default_and_override():
-    assert load_config(BASE).apple_webapp_url == "https://hanrio.github.io/loop-bot-apple/v.apple/"
-    assert load_config({**BASE, "APPLE_WEBAPP_URL": "https://y.io/v/"}).apple_webapp_url == "https://y.io/v/"
