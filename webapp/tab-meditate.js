@@ -371,11 +371,12 @@ export function createMeditate({ api, onError, onMediaChange }) {
     sheetBox.append(...slide.pages.map((p) => p.wrap), slide.retry);
     if (view.canEdit) sheetBox.append(...buildUpload(slide));
 
-    const foot = el('div', 'foot');
+    const foot = el('div', 'memo-foot');
     foot.append(status, slide.del, slide.copy);
     const memo = el('div', 'memo glass');
-    memo.append(label, textarea, foot);
-    article.append(title, sheetBox, memo, slide.error);
+    memo.append(label, textarea);
+    // 저장 상태와 지우기·복사는 메모 칸 바깥 오른쪽 아래에 붙인다.
+    article.append(title, sheetBox, memo, foot, slide.error);
     textarea.addEventListener('input', () => onNoteInput(slide, textarea.value));
     for (const page of slide.pages) {
       if (observer) observer.observe(page.wrap);
