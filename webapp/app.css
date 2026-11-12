@@ -285,6 +285,19 @@ body:has(textarea:focus, input:focus:not([type=range]):not([type=checkbox])) #do
 #player-hero h1 { align-self: stretch; margin: 0 0 6px; font-size: 26px; }
 #player-hero p { margin: 0; font-size: 14px; color: var(--muted); }
 #player-hero .chip { margin-top: 14px; }
+#player-hero [hidden] { display: none; }
+/* 가사: 히어로 안에서 따로 스크롤한다. 위아래는 흐려진다. */
+#player-lyrics { align-self: stretch; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.lyr-lines {
+  position: relative; flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; padding: 30% 0;
+  -webkit-mask-image: linear-gradient(transparent, #000 18%, #000 82%, transparent); mask-image: linear-gradient(transparent, #000 18%, #000 82%, transparent);
+}
+.lyr-lines::-webkit-scrollbar { display: none; }
+#player-hero .lyr-lines p { margin: 0; padding: 7px 0; font-size: 17px; line-height: 1.5; color: var(--muted); cursor: pointer; transition: font-size .25s, color .25s; }
+#player-hero .lyr-lines p.now { font-size: 22px; font-weight: 700; color: var(--ink); }
+.lyr-edit { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 8px; padding-top: 8px; }
+#player-hero .lyr-edit .chip { margin: 0; height: 32px; }
+.lyr-sync { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .console {
   margin: 0 max(12px, var(--inset-right)) calc(14px + var(--inset-bottom)) max(12px, var(--inset-left));
   border-radius: 30px; padding: 18px 16px 14px;

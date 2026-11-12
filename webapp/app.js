@@ -1,6 +1,7 @@
 // 상태와 재생 흐름, 화면 조립. 탭 그리기는 tab-*.js, 탭 넘김·플레이어 열기는 shell.js, 네트워크는 api.js, 저장은 store.js, 재생은 audio.js가 맡는다.
 import { createApi } from './api.js';
 import { createPlayer } from './audio.js';
+import { createPlayerLyrics } from './player-lyrics.js';
 import { COPY } from './copy.js';
 import { $ } from './dom.js';
 import { embedUrl, startPlaylistId, watchUrl } from './lyrics-logic.js';
@@ -79,6 +80,7 @@ const playback = {
 };
 let api;
 let player;
+let lyrics;
 let usersAdmin;
 let shell;
 let conti;
@@ -171,6 +173,7 @@ function paintProgress() {
   $('mini-prog').firstElementChild.style.width = percent;
   const seek = $('seek');
   seek.max = String(duration);
+  lyrics?.tick(position);
   if (!seekDragging) seek.value = String(position);
   seek.style.setProperty('--progress', percent);
   const now = formatTime(position);
@@ -200,6 +203,7 @@ function renderPlayer() {
   setText('player-title', title);
   $('player-sub').textContent = sub;
   $('player-art').style.background = artOf(id);
+  lyrics?.show(id);
   $('t-all').textContent = loading ? COPY.downloading : formatTime(duration);
   paintProgress();
   if (playing && !progressFrame) progressFrame = requestAnimationFrame(progressLoop);
@@ -747,6 +751,12 @@ async function init() {
     onTrackEnd: onTrackEnded,
     onError: onTrackFailed,
     onSkip: (dir) => (dir === 'next' ? userMove(computeNext(true)) : userMove(computePrev())),
+  });
+  lyrics = createPlayerLyrics({
+    api,
+    player,
+    canEdit: () => model.isAdmin && model.library.some((t) => t.id === playback.currentTrackId),
+    onError: reportError,
   });
   initVolume(player);
   usersAdmin = createUsersAdmin({ api });

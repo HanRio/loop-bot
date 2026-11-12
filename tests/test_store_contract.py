@@ -167,3 +167,18 @@ def test_add_track_without_video_id_leaves_no_media(store):
 def test_allowed_usernames_lists_rows_from_table(store):
     store._run(lambda cur: cur.execute("INSERT INTO allowed_usernames (username) VALUES (%s), (%s)", ("alice", "bob")))
     assert sorted(store.allowed_usernames()) == ["alice", "bob"]
+
+
+def test_save_lyrics_roundtrip_and_overwrite(store):
+    from loopbot.lyrics import Lyrics
+
+    (track_id,) = _add(store, 1, "A")
+
+    def row():
+        return store._run(lambda cur: cur.execute(
+            "SELECT status, source, source_id, synced FROM track_lyrics WHERE track_id = %s", (track_id,)).fetchone())
+
+    store.save_lyrics(track_id, Lyrics(5, "[00:01.00]a"))
+    assert row() == ("found", "lrclib", 5, "[00:01.00]a")
+    store.save_lyrics(track_id, None)
+    assert row() == ("none", None, None, None)

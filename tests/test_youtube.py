@@ -23,3 +23,20 @@ def test_download_error_message_maps_known_causes():
     assert _download_error_message(Exception("Sign in to confirm you're not a bot")) == "유튜브 쿠키가 만료됐어요. 맥에서 scripts/refresh_cookies.sh를 실행해주세요"
     assert _download_error_message(Exception("ERROR: Private video. Sign in")) == "비공개 영상이에요"
     assert _download_error_message(Exception("something else")) == "영상을 받지 못했어요"
+
+
+def test_fetch_audio_returns_artist_and_track(monkeypatch, tmp_path):
+    from loopbot import youtube
+
+    info = {"title": "T", "duration": 5, "uploader": "U", "artist": "A", "track": "K"}
+
+    class FakeYDL:
+        def __init__(self, opts): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+        def extract_info(self, url, download): return info
+        def download(self, urls): (tmp_path / "x.m4a").write_bytes(b"a")
+
+    monkeypatch.setattr(youtube.yt_dlp, "YoutubeDL", FakeYDL)
+    audio = youtube.fetch_audio("https://youtu.be/x", tmp_path, None)
+    assert (audio.artist, audio.track, audio.performer) == ("A", "K", "U")

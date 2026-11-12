@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from loopbot.config import Config
+from loopbot.lyrics import Lyrics
 
 DEFAULT_PLAYLIST_NAME = "기본"
 
@@ -34,6 +35,7 @@ class Store(Protocol):
     def play_messages(self, user_id: int) -> list[int]: ...
     def set_play_messages(self, user_id: int, message_ids: Sequence[int]) -> None: ...
     def allowed_usernames(self) -> list[str]: ...
+    def save_lyrics(self, track_id: int, found: Lyrics | None) -> None: ...
 
 
 def open_store(cfg: Config) -> Store:

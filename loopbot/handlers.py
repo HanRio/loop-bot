@@ -14,6 +14,7 @@ from telegram import (
 from telegram.error import BadRequest, RetryAfter, TelegramError, TimedOut
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
 
+from loopbot import lyrics
 from loopbot.access import Access
 from loopbot.config import Config
 from loopbot.payload import MAX_LINKS, extract_youtube_urls
@@ -327,6 +328,15 @@ async def on_chat_play(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await query.answer()
 
 
+async def _save_lyrics(context: ContextTypes.DEFAULT_TYPE, track, query: str, artist: str | None, duration: int | None) -> None:
+    try:
+        track_id = track.id
+        found = await asyncio.to_thread(lyrics.search, query, artist, duration)
+        context.bot_data["store"].save_lyrics(track_id, found)
+    except Exception:
+        logging.exception("lyrics failed: %s", query)
+
+
 async def _fetch_one(msg: Message, context: ContextTypes.DEFAULT_TYPE, user_id: int, url: str) -> Outcome:
     cfg: Config = context.bot_data["cfg"]
     try:
@@ -346,8 +356,9 @@ async def _fetch_one(msg: Message, context: ContextTypes.DEFAULT_TYPE, user_id: 
 
                     sent = await _send_with_retry(upload)
         title = title_for_audio(audio.title, audio.performer, None)
-        context.bot_data["store"].add_track(user_id, title, sent.audio.file_id, audio.duration, url)
+        track = context.bot_data["store"].add_track(user_id, title, sent.audio.file_id, audio.duration, url)
         await _best_effort(sent.delete(), "upload delete")
+        await _save_lyrics(context, track, audio.track or title, audio.artist or audio.performer, audio.duration)
     except FetchError as e:
         return Failed(url, str(e))
     except TimedOut:
@@ -399,9 +410,10 @@ async def on_audio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
     duration = getattr(media, "duration", None)
     user_id = update.effective_user.id
-    context.bot_data["store"].add_track(user_id, title, media.file_id, duration, None)
+    track = context.bot_data["store"].add_track(user_id, title, media.file_id, duration, None)
     await _best_effort(msg.delete(), "audio delete")
     await _send(context, update.effective_chat, f"✅ 추가됨: {title}")
+    await _save_lyrics(context, track, title, getattr(media, "performer", None), duration)
 
 
 async def on_unauthorized(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

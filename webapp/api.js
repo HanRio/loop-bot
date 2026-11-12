@@ -92,6 +92,10 @@ export function createApi(baseUrl, initData, fileBase = null) {
       request('POST', `/tracks/${id}/sheet`, undefined, { body: blob, headers: { 'Content-Type': 'image/jpeg' } }).then((res) => res.json()),
     deleteSheet: (id, page) => json('DELETE', `/tracks/${id}/sheet/${page}`),
     saveVideo: (id, url) => json('PUT', `/tracks/${id}/video`, { url }),
+    lyrics: (id) => json('GET', `/tracks/${id}/lyrics`),
+    lyricsCandidates: (id, q) => json('GET', `/tracks/${id}/lyrics/candidates${q === undefined ? '' : `?q=${encodeURIComponent(q)}`}`),
+    chooseLyrics: (id, lrclibId) => json('PUT', `/tracks/${id}/lyrics`, { lrclib_id: lrclibId }),
+    saveLyricsOffset: (id, offsetMs) => json('PUT', `/tracks/${id}/lyrics/offset`, { offset_ms: offsetMs }),
     saveNote: async (id, body) => {
       await request('PUT', `/tracks/${id}/note`, { body });
     },

@@ -18,7 +18,17 @@ const SHARED_VIDEO_ID = 'dQw4w9WgXcQ';
 const SHEET_MAX_PAGES = 20;
 const VIDEO_ID_RE = /(?:v=|youtu\.be\/|shorts\/|embed\/|live\/)([A-Za-z0-9_-]{11})(?![A-Za-z0-9_-])/;
 
+const FAKE_LRC = ['주님은 나의 목자', '내게 부족함 없네', '푸른 풀밭 위에', '나를 눕히시고', '', '쉴 만한 물가로', '인도하시는 주', '내 영혼 소생케 하시네', '그 이름 위하여', '의의 길로 가리라']
+  .map((text, i) => `[${String(Math.floor((i * 4) / 60)).padStart(2, '0')}:${String((i * 4) % 60).padStart(2, '0')}.00]${text}`)
+  .join('\n');
+const FAKE_CANDIDATES = [
+  { id: 9001, track: '주님은 나의 목자', artist: '시험 가수', duration: 41 },
+  { id: 9002, track: '주님은 나의 목자 (Live)', artist: '다른 가수', duration: 45 },
+];
+const LYRICS_OFFSET_LIMIT = 30000;
+
 export function createApi() {
+  let lyricsState = { 1: { status: 'found', synced: FAKE_LRC, offset_ms: 0 }, 2: { status: 'none' } };
   let library = MEMBER ? [] : [1, 2, 3, 4, 5].map((id) => ({ id, title: id === 4 ? '[LIVE] 예수, 늘 함께하시네 - 마커스워십 정규 앨범 실황 (Official Live Video) 긴 제목 확인용' : `시험 곡 ${id}`, duration: 60 + id }));
   let playlists = MEMBER
     ? [{ id: 1, name: '기본', track_ids: [], shared: false }]
@@ -182,6 +192,23 @@ export function createApi() {
       if (trimmed && !videoId) throw new ApiError('bad_request', 400);
       media = { ...media, [id]: { sheet_version: media[id]?.sheet_version ?? null, video_id: videoId } };
       return { video_id: videoId };
+    },
+    async lyrics(id) {
+      return copy(lyricsState[id] ?? { status: 'unknown' });
+    },
+    async lyricsCandidates(id, q) {
+      return copy({ q: q ?? '주님은 나의 목자', candidates: FAKE_CANDIDATES });
+    },
+    async chooseLyrics(id) {
+      adminOnly();
+      lyricsState = { ...lyricsState, [id]: { status: 'found', synced: FAKE_LRC, offset_ms: 0 } };
+      return copy(lyricsState[id]);
+    },
+    async saveLyricsOffset(id, offsetMs) {
+      adminOnly();
+      const offset = Math.max(-LYRICS_OFFSET_LIMIT, Math.min(LYRICS_OFFSET_LIMIT, offsetMs));
+      lyricsState = { ...lyricsState, [id]: { ...lyricsState[id], offset_ms: offset } };
+      return { offset_ms: offset };
     },
     async saveNote(id, body) {
       if (FAIL === 'note' && failedNotes < 2) {

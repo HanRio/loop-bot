@@ -50,6 +50,13 @@ export interface AllowedUsername {
   user_id: number | null;
 }
 
+// unknown = never searched; none = searched, nothing found.
+export interface LyricsView {
+  status: "found" | "none" | "unknown";
+  synced: string | null;
+  offset_ms: number;
+}
+
 export interface Db {
   state(userId: number): Promise<State>;
   createPlaylist(userId: number, name: string, trackIds: number[]): Promise<Playlist>;
@@ -66,6 +73,10 @@ export interface Db {
   deleteSheet(userId: number, id: number, page: number): Promise<SheetPages | null>;
   saveVideo(userId: number, id: number, videoId: string | null): Promise<boolean>;
   saveNote(userId: number, id: number, body: string): Promise<boolean>;
+  lyrics(userId: number, id: number): Promise<LyricsView | null>;
+  saveLyrics(userId: number, id: number, sourceId: number, synced: string): Promise<boolean>;
+  saveLyricsOffset(userId: number, id: number, offsetMs: number): Promise<boolean>;
+  trackTitle(userId: number, id: number): Promise<string | null>;
   claimUsername(username: string, userId: number, authDate: number): Promise<boolean>;
   listUsernames(): Promise<AllowedUsername[]>;
   isAdminUser(userId: number): Promise<boolean>;
@@ -332,6 +343,39 @@ export function createDb(dsn: string, schema: string): Db {
         await tx`insert into track_media (track_id, video_id) values (${id}, ${videoId})
           on conflict (track_id) do update set video_id = excluded.video_id`;
         return true;
+      }),
+
+    // null when the track is not readable. No row means it was never searched.
+    lyrics: (userId, id) =>
+      inSchema(async (tx) => {
+        const readable = await tx`select 1 from tracks t where t.id = ${id} and ${readableFilter(tx, userId)}`;
+        if (readable.length === 0) return null;
+        const [row] = await tx<{ status: "found" | "none"; synced: string | null; offset_ms: number }[]>`
+          select status, synced, offset_ms from track_lyrics where track_id = ${id}`;
+        return row ?? { status: "unknown", synced: null, offset_ms: 0 };
+      }),
+
+    saveLyrics: (userId, id, sourceId, synced) =>
+      inSchema(async (tx) => {
+        if (!(await ownsTrackIn(tx, userId, id))) return false;
+        await tx`insert into track_lyrics (track_id, status, source, source_id, synced, offset_ms, searched_at)
+          values (${id}, 'found', 'lrclib', ${sourceId}, ${synced}, 0, now())
+          on conflict (track_id) do update set status = 'found', source = 'lrclib', source_id = excluded.source_id,
+            synced = excluded.synced, offset_ms = 0, searched_at = now()`;
+        return true;
+      }),
+
+    saveLyricsOffset: (userId, id, offsetMs) =>
+      inSchema(async (tx) => {
+        if (!(await ownsTrackIn(tx, userId, id))) return false;
+        const rows = await tx`update track_lyrics set offset_ms = ${offsetMs} where track_id = ${id} returning track_id`;
+        return rows.length > 0;
+      }),
+
+    trackTitle: (userId, id) =>
+      inSchema(async (tx) => {
+        const [row] = await tx<{ title: string }[]>`select title from tracks where id = ${id} and user_id = ${userId}`;
+        return row?.title ?? null;
       }),
 
     saveNote: (userId, id, body) =>

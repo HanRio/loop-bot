@@ -22,6 +22,8 @@ class Audio:
     title: str
     duration: int | None
     performer: str | None
+    artist: str | None = None
+    track: str | None = None
 
 
 def check_limits(info: Mapping[str, Any]) -> None:
@@ -76,4 +78,6 @@ def fetch_audio(url: str, workdir: Path, cookies: str | None) -> Audio:
         title=info.get("title") or "제목 없음",
         duration=int(duration) if duration is not None else None,
         performer=info.get("uploader") or info.get("channel"),
+        artist=info.get("artist"),
+        track=info.get("track"),
     )

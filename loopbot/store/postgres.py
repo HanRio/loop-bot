@@ -5,6 +5,7 @@ from typing import TypeVar
 import psycopg
 from psycopg import Cursor, sql
 
+from loopbot.lyrics import Lyrics
 from loopbot.payload import youtube_video_id
 from loopbot.store import DEFAULT_PLAYLIST_NAME, Playlist, Track
 
@@ -171,3 +172,14 @@ class PostgresStore:
             return [username for (username,) in cur.fetchall()]
 
         return self._run(work)
+
+    def save_lyrics(self, track_id: int, found: Lyrics | None) -> None:
+        status, source, source_id, synced = (
+            ("found", "lrclib", found.source_id, found.synced) if found else ("none", None, None, None)
+        )
+        self._run(lambda cur: cur.execute(
+            "INSERT INTO track_lyrics (track_id, status, source, source_id, synced) VALUES (%s, %s, %s, %s, %s) "
+            "ON CONFLICT (track_id) DO UPDATE SET status = EXCLUDED.status, source = EXCLUDED.source, "
+            "source_id = EXCLUDED.source_id, synced = EXCLUDED.synced, searched_at = now()",
+            (track_id, status, source, source_id, synced),
+        ))

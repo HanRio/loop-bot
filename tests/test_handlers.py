@@ -379,12 +379,18 @@ def test_fetch_one_deletes_upload_after_adding_track(monkeypatch, tmp_path):
     audio_file = tmp_path / "a.mp3"
     audio_file.write_bytes(b"x")
     monkeypatch.setattr(handlers, "fetch_audio", lambda url, tmp, cookies: SimpleNamespace(
-        path=audio_file, title="곡", performer=None, duration=10))
+        path=audio_file, title="곡", performer=None, duration=10, artist=None, track=None))
     events = []
+
+    monkeypatch.setattr(handlers.lyrics, "search", lambda *a: None)
 
     class Store:
         def add_track(self, *a):
             events.append("add")
+            return SimpleNamespace(id=1)
+
+        def save_lyrics(self, *a):
+            pass
 
     async def delete():
         events.append("delete")
@@ -769,3 +775,89 @@ def test_build_app_registers_chat_play_callback_handler():
 
     registered = [h for group in _app().handlers.values() for h in group]
     assert any(isinstance(h, CallbackQueryHandler) and h.callback is handlers.on_chat_play for h in registered)
+
+
+def _fetch_one_with(monkeypatch, tmp_path, search, save, audio_extra=None):
+    import asyncio
+
+    from loopbot import handlers
+
+    audio_file = tmp_path / "a.mp3"
+    audio_file.write_bytes(b"x")
+    extra = {"artist": "가수", "track": "노래"} | (audio_extra or {})
+    monkeypatch.setattr(handlers, "fetch_audio", lambda url, tmp, cookies: SimpleNamespace(
+        path=audio_file, title="곡", performer=None, duration=10, **extra))
+    monkeypatch.setattr(handlers.lyrics, "search", search)
+
+    class Store:
+        def add_track(self, *a):
+            return SimpleNamespace(id=42)
+
+        save_lyrics = save
+
+    async def delete():
+        pass
+
+    async def reply_audio(f, **kw):
+        return SimpleNamespace(audio=SimpleNamespace(file_id="F"), delete=delete)
+
+    context = SimpleNamespace(bot_data={"cfg": SimpleNamespace(ytdlp_cookies=None), "lock": asyncio.Lock(), "store": Store()})
+    return asyncio.run(handlers._fetch_one(SimpleNamespace(reply_audio=reply_audio), context, 1, "https://youtu.be/a"))
+
+
+def test_fetch_one_saves_found_lyrics(monkeypatch, tmp_path):
+    from loopbot.lyrics import Lyrics
+
+    found, saved, args = Lyrics(5, "[00:01.00]a"), [], []
+    outcome = _fetch_one_with(monkeypatch, tmp_path, lambda *a: args.append(a) or found,
+                              lambda self, *a: saved.append(a))
+    assert outcome.title == "곡"
+    assert saved == [(42, found)]
+    assert args == [("노래", "가수", 10)]
+
+
+def test_fetch_one_saves_none_when_not_found(monkeypatch, tmp_path):
+    saved = []
+    _fetch_one_with(monkeypatch, tmp_path, lambda *a: None, lambda self, *a: saved.append(a))
+    assert saved == [(42, None)]
+
+
+def test_fetch_one_still_added_when_save_lyrics_raises(monkeypatch, tmp_path):
+    from loopbot.handlers import Added
+
+    def boom(self, *a):
+        raise RuntimeError("db down")
+
+    outcome = _fetch_one_with(monkeypatch, tmp_path, lambda *a: None, boom)
+    assert outcome == Added("https://youtu.be/a", "곡")
+
+
+def test_on_audio_searches_and_saves_lyrics(monkeypatch):
+    import asyncio
+
+    from loopbot import handlers
+
+    monkeypatch.setattr(handlers, "_markup", lambda context, chat: "KB")
+    args, saved = [], []
+    monkeypatch.setattr(handlers.lyrics, "search", lambda *a: args.append(a) or None)
+
+    class Store:
+        def add_track(self, *a):
+            return SimpleNamespace(id=9)
+
+        def save_lyrics(self, *a):
+            saved.append(a)
+
+    async def delete():
+        pass
+
+    async def send_message(chat_id, text, reply_markup=None):
+        pass
+
+    media = SimpleNamespace(file_id="F", title="곡", performer="가수", file_name="a.mp3", duration=7)
+    update = SimpleNamespace(effective_message=SimpleNamespace(audio=media, delete=delete),
+                             effective_user=SimpleNamespace(id=1), effective_chat=SimpleNamespace(id=5, type="private"))
+    context = SimpleNamespace(bot_data={"store": Store()}, bot=SimpleNamespace(send_message=send_message))
+    asyncio.run(handlers.on_audio(update, context))
+    assert args == [("가수 - 곡", "가수", 7)]
+    assert saved == [(9, None)]

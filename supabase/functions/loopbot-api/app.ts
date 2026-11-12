@@ -1,5 +1,6 @@
 import { verifyInitData } from "./auth.ts";
 import type { Db } from "./db.ts";
+import { cleanTitle, getSynced, searchCandidates } from "./lrclib.ts";
 
 export interface Deps {
   botToken: string;
@@ -26,6 +27,8 @@ const TELEGRAM_API = "https://api.telegram.org";
 const YOUTUBE_HOSTS = new Set(["youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com"]);
 const YOUTUBE_PATH_PREFIXES = ["/shorts/", "/embed/", "/live/"];
 const YOUTUBE_ID_PATTERN = /^[A-Za-z0-9_-]{11}$/;
+const OFFSET_LIMIT_MS = 30_000;
+const QUERY_MAX_LENGTH = 100;
 const USERNAME_PATTERN = /^[a-z0-9_]{5,32}$/;
 
 class HttpError extends Error {
@@ -365,6 +368,46 @@ async function route(req: Request, deps: Deps, userId: number): Promise<Response
     const videoId = videoField(await readBody(req));
     if (!(await db.saveVideo(userId, idParam(video[1]), videoId))) throw notFound();
     return json({ video_id: videoId });
+  }
+
+  const lyrics = path.match(/^\/tracks\/(\d+)\/lyrics$/);
+  if (lyrics && req.method === "GET") {
+    const found = await db.lyrics(userId, idParam(lyrics[1]));
+    if (found === null) throw notFound();
+    return json(found);
+  }
+  if (lyrics && req.method === "PUT") {
+    await requireAdmin(deps, userId);
+    const { lrclib_id: lrclibId } = await readBody(req);
+    if (typeof lrclibId !== "number" || !Number.isSafeInteger(lrclibId) || lrclibId <= 0) throw badRequest();
+    const id = idParam(lyrics[1]);
+    if (!(await db.ownsTrack(userId, id))) throw notFound();
+    const synced = await getSynced(lrclibId, deps.fetch);
+    if (synced === null) throw new HttpError(422, "no_synced");
+    if (!(await db.saveLyrics(userId, id, lrclibId, synced))) throw notFound();
+    return json({ status: "found", synced, offset_ms: 0 });
+  }
+
+  const lyricsCandidates = path.match(/^\/tracks\/(\d+)\/lyrics\/candidates$/);
+  if (lyricsCandidates && req.method === "GET") {
+    await requireAdmin(deps, userId);
+    const id = idParam(lyricsCandidates[1]);
+    const title = await db.trackTitle(userId, id);
+    if (title === null) throw notFound();
+    const given = new URL(req.url).searchParams.get("q");
+    const q = given === null ? cleanTitle(title) : given.trim();
+    if (q === "" || [...q].length > QUERY_MAX_LENGTH) throw badRequest();
+    return json({ q, candidates: await searchCandidates(q, deps.fetch) });
+  }
+
+  const lyricsOffset = path.match(/^\/tracks\/(\d+)\/lyrics\/offset$/);
+  if (lyricsOffset && req.method === "PUT") {
+    await requireAdmin(deps, userId);
+    const { offset_ms: raw } = await readBody(req);
+    if (typeof raw !== "number" || !Number.isFinite(raw)) throw badRequest();
+    const offsetMs = Math.max(-OFFSET_LIMIT_MS, Math.min(OFFSET_LIMIT_MS, Math.round(raw)));
+    if (!(await db.saveLyricsOffset(userId, idParam(lyricsOffset[1]), offsetMs))) throw notFound();
+    return json({ offset_ms: offsetMs });
   }
 
   const note = path.match(/^\/tracks\/(\d+)\/note$/);

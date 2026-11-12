@@ -1273,3 +1273,95 @@ Deno.test("youtubeId accepts each YouTube link form and rejects everything else"
   for (const url of accepted) assertEquals(youtubeId(url), id, url);
   for (const url of rejected) assertEquals(youtubeId(url), null, url);
 });
+
+// Lyrics routes run against a stub Db, so they need no Postgres.
+function lyricsDeps(overrides: Partial<Db> = {}, fetchFn: typeof fetch = unexpectedFetch, admins = [ALLOWED_USER]): Deps {
+  const stub = {
+    isAdminUser: async () => false,
+    lyrics: async () => ({ status: "found", synced: "[00:01.00]x", offset_ms: 500 }),
+    ownsTrack: async () => true,
+    trackTitle: async () => "F.I.A - 1. 나는 일어섭니다 (Official) | I SHALL STAND",
+    saveLyrics: async () => true,
+    saveLyricsOffset: async () => true,
+    ...overrides,
+  } as unknown as Db;
+  return depsWith(stub, { fetch: fetchFn, admins: new Set(admins) });
+}
+
+async function lyricsCall(deps: Deps, method: string, path: string, body?: unknown, userId = ALLOWED_USER): Promise<Response> {
+  const headers = { "x-telegram-init-data": await signFor(userId), "content-type": "application/json" };
+  return handle(new Request(`${ORIGIN}/loopbot-api${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) }), deps);
+}
+
+const lrclibReply = (body: unknown, status = 200) => (() => Promise.resolve(new Response(JSON.stringify(body), { status }))) as typeof fetch;
+
+Deno.test("lyrics: GET returns the row for any reader, 404 when unreadable", async () => {
+  const ok = await lyricsCall(lyricsDeps({}, unexpectedFetch, []), "GET", "/tracks/1/lyrics", undefined, OTHER_USER);
+  assertEquals(ok.status, 200);
+  assertEquals(await ok.json(), { status: "found", synced: "[00:01.00]x", offset_ms: 500 });
+  const missing = await lyricsCall(lyricsDeps({ lyrics: async () => null }), "GET", "/tracks/1/lyrics");
+  assertEquals(missing.status, 404);
+});
+
+Deno.test("lyrics: edit routes answer 403 for non-admins", async () => {
+  const deps = lyricsDeps({}, unexpectedFetch, []);
+  for (const [method, path, body] of [
+    ["GET", "/tracks/1/lyrics/candidates", undefined],
+    ["PUT", "/tracks/1/lyrics", { lrclib_id: 5 }],
+    ["PUT", "/tracks/1/lyrics/offset", { offset_ms: 500 }],
+  ] as const) {
+    const res = await lyricsCall(deps, method, path, body, OTHER_USER);
+    assertEquals(res.status, 403, `${method} ${path}`);
+  }
+});
+
+Deno.test("lyrics: candidates uses the cleaned title by default, honours q, rejects bad q, 404 for foreign track", async () => {
+  const seen: string[] = [];
+  const fetchFn = ((url: string) => {
+    seen.push(String(url));
+    return Promise.resolve(new Response(JSON.stringify([{ id: 7, trackName: "t", artistName: "a", duration: 100, syncedLyrics: "[00:01.00]x" }])));
+  }) as unknown as typeof fetch;
+  const deps = lyricsDeps({}, fetchFn);
+  const res = await lyricsCall(deps, "GET", "/tracks/1/lyrics/candidates");
+  assertEquals(await res.json(), { q: "나는 일어섭니다", candidates: [{ id: 7, track: "t", artist: "a", duration: 100 }] });
+  assertStringIncludes(seen[0], encodeURIComponent("나는 일어섭니다"));
+  const custom = await lyricsCall(deps, "GET", `/tracks/1/lyrics/candidates?q=${encodeURIComponent("직접")}`);
+  assertEquals((await custom.json()).q, "직접");
+  assertEquals((await lyricsCall(deps, "GET", "/tracks/1/lyrics/candidates?q=")).status, 400);
+  assertEquals((await lyricsCall(deps, "GET", `/tracks/1/lyrics/candidates?q=${"a".repeat(101)}`)).status, 400);
+  const foreign = lyricsDeps({ trackTitle: async () => null }, fetchFn);
+  assertEquals((await lyricsCall(foreign, "GET", "/tracks/1/lyrics/candidates")).status, 404);
+});
+
+Deno.test("lyrics: candidates answers 502 upstream when LRCLIB fails", async () => {
+  const deps = lyricsDeps({}, (() => Promise.reject(new Error("down"))) as typeof fetch);
+  const res = await lyricsCall(deps, "GET", "/tracks/1/lyrics/candidates");
+  assertEquals(res.status, 502);
+  assertEquals(await res.json(), { error: "upstream" });
+});
+
+Deno.test("lyrics: PUT validates lrclib_id, 404 foreign, 422 without synced, saves otherwise", async () => {
+  const deps = lyricsDeps({}, lrclibReply({ syncedLyrics: "[00:02.00]y" }));
+  for (const bad of [{}, { lrclib_id: "5" }, { lrclib_id: 0 }, { lrclib_id: -3 }, { lrclib_id: 1.5 }]) {
+    assertEquals((await lyricsCall(deps, "PUT", "/tracks/1/lyrics", bad)).status, 400);
+  }
+  assertEquals((await lyricsCall(lyricsDeps({ ownsTrack: async () => false }), "PUT", "/tracks/1/lyrics", { lrclib_id: 5 })).status, 404);
+  const none = lyricsDeps({}, lrclibReply({ syncedLyrics: null }));
+  const unprocessable = await lyricsCall(none, "PUT", "/tracks/1/lyrics", { lrclib_id: 5 });
+  assertEquals(unprocessable.status, 422);
+  assertEquals(await unprocessable.json(), { error: "no_synced" });
+  const ok = await lyricsCall(deps, "PUT", "/tracks/1/lyrics", { lrclib_id: 5 });
+  assertEquals(ok.status, 200);
+  assertEquals(await ok.json(), { status: "found", synced: "[00:02.00]y", offset_ms: 0 });
+});
+
+Deno.test("lyrics: offset rounds, clamps, rejects non-numbers, 404 without a row", async () => {
+  const deps = lyricsDeps();
+  assertEquals((await lyricsCall(deps, "PUT", "/tracks/1/lyrics/offset", { offset_ms: "5" })).status, 400);
+  assertEquals((await lyricsCall(deps, "PUT", "/tracks/1/lyrics/offset", {})).status, 400);
+  assertEquals(await (await lyricsCall(deps, "PUT", "/tracks/1/lyrics/offset", { offset_ms: 499.6 })).json(), { offset_ms: 500 });
+  assertEquals(await (await lyricsCall(deps, "PUT", "/tracks/1/lyrics/offset", { offset_ms: 99999 })).json(), { offset_ms: 30000 });
+  assertEquals(await (await lyricsCall(deps, "PUT", "/tracks/1/lyrics/offset", { offset_ms: -99999 })).json(), { offset_ms: -30000 });
+  const gone = lyricsDeps({ saveLyricsOffset: async () => false });
+  assertEquals((await lyricsCall(gone, "PUT", "/tracks/1/lyrics/offset", { offset_ms: 0 })).status, 404);
+});
