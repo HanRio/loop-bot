@@ -480,6 +480,14 @@ class _AllowedUser(filters.UpdateFilter):
         return user is not None and self._access.is_allowed(user.id, user.username)
 
 
+async def apple(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    cfg: Config = context.bot_data["cfg"]
+    markup = InlineKeyboardMarkup([[InlineKeyboardButton("🍎 v.apple 열기", web_app=WebAppInfo(cfg.apple_webapp_url))]])
+    await update.effective_message.reply_text(
+        "새 디자인(v.apple)을 실제 데이터로 열어요. 지금 메뉴 버튼은 그대로예요.", reply_markup=markup
+    )
+
+
 def build_app(cfg: Config, store: Store) -> Application:
     app = (
         Application.builder()
@@ -497,6 +505,7 @@ def build_app(cfg: Config, store: Store) -> Application:
     app.add_handler(CommandHandler("start", start, filters=commands))
     app.add_handler(CommandHandler("list", list_tracks, filters=commands))
     app.add_handler(CommandHandler("play", play, filters=commands))
+    app.add_handler(CommandHandler("apple", apple, filters=commands))
     app.add_handler(MessageHandler(allowed & filters.UpdateType.MESSAGE & is_audio, on_audio))
     app.add_handler(MessageHandler(allowed & filters.UpdateType.MESSAGE & filters.TEXT & ~filters.COMMAND, on_text))
     app.add_handler(MessageHandler(filters.ALL & ~allowed, on_unauthorized))
