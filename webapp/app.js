@@ -206,6 +206,8 @@ function renderPlayer() {
   $('mini-art').style.background = artOf(id);
   $('mini-play-icon').setAttribute('d', playing ? ICON_PAUSE : ICON_PLAY);
   $('mini-play').setAttribute('aria-label', playLabel);
+  // 목록의 재생 중 막대는 이 class로 움직이고 멈춘다.
+  $('app').classList.toggle('is-playing', playing);
 
   setText('player-title', title);
   $('player-sub').textContent = sub;

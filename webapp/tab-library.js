@@ -21,6 +21,14 @@ function el(tag, className, text) {
   return node;
 }
 
+// 재생 중일 때만 움직인다(#app.is-playing, app.js가 붙인다).
+function nowMark() {
+  const eq = el('span', 'n eq');
+  eq.setAttribute('aria-hidden', 'true');
+  eq.append(el('i'), el('i'), el('i'));
+  return eq;
+}
+
 export function createLibrary({ onPick, onOpenList, onNewList, onTrackMenu, onDelete }) {
   const pane = $('tab-library');
   let view = null;
@@ -77,14 +85,15 @@ export function createLibrary({ onPick, onOpenList, onNewList, onTrackMenu, onDe
     li.classList.toggle('off', next.unplayable.has(track.id));
     li.classList.toggle('picked', track.id === next.pickedId);
 
-    const thumb = el('span', 'thumb');
-    thumb.style.background = art(track.id);
     const text = el('span', 't');
     text.append(el('b', null, track.title));
     if (next.unplayable.has(track.id)) text.append(el('span', null, UNPLAYABLE_TEXT));
 
     pressable(text, `${track.title} 고르기`);
-    li.append(thumb, text, iconButton('more', '곡 메뉴', () => onTrackMenu(track.id), 'more'));
+    li.append(text);
+    // 재생 중인 곡은 제목 끝에 작은 막대가 움직인다. 제목 줄이 밀리지 않게 오른쪽에 둔다.
+    if (track.id === next.currentId) li.append(nowMark());
+    li.append(iconButton('more', '곡 메뉴', () => onTrackMenu(track.id), 'more'));
     li.addEventListener('click', () => onPick(track.id));
     return swipeable(li, { label: '지우기', onAction: () => onDelete(track.id) });
   }

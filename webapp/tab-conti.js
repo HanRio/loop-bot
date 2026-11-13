@@ -33,7 +33,7 @@ function dragHandle() {
 function leadMark(id, index, view) {
   if (view.selecting) return el('span', 'n check');
   if (id === view.currentId) {
-    const eq = el('span', `n eq${view.playing ? ' on' : ''}`);
+    const eq = el('span', 'n eq');
     eq.setAttribute('aria-hidden', 'true');
     eq.append(el('i'), el('i'), el('i'));
     return eq;
