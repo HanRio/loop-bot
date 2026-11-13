@@ -36,6 +36,7 @@ svg { display: block; }
 @media (min-width: 880px) { .player { padding: 28px; } }
 
 .topbar { display: flex; justify-content: flex-end; align-items: center; font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.topbar:empty { display: none; }
 .back { color: var(--muted); text-decoration: none; letter-spacing: .08em; padding: 6px 2px; }
 .back:hover { color: var(--text); }
 
