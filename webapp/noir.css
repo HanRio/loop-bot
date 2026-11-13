@@ -1,0 +1,34 @@
+/* 기존 화면(4개 탭)에 v2(Noir)의 옷을 입힌다. app.css는 색을 변수로 쓰고 원래 색을 기본값으로 갖고 있어서,
+   이 파일을 빼면(index.html의 link 한 줄) 예전 밝은 모양으로 그대로 돌아간다. 구조·기능은 건드리지 않는다. */
+:root {
+  /* v2와 같은 팔레트 */
+  --ink: #edebe6; --muted: #8b8a90; --line: rgba(237,235,230,.08);
+  --glass: rgba(20,20,22,.72); --glass-strong: rgba(44,44,48,.8);
+  --rim: rgba(237,235,230,.08); --shade: rgba(0,0,0,.45);
+  --paper: #0a0a0b; --paper-2: #0a0a0b; --paper-3: #0a0a0b; --tint: 7%;
+  --danger: #ff6b5e; --accent-ios: #e6b866;
+  --sans: "Geist", "Noto Sans KR", -apple-system, "Apple SD Gothic Neo", sans-serif;
+
+  /* 밝은 유리 위의 흰 덮개 → 어두운 바탕 위의 옅은 빛 */
+  --hi-25: rgba(237,235,230,.03); --hi-30: rgba(237,235,230,.04); --hi-35: rgba(237,235,230,.06);
+  --hi-40: rgba(237,235,230,.06); --hi-50: rgba(237,235,230,.07); --hi-60: rgba(237,235,230,.07);
+  --hi-75: rgba(237,235,230,.09); --hi-78: rgba(237,235,230,.06); --hi-85: rgba(237,235,230,.08);
+  --hi-86: rgba(237,235,230,.06); --hi-90: rgba(237,235,230,.06); --hi-92: rgba(20,20,22,.96);
+  --hi-96: rgba(34,34,37,.98); --hi-100: rgba(237,235,230,.06);
+  /* 먹색 옅은 칠(트랙·약한 버튼) → 옅은 빛, 먹색 그림자 → 검은 그림자 */
+  --lo-05: rgba(237,235,230,.05); --lo-06: rgba(237,235,230,.07); --lo-10: rgba(237,235,230,.14);
+  --lo-16: rgba(0,0,0,.5); --lo-18: rgba(0,0,0,.55); --lo-22: rgba(0,0,0,.6);
+  --lo-25: rgba(0,0,0,.5); --lo-28: rgba(0,0,0,.55);
+  --solid: #232327; --on-ink: #0a0a0b;
+  --sheet: rgba(24,24,27,.9); --sheet-solid: #18181b;
+  --grabber: rgba(237,235,230,.22); --loop-band: rgba(230,184,102,.45);
+  color-scheme: dark;
+}
+
+/* 손잡이(슬라이더 동그라미)는 밝게 남긴다. 어두운 칠(--solid)을 따르면 안 보인다. */
+.loopbar::-webkit-slider-thumb, #seek::-webkit-slider-thumb, #volume-range::-webkit-slider-thumb { background: var(--ink); }
+.loopbar::-moz-range-thumb, #seek::-moz-range-thumb, #volume-range::-moz-range-thumb { background: var(--ink); }
+/* 어두운 배지 위 글자는 밝게 */
+.sheet-count { color: var(--ink); }
+/* 키보드 초점선은 v2처럼 금색 */
+button:focus-visible, input:focus-visible, textarea:focus-visible { outline-color: #e6b866; }

@@ -6,8 +6,8 @@ import { join } from 'node:path';
 
 const dir = join(import.meta.dirname, '..', 'webapp');
 const PAGES = [
-  { html: 'index.html', css: 'app.css', js: 'app.js' },
-  { html: 'v2.html', css: 'v2.css', js: 'v2.js' },
+  { html: 'index.html', css: ['app.css', 'noir.css'], js: 'app.js' },
+  { html: 'v2.html', css: ['v2.css'], js: 'v2.js' },
 ];
 const version = Date.now().toString(36);
 
@@ -20,12 +20,13 @@ const stamp = (html, attr, name) =>
 
 for (const page of PAGES) {
   const file = join(dir, page.html);
-  let html = stamp(stamp(readFileSync(file, 'utf8'), 'href', page.css), 'src', page.js);
+  let html = page.css.reduce((h, css) => stamp(h, 'href', css), stamp(readFileSync(file, 'utf8'), 'src', page.js));
   html = html.includes('<script type="importmap">')
     ? html.replace(/<script type="importmap">.*?<\/script>/s, importMap)
     : html.replace('</head>', `${importMap}\n</head>`);
-  if (!html.includes(`href="${page.css}?v=${version}"`) || !html.includes(`src="${page.js}?v=${version}"`)) {
-    throw new Error(`${page.html}에서 ${page.css}나 ${page.js} 주소를 찾지 못했어요`);
+  const missing = [...page.css.map((c) => `href="${c}?v=${version}"`), `src="${page.js}?v=${version}"`].filter((t) => !html.includes(t));
+  if (missing.length > 0) {
+    throw new Error(`${page.html}에서 주소를 찾지 못했어요: ${missing.join(', ')}`);
   }
   writeFileSync(file, html);
 }
