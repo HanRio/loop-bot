@@ -48,7 +48,7 @@ export function createConti({ onPlay, onReorder, onRemove, onOpenLists, onListMe
 
   const kicker = el('p', 'kicker');
   const title = el('h1');
-  const openListsButton = el('button', 'chip', '목록 바꾸기');
+  const openListsButton = el('button', 'chip', '플리 바꾸기');
   openListsButton.type = 'button';
   openListsButton.addEventListener('click', () => onOpenLists());
   const listMenuButton = iconButton('more', '목록 메뉴', () => onListMenu());
