@@ -1,7 +1,6 @@
 // 콘티 탭: 고른 목록의 곡 순서. 내 목록만 끌어서 순서를 바꾸고 곡을 뺀다.
 // 선택 모드에서는 여러 곡을 골라 재생·옮기기·삭제하고, 고른 곡을 한꺼번에 끈다. 글자는 모두 textContent로 넣는다.
 import { swipeable } from './swipe-row.js';
-import { moodFor } from './ui-logic.js';
 import { $ } from './dom.js';
 import { haptic } from './haptic.js';
 import { icon, iconButton, openMenu, pressable } from './menus.js';
@@ -12,11 +11,6 @@ const NOW_TEXT = '지금 재생 중';
 const PAUSED_TEXT = '일시 정지 중';
 const REMOVE_LABEL = '목록에서 빼기';
 
-// 곡 색: 시안과 같이 팔레트의 첫 색에서 셋째 색으로 번지는 띠.
-const art = (id) => {
-  const [first, , third] = moodFor(id);
-  return `linear-gradient(150deg, ${first}, ${third})`;
-};
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -33,6 +27,18 @@ function dragHandle() {
   // 손잡이를 눌렀다 뗀 것은 재생으로 치지 않는다.
   handle.addEventListener('click', (event) => event.stopPropagation());
   return handle;
+}
+
+// 줄 앞 표시: 선택 중이면 체크, 재생 중인 곡은 움직이는 막대, 나머지는 흐린 순번(01, 02…).
+function leadMark(id, index, view) {
+  if (view.selecting) return el('span', 'n check');
+  if (id === view.currentId) {
+    const eq = el('span', `n eq${view.playing ? ' on' : ''}`);
+    eq.setAttribute('aria-hidden', 'true');
+    eq.append(el('i'), el('i'), el('i'));
+    return eq;
+  }
+  return el('span', 'n', String(index + 1).padStart(2, '0'));
 }
 
 function rowSubtext(view, id) {
@@ -94,8 +100,6 @@ export function createConti({ onPlay, onReorder, onRemove, onOpenLists, onListMe
     if (id === next.currentId) li.setAttribute('aria-current', 'true');
     li.classList.toggle('off', next.unplayable.has(id));
 
-    const thumb = el('span', 'thumb');
-    thumb.style.background = art(id);
     const text = el('span', 't');
     text.append(el('b', null, next.titles.get(id) ?? ''));
     const sub = rowSubtext(next, id);
@@ -103,8 +107,7 @@ export function createConti({ onPlay, onReorder, onRemove, onOpenLists, onListMe
 
     const name = next.titles.get(id) ?? '';
     pressable(text, next.selecting ? `${name} ${picked ? '선택 해제' : '선택'}` : `${name} 재생`);
-    const lead = next.selecting ? el('span', 'n check') : el('span', 'n', String(index + 1));
-    li.append(lead, thumb, text);
+    li.append(leadMark(id, index, next), text);
     if (next.isOwn) li.prepend(dragHandle());
     li.addEventListener('click', () => onPlay(id));
     if (next.selecting) return li;

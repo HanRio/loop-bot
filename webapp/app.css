@@ -644,3 +644,13 @@ button:active:not(:disabled) { transform: scale(.94); transition: transform 90ms
 .song-bar .ib { width: 36px; height: 36px; color: var(--muted); }
 @keyframes song-bar-in { from { opacity: 0; transform: translateY(8px) scale(.97); } }
 @media (prefers-reduced-motion: reduce) { .song-bar { animation: none; } }
+
+/* 콘티 줄 앞 표시: 네모 썸네일 대신 흐린 순번, 재생 중인 곡은 작은 막대 세 개 */
+#tab-conti .row .n { width: 22px; flex: none; text-align: center; font-family: "Geist Mono", ui-monospace, monospace; font-size: 12px; letter-spacing: .02em; }
+#tab-conti .row .n.check { width: 18px; margin: 0 2px; }
+.row .eq { height: 14px; display: flex; align-items: flex-end; justify-content: center; gap: 2px; }
+.row .eq i { width: 3px; height: 100%; border-radius: 1px; background: var(--accent-ios, #0a84ff); transform-origin: bottom; transform: scaleY(.35); }
+.row .eq.on i { animation: row-eq 1s ease-in-out infinite; }
+.row .eq.on i:nth-child(2) { animation-delay: -.35s; }
+.row .eq.on i:nth-child(3) { animation-delay: -.7s; }
+@keyframes row-eq { 0%, 100% { transform: scaleY(.3); } 50% { transform: scaleY(1); } }
