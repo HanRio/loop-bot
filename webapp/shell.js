@@ -63,6 +63,57 @@ export function createShell({ onTab = () => {} } = {}) {
     pager.scrollTo({ left: at * pager.clientWidth, behavior: reducedMotion() ? 'auto' : 'smooth' });
   }
 
+  // 탭 바 위에서 손가락을 좌우로 밀면 알약과 화면이 손가락을 따라오고, 떼면 가장 가까운 탭에 맞춰진다.
+  let slid = false;
+  function enableTabSlide() {
+    const nav = $('tabs');
+    const SLIDE_START = 8; // 이만큼 옆으로 움직여야 밀기로 본다. 그 전에 떼면 그냥 누른 것이다.
+    let startX = null;
+    let sliding = false;
+    let shown = -1;
+    const posAt = (x) => {
+      const rect = buttons[0].getBoundingClientRect();
+      const raw = (x - rect.left - rect.width / 2) / rect.width;
+      return Math.min(buttons.length - 1, Math.max(0, raw));
+    };
+    nav.addEventListener('pointerdown', (event) => {
+      if (!event.isPrimary) return;
+      startX = event.clientX;
+      sliding = false;
+      slid = false;
+    });
+    nav.addEventListener('pointermove', (event) => {
+      if (startX === null) return;
+      if (!sliding) {
+        if (Math.abs(event.clientX - startX) < SLIDE_START) return;
+        sliding = true;
+        shown = current;
+        // 손가락이 바 밖으로 나가도 계속 따라오게 잡는다. 잡을 수 없는 포인터면 그냥 둔다.
+        try { nav.setPointerCapture(event.pointerId); } catch { /* 이미 끝난 포인터 */ }
+      }
+      const pos = posAt(event.clientX);
+      target = Math.round(pos);
+      moving = false;
+      pager.scrollLeft = pos * pager.clientWidth;
+      if (target !== shown) {
+        shown = target;
+        haptic.tick();
+      }
+    });
+    const end = (event) => {
+      if (startX === null) return;
+      startX = null;
+      if (!sliding) return;
+      sliding = false;
+      slid = true;
+      // 손을 떼면 click이 안 오는 경우(캡처 등)도 있어 잠시 뒤 표시를 푼다.
+      setTimeout(() => { slid = false; }, 400);
+      goTab(Math.round(posAt(event.clientX)));
+    };
+    nav.addEventListener('pointerup', end);
+    nav.addEventListener('pointercancel', end);
+  }
+
   function setMood(trackId) {
     const [m1, m2, m3] = moodFor(trackId);
     app.style.setProperty('--m1', m1);
@@ -80,7 +131,16 @@ export function createShell({ onTab = () => {} } = {}) {
     player.setAttribute('aria-hidden', 'true');
   }
 
-  buttons.forEach((button) => button.addEventListener('click', () => goTab(Number(button.dataset.tab))));
+  buttons.forEach((button) => button.addEventListener('click', (event) => {
+    // 밀어서 고른 직후 따라오는 click은 무시한다. 손을 뗀 자리로 이미 갔다.
+    if (slid) {
+      event.preventDefault();
+      slid = false;
+      return;
+    }
+    goTab(Number(button.dataset.tab));
+  }));
+  enableTabSlide();
   pager.addEventListener('scroll', onScroll, { passive: true });
   // 창 크기가 바뀌면 지금 칸으로 다시 맞춘다.
   addEventListener('resize', () => {
