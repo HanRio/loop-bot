@@ -601,3 +601,25 @@ button:active:not(:disabled) { transform: scale(.94); transition: transform 90ms
 .menu.confirm .confirm-text { margin: 6px 12px 4px; text-align: center; font-size: 13px; line-height: 1.5; }
 .menu.confirm > button { justify-content: center; font-size: 17px; }
 .menu.confirm > button.danger { font-weight: 400; }
+
+/* 콘티 탭 여러 곡 선택: 목록 위에 붙는 동작 막대, 동그란 체크, 묶음 끌기 */
+.bulk {
+  position: sticky; top: calc(8px + var(--inset-top)); z-index: 3; display: flex; align-items: center; gap: 6px;
+  margin: 0 -6px 8px; padding: 8px 8px 8px 14px; border-radius: 18px;
+}
+.bulk[hidden] { display: none; }
+.bulk .bulk-count { flex: 1; min-width: 0; white-space: nowrap; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.bulk .chip { height: 32px; padding: 0 11px; }
+.bulk .chip:disabled { opacity: .4; cursor: default; }
+.chip.danger { color: var(--danger); }
+.chip.strong { background: var(--ink); color: var(--on-ink, #fff); border-color: var(--ink); }
+.row .check { width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--muted); display: grid; place-items: center; box-sizing: border-box; transition: background .15s, border-color .15s; }
+.row[aria-pressed="true"] { background: var(--hi-40, rgba(255,255,255,.4)); }
+.row[aria-pressed="true"] .check { background: var(--accent-ios, #0a84ff); border-color: var(--accent-ios, #0a84ff); }
+.row[aria-pressed="true"] .check::after { content: ""; width: 4px; height: 8px; margin-top: -2px; border: solid var(--paper, #fff); border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.selecting .row.off { opacity: .7; }
+.row.riding { height: 0; padding-top: 0; padding-bottom: 0; opacity: 0; overflow: hidden; border-bottom-width: 0; transition: height .2s ease, padding .2s ease, opacity .2s ease; }
+.row .ride-count {
+  position: absolute; top: 2px; left: 34px; min-width: 20px; height: 20px; padding: 0 6px; box-sizing: border-box; border-radius: 10px;
+  background: var(--accent-ios, #0a84ff); color: var(--paper, #fff); font-size: 11px; font-weight: 700; display: grid; place-items: center;
+}

@@ -11,7 +11,7 @@ import { haptic } from './haptic.js';
 import { askConfirm, askName, openListPicker, openMenu } from './menus.js';
 import { enableSheetDrag } from './sheet-drag.js';
 import { prevTrack } from './queue.js';
-import { pickNext } from './v2-logic.js';
+import { addTracks, inListOrder, moveGroup, pickNext, removeTracks } from './v2-logic.js';
 import { createShell } from './shell.js';
 import { cleanName, cleanTitle, createActiveSender, createSaves, mergeOrder, readLocal, writeLocal } from './store.js';
 import { createConti } from './tab-conti.js';
@@ -84,7 +84,11 @@ const playback = {
   lyricsOn: readLocal(KEY_LYRICS) === '1',
   // 섞어 듣기 + 반복 끔일 때 한 바퀴를 다 돌았는지 본다.
   played: new Set(),
+  // 고른 곡만 재생할 때의 순서. 다른 곡을 누르면 풀린다.
+  queue: null,
 };
+// 콘티 탭의 여러 곡 선택.
+let selection = { on: false, ids: new Set() };
 let api;
 let player;
 let playerView;
@@ -129,7 +133,7 @@ const isOwnId = (id) => model.playlists.some((p) => p.id === id);
 const LIBRARY_QUEUE = 'library';
 const playlistIds = (id) => (id === LIBRARY_QUEUE ? model.library.map((t) => t.id) : findPlaylist(id)?.track_ids ?? []);
 const viewedIds = () => playlistIds(model.viewedId);
-const playingIds = () => playlistIds(playback.playingPlaylistId ?? model.viewedId);
+const playingIds = () => playback.queue ?? playlistIds(playback.playingPlaylistId ?? model.viewedId);
 // 내 목록만 돌려준다. 편집과 이름 바꾸기는 이것만 건드린다.
 const viewedPlaylist = () => model.playlists.find((p) => p.id === model.viewedId);
 const canEdit = () => model.isAdmin && isOwnId(model.viewedId);
@@ -226,6 +230,8 @@ function renderAll() {
       currentId: playback.currentTrackId,
       unplayable: playback.unplayable,
       playing: player?.isPlaying() ?? false,
+      selecting: selection.on,
+      selected: selection.ids,
     });
   }
   library.render({
@@ -275,10 +281,76 @@ function editViewed(ids) {
 }
 
 // 끄는 사이 보고 있는 목록이 바뀌었으면 그 순서는 지금 목록 것이 아니니 버린다.
-function onReorder(ids) {
+// 고른 곡을 끌었으면 고른 곡 전체가 놓인 자리로 원래 순서대로 모인다.
+function onReorder(domIds, draggedId) {
   const current = viewedIds();
-  const same = ids.length === current.length && ids.every((id) => current.includes(id));
-  if (same) editViewed(mergeOrder(ids, current));
+  const same = domIds.length === current.length && domIds.every((id) => current.includes(id));
+  if (same) {
+    const group = selection.on ? selection.ids : new Set();
+    editViewed(mergeOrder(moveGroup(domIds, draggedId, group, current), current));
+  }
+  renderAll();
+}
+
+// ── 여러 곡 선택 ──
+function setSelecting(on) {
+  selection = { on, ids: new Set() };
+  renderAll();
+}
+
+function toggleSelected(id) {
+  const ids = new Set(selection.ids);
+  if (ids.has(id)) ids.delete(id);
+  else ids.add(id);
+  selection = { on: true, ids };
+  haptic.tick();
+  renderAll();
+}
+
+// 고른 곡만 재생: 목록 순서대로 그 곡들만 돈다.
+function onBulkPlay() {
+  const queue = inListOrder(viewedIds(), selection.ids);
+  if (queue.length === 0) return;
+  closeVideo();
+  playback.playingPlaylistId = model.viewedId;
+  playback.queue = queue;
+  playback.lastIndex = 0;
+  playback.played = new Set();
+  selection = { on: false, ids: new Set() };
+  userMove(queue.find((id) => !playback.unplayable.has(id)) ?? null);
+}
+
+// 옮기기: 내 다른 목록 뒤에 붙이고(이미 있는 곡은 건너뜀) 지금 목록에서는 뺀다.
+// 공유받은 목록은 내가 바꿀 수 없으니 담기만 한다.
+async function onBulkMove() {
+  const picked = inListOrder(viewedIds(), selection.ids);
+  if (picked.length === 0) return;
+  const source = viewedPlaylist();
+  const targets = model.playlists.filter((p) => p.id !== model.viewedId);
+  const title = source ? '어느 목록으로 옮길까요' : '어느 목록에 담을까요';
+  const targetId = await openListPicker({ playlists: targets, sharedPlaylists: [], currentId: null, title });
+  const target = model.playlists.find((p) => p.id === targetId);
+  if (!target) return;
+  const ids = addTracks(target.track_ids, picked);
+  model.playlists = model.playlists.map((p) => (p.id === target.id ? { ...p, track_ids: ids } : p));
+  saves.update({ id: target.id, name: target.name, track_ids: ids });
+  // 고르는 사이 보고 있는 목록이 바뀌었으면 원래 목록에서는 빼지 않는다.
+  if (source && viewedPlaylist()?.id === source.id) editViewed(removeTracks(viewedIds(), new Set(picked)));
+  selection = { on: false, ids: new Set() };
+  renderAll();
+}
+
+// 삭제: 이 목록에서만 뺀다. 라이브러리의 곡은 남는다.
+async function onBulkRemove() {
+  const playlist = viewedPlaylist();
+  // 묻는 동안 선택이 바뀌어도 물어본 그 곡들만 뺀다.
+  const picked = new Set(selection.ids);
+  if (!playlist || picked.size === 0) return;
+  const message = `${picked.size}곡을 이 목록에서 삭제할까요? 라이브러리에는 남아요.`;
+  if (!(await askConfirm({ message, action: '삭제' }))) return;
+  if (viewedPlaylist()?.id !== playlist.id) return;
+  editViewed(removeTracks(viewedIds(), picked));
+  selection = { on: false, ids: new Set() };
   renderAll();
 }
 
@@ -352,6 +424,7 @@ async function openRename() {
 async function onPickPlaylist(id) {
   if (id === model.viewedId) return renderAll();
   await saves.flushAll();
+  selection = { on: false, ids: new Set() };
   model.viewedId = id;
   writeLocal(KEY_PLAYLIST, String(id));
   renderAll();
@@ -540,6 +613,7 @@ function onTrackFailed(err) {
 
 function onPlayRow(id) {
   if (playback.unplayable.has(id)) return;
+  if (playback.queue && !playback.queue.includes(id)) playback.queue = null;
   // 영상이 열려 있으면 닫고 그 곡을 튼다.
   closeVideo();
   const listId = viewedIds().includes(id) ? model.viewedId : LIBRARY_QUEUE;
@@ -781,12 +855,17 @@ async function init() {
   usersAdmin = createUsersAdmin({ api });
   shell = createShell();
   conti = createConti({
-    onPlay: onPlayRow,
+    // 선택 중이면 누른 곡을 고르거나 푼다.
+    onPlay: (id) => (selection.on ? toggleSelected(id) : onPlayRow(id)),
     onReorder,
     onRemove: onRemoveFromQueue,
     onOpenLists,
     onListMenu,
     onSettings: () => $('settings-dialog').showModal(),
+    onSelecting: setSelecting,
+    onBulkPlay,
+    onBulkMove,
+    onBulkRemove,
   });
   library = createLibrary({ onPlay: onPlayRow, onOpenList, onNewList, onTrackMenu, onDelete: onDeleteTrack });
   enableSheetDrag();
