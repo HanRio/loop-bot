@@ -2,6 +2,7 @@
 import { createApi } from './api.js';
 import { createPlayer } from './audio.js';
 import { createPlayerLyrics } from './player-lyrics.js';
+import { API_BASE, FILE_BASE, IS_LOCAL, KEY_PLAYLIST, KEY_REPEAT, REPEAT_ORDER } from './config.js';
 import { COPY } from './copy.js';
 import { $ } from './dom.js';
 import { embedUrl, startPlaylistId, watchUrl } from './lyrics-logic.js';
@@ -21,13 +22,7 @@ import { initVolume } from './volume.js';
 import { attach as scrollTitle, initTitleScroll } from './title-scroll.js';
 
 const PLAYER_KEYS = '#mini-play, #play, #prev, #next, #repeat';
-const API_BASE = 'https://rrpmpqxoqxlwrmflpiyi.supabase.co/functions/v1/loopbot-api';
-const FILE_BASE = 'https://168-110-54-40.sslip.io';
-const IS_LOCAL = location.hostname === 'localhost';
-const REPEAT_ORDER = ['all', 'one', 'off'];
 const REPEAT_LABEL = { all: '전체 반복', one: '한 곡 반복', off: '반복 끔' };
-const KEY_PLAYLIST = 'loopbot.player.playlist';
-const KEY_REPEAT = 'loopbot.player.repeat';
 const NAME_MAX = 20;
 const TRACK_NAME_MAX = 200;
 const SURFACE = '#EEF2F6';
@@ -715,6 +710,8 @@ function wireSettings() {
   $('settings-close').addEventListener('click', () => dialog.close());
   // 사용자 관리 창은 users-admin.js가 연다. 설정 창은 겹치지 않게 닫는다.
   $('settings-users').addEventListener('click', () => dialog.close());
+  // 같은 웹뷰 안에서 옮겨 가므로 텔레그램 로그인 정보(sessionStorage)가 그대로 따라간다.
+  $('settings-v2').addEventListener('click', () => { location.href = 'v2.html'; });
   dialog.addEventListener('click', (event) => {
     if (event.target === dialog) dialog.close();
   });

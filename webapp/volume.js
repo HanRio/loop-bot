@@ -2,11 +2,11 @@
 import { $ } from './dom.js';
 import { readLocal, writeLocal } from './store.js';
 
-const KEY_VOLUME = 'loopbot.player.volume';
+export const KEY_VOLUME = 'loopbot.player.volume';
 const WIDE_QUERY = '(min-width: 760px)';
 
 // 저장된 값이 없거나 이상하면 최대(1)로 연다. readLocal은 없을 때 null을 주므로 Number(null)=0을 피한다.
-function readSaved() {
+export function readSaved() {
   const raw = readLocal(KEY_VOLUME);
   const value = raw === null || raw === '' ? NaN : Number(raw);
   return Number.isFinite(value) && value >= 0 && value <= 1 ? value : 1;

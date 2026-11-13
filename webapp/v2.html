@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0a0b">
+<title>플레이리스트 v2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&family=Noto+Sans+KR:wght@400;500;600;700&display=swap">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="stylesheet" href="v2.css">
+</head>
+<body>
+<p id="fatal" class="fatal" role="alert" hidden></p>
+<div class="ambient-clip" aria-hidden="true"><div class="ambient" id="ambient"></div></div>
+
+<main class="app paused" id="app" hidden>
+  <section class="player card rise" aria-label="플레이어">
+    <div class="topbar">
+      <span class="live"><i></i><span id="status">대기 중</span></span>
+      <a class="back" href="index.html">기존 화면</a>
+    </div>
+
+    <div class="stage rise" id="stage" style="animation-delay:.08s">
+      <div class="cover" id="cover"></div>
+      <div class="lyr-pane">
+        <div id="player-lyrics" hidden><div class="lyr-lines"></div><div class="lyr-edit" hidden></div></div>
+        <p class="lyr-empty">이 곡은 아직 가사가 없어요</p>
+      </div>
+      <canvas class="spectrum" id="spectrum" aria-hidden="true"></canvas>
+    </div>
+
+    <div class="meta rise" style="animation-delay:.16s" aria-live="polite">
+      <h1 id="title"></h1>
+      <p id="player-sub"></p>
+    </div>
+
+    <div class="scrub-wrap rise" style="animation-delay:.22s">
+      <div class="scrub" id="scrub" role="slider" tabindex="0" aria-label="재생 위치" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+        <div class="bars" id="bars-base"></div>
+        <div class="bars hover" id="bars-hover"></div>
+        <div class="bars fill" id="bars-fill"></div>
+        <span class="tip mono" id="tip">0:00</span>
+      </div>
+      <div class="times mono"><span id="cur">0:00</span><span id="dur">0:00</span></div>
+    </div>
+
+    <div class="controls rise" style="animation-delay:.28s">
+      <button class="ctl" id="shuffle" type="button" aria-label="셔플" aria-pressed="false"></button>
+      <button class="ctl big" id="prev" type="button" aria-label="이전 곡"></button>
+      <button class="play" id="play" type="button" aria-label="재생"></button>
+      <button class="ctl big" id="next" type="button" aria-label="다음 곡"></button>
+      <button class="ctl" id="repeat" type="button" aria-label="반복: 전체" aria-pressed="true"></button>
+    </div>
+
+    <div class="volume rise" style="animation-delay:.34s">
+      <button class="ctl" id="mute" type="button" aria-label="음소거" hidden></button>
+      <label class="sr-only" for="vol">볼륨</label>
+      <input type="range" id="vol" min="0" max="100" value="100" hidden>
+      <button class="ctl" id="lyrics" type="button" aria-label="가사 보기" aria-pressed="false"></button>
+    </div>
+    <p id="notice" class="notice" role="alert"></p>
+  </section>
+
+  <aside class="queue card rise" style="animation-delay:.12s" aria-label="재생 목록">
+    <h2><span class="name"><span id="list-name"></span> <span class="mono" id="count"></span></span><button class="pill" id="pick" type="button">목록 바꾸기</button></h2>
+    <ol id="list"></ol>
+    <p class="empty" id="empty" hidden>이 목록엔 아직 곡이 없어요</p>
+    <p class="hint"><span class="keys"><kbd>Space</kbd> 재생/일시정지 &nbsp; <kbd>←</kbd><kbd>→</kbd> 5초 이동 &nbsp; <kbd>N</kbd><kbd>P</kbd> 다음/이전<br></span>곡은 봇 채팅에 유튜브 링크나 음원 파일을 보내면 들어와요.</p>
+  </aside>
+</main>
+<script type="module" src="v2.js"></script>
+</body>
+</html>
