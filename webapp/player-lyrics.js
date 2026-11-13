@@ -192,7 +192,7 @@ export function createPlayerLyrics({ api, player, canEdit, onError }) {
     async function choose(candidate) {
       try {
         const entry = toEntry(await api.chooseLyrics(id, candidate.id));
-        if (entry.lines.length === 0) throw new Error('no_synced');
+        if (entry.lines.length === 0 || entry.plain) throw new Error('no_synced');
         cache.set(id, entry);
         dialog.close();
         if (currentId === id) paint(entry);
@@ -241,7 +241,8 @@ export function createPlayerLyrics({ api, player, canEdit, onError }) {
   }
   function openWriter(id) {
     if (currentId !== id) return;
-    const initial = active ? active.lines.map((line) => line.text).filter(Boolean).join('\n') : '';
+    // 직접 넣은 글 가사만 채워 둔다. 시간 있는 가사를 그냥 저장하면 싱크가 사라지기 때문이다.
+    const initial = active?.plain ? active.lines.map((line) => line.text).join('\n') : '';
     openSheet = openLyricsWriter({ initial, save: (text) => saveText(id, text), tap: (lines) => startTap(id, lines) });
   }
   find.addEventListener('click', openFinder);

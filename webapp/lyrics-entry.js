@@ -1,7 +1,8 @@
 // 가사 직접 넣기 시트와 탭으로 싱크 맞추기 시트. 글자는 모두 textContent로 넣는다.
 import { parseLrc, plainLines, toLrc } from './lrc.js';
 
-const MAX_LENGTH = 20000;
+const MAX_LENGTH = 20000; // 서버와 같은 기준(글자 수)
+const TAG_LENGTH = 10; // [mm:ss.cc] 한 줄당 늘어나는 글자 수
 const REPLAY_SEC = 2; // 한 줄 뒤로 갈 때 그 줄 조금 앞부터 다시 듣는다.
 const LABEL = {
   writeTitle: '가사 직접 넣기', writeHint: '한 줄에 한 소절씩 붙여 넣어 주세요. 시간이 적힌 LRC 가사도 돼요.',
@@ -63,10 +64,12 @@ export function openLyricsWriter({ initial, save, tap }) {
   close.addEventListener('click', () => dialog.close());
   dialog.append(el('p', null, LABEL.writeHint), area, status, acts, close);
 
-  function text() {
+  // synced면 탭 싱크로 붙을 시간표 길이까지 센다.
+  function text(synced = false) {
     const value = area.value.trim();
+    const extra = synced ? plainLines(value).length * TAG_LENGTH : 0;
     if (value === '') status.textContent = LABEL.empty;
-    else if (value.length > MAX_LENGTH) status.textContent = LABEL.tooLong;
+    else if ([...value].length + extra > MAX_LENGTH) status.textContent = LABEL.tooLong;
     else return value;
     return null;
   }
@@ -83,7 +86,7 @@ export function openLyricsWriter({ initial, save, tap }) {
     }
   });
   tapBtn.addEventListener('click', async () => {
-    const value = text();
+    const value = text(!isLrc(area.value));
     if (value === null) return;
     if (isLrc(value)) { // 시간이 이미 있으면 바로 저장한다.
       saveBtn.click();
@@ -153,7 +156,7 @@ export function openTapSync({ lines, player, save }) {
   });
   playBtn.addEventListener('click', () => {
     player.toggle();
-    setTimeout(paint, 100);
+    setTimeout(() => { if (dialog.open) paint(); }, 100);
   });
   saveBtn.addEventListener('click', async () => {
     saveBtn.disabled = true;
