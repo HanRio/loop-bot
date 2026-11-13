@@ -52,6 +52,19 @@ export function addTracks(targetIds, ids) {
 
 export const removeTracks = (trackIds, selected) => trackIds.filter((id) => !selected.has(id));
 
+export const inListOrder = (trackIds, selected) => trackIds.filter((id) => selected.has(id));
+
+// 묶음 끌기: 끌린 줄이 놓인 자리에 고른 곡 전체를 원래 순서대로 넣는다.
+// 끌린 줄이 선택에 없으면 그 줄 하나만 옮긴 것이다(domIds가 이미 그 순서).
+export function moveGroup(domIds, draggedId, selected, originalIds) {
+  if (!selected.has(draggedId)) return domIds;
+  const order = inListOrder(originalIds, selected);
+  return domIds.flatMap((id) => {
+    if (id === draggedId) return order;
+    return selected.has(id) ? [] : [id];
+  });
+}
+
 export function formatTime(seconds) {
   const whole = Math.max(0, Math.floor(Number.isFinite(seconds) ? seconds : 0));
   return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;

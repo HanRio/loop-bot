@@ -1,10 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { addTracks, coverUrl, pickNext, removeTracks, shuffleNext, waveform } from '../../webapp/v2-logic.js';
+import { addTracks, coverUrl, inListOrder, moveGroup, pickNext, removeTracks, shuffleNext, waveform } from '../../webapp/v2-logic.js';
 
 test('addTracks appends only tracks the list does not have yet, keeping the picked order', () => {
   assert.deepEqual(addTracks([1, 2], [3, 2, 4]), [1, 2, 3, 4]);
   assert.deepEqual(addTracks([], [5, 5]), [5]);
+});
+
+test('moveGroup drops the selected group where the dragged row landed, keeping their order', () => {
+  // DOM 순서: 3을 끌어 맨 앞에 놓았고, 같이 고른 1·5는 원래 자리에 숨어 있다.
+  assert.deepEqual(moveGroup([3, 1, 2, 4, 5], 3, new Set([1, 3, 5]), [1, 2, 3, 4, 5]), [1, 3, 5, 2, 4]);
+  // 맨 뒤로 끌어도 같은 순서로 붙는다.
+  assert.deepEqual(moveGroup([1, 2, 4, 5, 3], 3, new Set([1, 3]), [1, 2, 3, 4, 5]), [2, 4, 5, 1, 3]);
+  // 혼자 끌면 그 자리 그대로.
+  assert.deepEqual(moveGroup([2, 1, 3], 2, new Set(), [1, 2, 3]), [2, 1, 3]);
+  // 고르지 않은 줄을 끌면 그 줄만 옮긴다.
+  assert.deepEqual(moveGroup([4, 1, 2, 3], 4, new Set([1, 2]), [1, 2, 3, 4]), [4, 1, 2, 3]);
+});
+
+test('inListOrder keeps only the selected tracks, in list order', () => {
+  assert.deepEqual(inListOrder([5, 3, 9, 1], new Set([1, 5])), [5, 1]);
 });
 
 test('removeTracks drops every selected track', () => {

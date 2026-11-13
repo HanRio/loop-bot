@@ -134,8 +134,22 @@ kbd { font-family: "Geist Mono", monospace; font-size: 11px; padding: 1px 6px; b
 .item[aria-pressed=true] .check { background: var(--accent); border-color: var(--accent); }
 .item[aria-pressed=true] .check::after { content: ""; width: 5px; height: 9px; margin-top: -2px; border: solid var(--bg); border-width: 0 2px 2px 0; transform: rotate(45deg); }
 .selecting .item .idx { align-items: center; }
-.bulk { position: sticky; bottom: calc(12px + var(--inset-bottom)); display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 10px; border: 1px solid var(--line); border-radius: 16px; background: rgba(24,24,27,.94); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); }
-.bulk #bulk-count { flex: 1; min-width: 60px; font-size: 13px; color: var(--muted); }
+.bulk .pill { padding: 0 10px; }
+.bulk { position: sticky; bottom: calc(12px + var(--inset-bottom)); display: flex; align-items: center; gap: 5px; padding: 8px 8px 8px 12px; border: 1px solid var(--line); border-radius: 16px; background: rgba(24,24,27,.94); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); }
+.bulk #bulk-count { flex: 1; min-width: 0; white-space: nowrap; font-size: 13px; color: var(--muted); }
+/* 순서 바꾸기: 손잡이를 잡고 끈다. 끄는 줄은 떠오르고, 나머지는 부드럽게 비켜난다 (Sortable animation). */
+.grip { flex: none; width: 32px; height: 48px; display: grid; place-items: center; color: rgba(237,235,230,.28); cursor: grab; touch-action: none; transition: color .2s; }
+@media (hover: hover) { .queue li:hover .grip { color: var(--muted); } }
+.grip:active { cursor: grabbing; color: var(--text); }
+.queue li.drag-ghost { opacity: .25; }
+.queue li.drag-chosen { background: rgba(237,235,230,.09); }
+.queue li.drag-flying { opacity: 1 !important; background: #222225; border-radius: 12px; box-shadow: 0 18px 40px -8px rgba(0,0,0,.85), 0 0 0 1px var(--line); transform: scale(1.03); }
+/* 묶음 끌기: 같이 고른 다른 줄은 접혀 끄는 줄에 실린다. 끄는 줄 위에 몇 곡인지 뜬다. */
+.queue li.riding { height: 0; opacity: 0; overflow: hidden; transition: height .2s ease, opacity .2s ease; }
+.queue li .ride-count { position: absolute; top: 4px; left: 40px; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--accent); color: var(--bg); font-size: 11px; font-weight: 700; display: grid; place-items: center; }
+.queue li { position: relative; }
+/* 고른 곡만 재생 중이면, 그 밖의 곡은 흐리게 */
+.item.outside { opacity: .4; }
 .more { flex: none; width: 40px; height: 48px; display: grid; place-items: center; border-radius: 10px; color: var(--muted); }
 @media (hover: hover) { .more:hover { color: var(--text); } }
 .empty { padding: 18px 10px; font-size: 14px; color: var(--muted); text-align: center; }

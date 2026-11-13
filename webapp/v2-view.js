@@ -1,5 +1,6 @@
 // v2 화면 그리기. 래퍼런스의 커버·스펙트럼·파형 시크바·재생 목록을 실제 곡 값으로 칠한다. 글자는 모두 textContent로 넣는다.
 import { $ } from './dom.js';
+import { haptic } from './haptic.js';
 import { moodFor } from './ui-logic.js';
 import { coverUrl, formatTime, waveform } from './v2-logic.js';
 
@@ -23,8 +24,9 @@ const STROKED = {
   mute: ['M11 4.7a.7.7 0 0 0-1.2-.5L6.4 7.6A1.4 1.4 0 0 1 5.4 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.4a1.4 1.4 0 0 1 1 .4l3.4 3.4a.7.7 0 0 0 1.2-.5z', 'm22 9-6 6', 'm16 9 6 6'],
   lyrics: ['M4 6h11', 'M4 10h11', 'M4 14h7', 'M18 18.5a2 2 0 1 1-2-2 2 2 0 0 1 2 2zV6l3-1'],
   more: ['M5 12h.01', 'M12 12h.01', 'M19 12h.01'],
+  grip: ['M9 7h.01', 'M15 7h.01', 'M9 12h.01', 'M15 12h.01', 'M9 17h.01', 'M15 17h.01'],
 };
-const SIZE = { play: 26, pause: 26, prev: 22, next: 22, shuffle: 20, repeat: 20, vol: 18, mute: 18, lyrics: 20, more: 20 };
+const SIZE = { play: 26, pause: 26, prev: 22, next: 22, shuffle: 20, repeat: 20, vol: 18, mute: 18, lyrics: 20, more: 20, grip: 18 };
 
 export function icon(name) {
   const svg = document.createElementNS(SVG_NS, 'svg');
@@ -37,7 +39,7 @@ export function icon(name) {
   svg.setAttribute('fill', filled ? 'currentColor' : 'none');
   if (!filled) {
     svg.setAttribute('stroke', 'currentColor');
-    svg.setAttribute('stroke-width', name === 'more' ? '3' : '1.8');
+    svg.setAttribute('stroke-width', name === 'more' || name === 'grip' ? '3' : '1.8');
     svg.setAttribute('stroke-linecap', 'round');
     svg.setAttribute('stroke-linejoin', 'round');
   }
@@ -196,8 +198,9 @@ function createSpectrum() {
   };
 }
 
-function trackRow({ id, index, title, current, playing, unplayable, media, hasMenu, selecting, selected }) {
+function trackRow({ id, index, title, current, playing, unplayable, media, hasMenu, selecting, selected, canDrag, outside }) {
   const li = document.createElement('li');
+  li.dataset.id = String(id);
   const item = document.createElement('button');
   item.type = 'button';
   item.className = 'item';
@@ -205,6 +208,7 @@ function trackRow({ id, index, title, current, playing, unplayable, media, hasMe
   item.dataset.act = 'play';
   item.setAttribute('aria-current', String(current));
   item.disabled = unplayable && !selecting;
+  item.classList.toggle('outside', outside);
   if (selecting) item.setAttribute('aria-pressed', String(selected));
   const idx = document.createElement('span');
   idx.className = 'idx mono';
@@ -239,6 +243,14 @@ function trackRow({ id, index, title, current, playing, unplayable, media, hasMe
   const state = selecting ? '' : current ? (playing ? ', 재생 중' : ', 일시정지') : '';
   item.setAttribute('aria-label', `${title}${state}`);
   li.append(item);
+  if (canDrag) {
+    const grip = document.createElement('span');
+    grip.className = 'grip';
+    grip.setAttribute('role', 'img');
+    grip.setAttribute('aria-label', '끌어서 순서 바꾸기');
+    grip.append(icon('grip'));
+    li.append(grip);
+  }
   if (hasMenu && !selecting) {
     const more = document.createElement('button');
     more.type = 'button';
@@ -252,7 +264,7 @@ function trackRow({ id, index, title, current, playing, unplayable, media, hasMe
   return li;
 }
 
-export function createView({ position, duration, onSeek, onPlayRow, onRowMenu, onFrame }) {
+export function createView({ position, duration, onSeek, onPlayRow, onRowMenu, onFrame, onReorder }) {
   const app = $('app');
   const paintCover = createCover();
   const paintScrub = createScrub({ duration, position, onSeek });
@@ -319,8 +331,73 @@ export function createView({ position, duration, onSeek, onPlayRow, onRowMenu, o
 
   // 재생기는 1초에 몇 번씩 다시 그리라고 하므로, 목록은 바뀐 것이 있을 때만 새로 만든다.
   let listKey = '';
+  let selected = new Set();
+  let dragging = false;
+  let carried = false; // 묶음으로 끌었는지. 끈 줄이 제자리여도 묶음은 모인다.
+  const list = $('list');
+  const rowOf = (id) => list.querySelector(`li[data-id="${id}"]`);
+
+  // 같이 고른 다른 줄을 접어 끄는 줄에 싣는다. 높이를 숫자로 박아 두어야 0으로 줄어드는 게 보인다.
+  function liftRiders(li) {
+    const id = Number(li.dataset.id);
+    if (!selected.has(id) || selected.size < 2) return;
+    carried = true;
+    const badge = document.createElement('span');
+    badge.className = 'ride-count mono';
+    badge.textContent = String(selected.size);
+    li.append(badge);
+    for (const other of selected) {
+      const row = other === id ? null : rowOf(other);
+      if (!row) continue;
+      row.style.height = `${row.offsetHeight}px`;
+      void row.offsetHeight;
+      row.classList.add('riding');
+      row.style.height = '';
+    }
+  }
+  function dropRiders() {
+    list.querySelectorAll('.ride-count').forEach((n) => n.remove());
+    list.querySelectorAll('li.riding').forEach((row) => row.classList.remove('riding'));
+  }
+
+  // 손잡이로만 끈다. 손가락·마우스 모두 같은 방식(forceFallback)이라 떠오르는 모양과 비켜나는 움직임이 같다.
+  const sortable = window.Sortable?.create(list, {
+    handle: '.grip',
+    animation: 220,
+    easing: 'cubic-bezier(.2,.8,.2,1)',
+    forceFallback: true,
+    ghostClass: 'drag-ghost',
+    chosenClass: 'drag-chosen',
+    fallbackClass: 'drag-flying',
+    onChoose: (e) => {
+      dragging = true;
+      carried = false;
+      haptic.tap();
+      liftRiders(e.item);
+    },
+    onUnchoose: () => {
+      // 끌지 않고 놓았으면 접은 줄을 펴고 다시 그린다.
+      dragging = false;
+      dropRiders();
+      listKey = '';
+    },
+    onEnd: (e) => {
+      dragging = false;
+      listKey = '';
+      if (e.oldIndex === e.newIndex && !carried) return dropRiders();
+      haptic.tick();
+      const domIds = [...list.children].map((li) => Number(li.dataset.id));
+      dropRiders();
+      return onReorder(domIds, Number(e.item.dataset.id));
+    },
+  });
+
   function paintList(s) {
+    selected = s.selected;
+    if (dragging) return;
+    sortable?.option('disabled', !s.canReorder);
     const key = [s.name, s.currentId, s.playing, [...s.unplayable].join(','), s.selecting, [...s.selected].join(','),
+      s.canReorder, (s.queue ?? []).join(','),
       ...s.ids.map((id) => `${id}:${s.titles.get(id)}:${s.media[id]?.video_id ?? ''}:${s.hasMenu(id)}`)].join('\u0001');
     if (key === listKey) return;
     listKey = key;
@@ -331,15 +408,20 @@ export function createView({ position, duration, onSeek, onPlayRow, onRowMenu, o
       id, index, title: s.titles.get(id) ?? '', current: id === s.currentId, playing: s.playing,
       unplayable: s.unplayable.has(id), media: s.media, hasMenu: s.hasMenu(id),
       selecting: s.selecting, selected: s.selected.has(id),
+      canDrag: s.canReorder, outside: Boolean(s.queue) && !s.queue.includes(id),
     })));
     $('list').closest('.queue').classList.toggle('selecting', s.selecting);
     $('select').hidden = s.selecting || s.ids.length === 0;
     $('pick').hidden = s.selecting;
     $('bulk').hidden = !s.selecting;
-    $('bulk-count').textContent = `${s.selected.size}곡 선택`;
-    $('bulk-add').disabled = s.selected.size === 0 || !s.canAdd;
+    const none = s.selected.size === 0;
+    $('bulk-count').textContent = `${s.selected.size}곡`;
+    $('bulk-play').disabled = none;
+    // 내 목록이면 옮기기(여기서는 빠짐), 공유받은 목록이면 담기(여기는 그대로).
+    $('bulk-add').textContent = s.canRemove ? '옮기기' : '담기';
+    $('bulk-add').disabled = none || !s.canAdd;
     $('bulk-remove').hidden = !s.canRemove;
-    $('bulk-remove').disabled = s.selected.size === 0;
+    $('bulk-remove').disabled = none;
   }
 
   function paintVolume({ value, enabled }) {

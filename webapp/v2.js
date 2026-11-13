@@ -11,7 +11,7 @@ import { createPlayerLyrics } from './player-lyrics.js';
 import { prevTrack } from './queue.js';
 import { enableSheetDrag } from './sheet-drag.js';
 import { cleanTitle, createActiveSender, createSaves, readLocal, writeLocal } from './store.js';
-import { addTracks, pickNext, removeTracks } from './v2-logic.js';
+import { addTracks, inListOrder, moveGroup, pickNext, removeTracks } from './v2-logic.js';
 import { createView } from './v2-view.js';
 import { KEY_VOLUME, readSaved as readSavedVolume } from './volume.js';
 
@@ -37,7 +37,7 @@ try {
 
 const model = { library: [], playlists: [], sharedPlaylists: [], sharedTracks: [], media: {}, isAdmin: false, viewedId: null };
 const playback = {
-  currentId: null, title: '', loadedId: null, lastIndex: 0, failures: 0, unplayable: new Set(), played: new Set(),
+  currentId: null, title: '', loadedId: null, lastIndex: 0, failures: 0, unplayable: new Set(), played: new Set(), queue: null,
   repeat: 'all', shuffle: readLocal(KEY_SHUFFLE) === '1', lyricsOn: readLocal(KEY_LYRICS) === '1',
 };
 // 여러 곡 선택. 켜져 있으면 줄을 눌러도 재생하지 않고 고르기만 한다.
@@ -56,6 +56,8 @@ const findPlaylist = (id) => model.playlists.find((p) => p.id === id) ?? model.s
 const isOwnId = (id) => model.playlists.some((p) => p.id === id);
 const viewedPlaylist = () => model.playlists.find((p) => p.id === model.viewedId);
 const viewedIds = () => findPlaylist(model.viewedId)?.track_ids ?? [];
+// 고른 곡만 재생 중이면 그 곡들(목록 순서), 아니면 보고 있는 목록 전체를 돈다. 목록에서 빠진 곡은 건너뛴다.
+const playingIds = () => (playback.queue ? playback.queue.filter((id) => viewedIds().includes(id)) : viewedIds());
 const errText = (err, fallback) => (err?.code === 'expired' ? COPY.reopen : fallback);
 const notice = (text) => {
   if (text) haptic.error();
@@ -109,20 +111,22 @@ function render() {
     selected: selection.ids,
     canAdd: model.playlists.some((p) => p.id !== model.viewedId),
     canRemove: Boolean(viewedPlaylist()),
+    canReorder: Boolean(viewedPlaylist()),
+    queue: playback.queue,
   });
 }
 
 // ── 재생 흐름 (app.js와 같은 규칙, 셔플과 ⏮ 처음으로만 더했다) ──
 const computeNext = (manual) => pickNext({
-  trackIds: viewedIds(), currentId: playback.currentId, lastIndex: playback.lastIndex,
+  trackIds: playingIds(), currentId: playback.currentId, lastIndex: playback.lastIndex,
   repeat: playback.repeat, unplayable: playback.unplayable, shuffle: playback.shuffle, manual, played: playback.played,
 });
 const computePrev = () => prevTrack({
-  trackIds: viewedIds(), currentId: playback.currentId, lastIndex: playback.lastIndex, unplayable: playback.unplayable,
+  trackIds: playingIds(), currentId: playback.currentId, lastIndex: playback.lastIndex, unplayable: playback.unplayable,
 });
 
 function syncLastIndex() {
-  const at = viewedIds().indexOf(playback.currentId);
+  const at = playingIds().indexOf(playback.currentId);
   if (at !== -1) playback.lastIndex = at;
 }
 
@@ -178,7 +182,7 @@ function onTrackFailed(err) {
     playback.failures += 1;
     notice(COPY.trackFailed);
   }
-  if (playback.failures >= viewedIds().length) return stopPlayback();
+  if (playback.failures >= playingIds().length) return stopPlayback();
   return moveTo(computeNext(true));
 }
 
@@ -200,6 +204,7 @@ function onPlayRow(id) {
     return;
   }
   if (playback.unplayable.has(id)) return;
+  if (playback.queue && !playback.queue.includes(id)) playback.queue = null;
   if (id === playback.currentId && id === playback.loadedId) {
     player.toggle();
     return;
@@ -233,6 +238,7 @@ async function onPick() {
   if (id === null || id === model.viewedId) return;
   await saves.flushAll();
   selection = { on: false, ids: new Set() };
+  playback.queue = null;
   model.viewedId = id;
   writeLocal(KEY_PLAYLIST, String(id));
   // 지금 곡은 이어서 듣고, 다음 곡부터는 새 목록의 맨 위에서 시작한다.
@@ -244,12 +250,7 @@ async function onPick() {
 }
 
 function removeFromList(id) {
-  const playlist = viewedPlaylist();
-  if (!playlist) return;
-  const ids = playlist.track_ids.filter((x) => x !== id);
-  model.playlists = model.playlists.map((p) => (p.id === playlist.id ? { ...p, track_ids: ids } : p));
-  syncLastIndex();
-  saves.update({ id: playlist.id, name: playlist.name, track_ids: ids });
+  setViewedIds(viewedIds().filter((x) => x !== id));
   render();
 }
 
@@ -280,35 +281,67 @@ function setSelecting(on) {
   render();
 }
 
-// 고른 곡을 내 다른 목록 뒤에 붙인다. 이미 있는 곡은 다시 넣지 않는다.
+// 보고 있는 내 목록의 곡 순서를 바꾸고 저장을 맡긴다.
+function setViewedIds(ids) {
+  const playlist = viewedPlaylist();
+  if (!playlist) return;
+  model.playlists = model.playlists.map((p) => (p.id === playlist.id ? { ...p, track_ids: ids } : p));
+  syncLastIndex();
+  saves.update({ id: playlist.id, name: playlist.name, track_ids: ids });
+}
+
+// 고른 곡만 재생: 목록 순서대로 그 곡들만 돈다. 다른 곡을 누르거나 목록을 바꾸면 풀린다.
+function onBulkPlay() {
+  const queue = inListOrder(viewedIds(), selection.ids);
+  if (queue.length === 0) return;
+  playback.queue = queue;
+  playback.lastIndex = 0;
+  playback.played = new Set();
+  selection = { on: false, ids: new Set() };
+  userMove(queue.find((id) => !playback.unplayable.has(id)) ?? null);
+}
+
+// 옮기기: 내 다른 목록 뒤에 붙이고(이미 있는 곡은 건너뜀) 지금 목록에서는 뺀다.
+// 공유받은 목록은 내가 바꿀 수 없으니 담기만 한다.
 async function onBulkAdd() {
-  const picked = viewedIds().filter((id) => selection.ids.has(id));
+  const picked = inListOrder(viewedIds(), selection.ids);
   if (picked.length === 0) return;
+  const moving = Boolean(viewedPlaylist());
   const targets = model.playlists.filter((p) => p.id !== model.viewedId);
-  const targetId = await openListPicker({ playlists: targets, sharedPlaylists: [], currentId: null, title: '어느 목록에 담을까요' });
+  const title = moving ? '어느 목록으로 옮길까요' : '어느 목록에 담을까요';
+  const targetId = await openListPicker({ playlists: targets, sharedPlaylists: [], currentId: null, title });
   const target = model.playlists.find((p) => p.id === targetId);
   if (!target) return;
   const ids = addTracks(target.track_ids, picked);
   model.playlists = model.playlists.map((p) => (p.id === target.id ? { ...p, track_ids: ids } : p));
   saves.update({ id: target.id, name: target.name, track_ids: ids });
-  notice('');
+  if (moving) setViewedIds(removeTracks(viewedIds(), new Set(picked)));
   selection = { on: false, ids: new Set() };
   render();
 }
 
+// 삭제: 이 목록에서만 뺀다. 라이브러리의 곡은 남는다.
 async function onBulkRemove() {
   const playlist = viewedPlaylist();
   // 묻는 동안 선택이 바뀌어도 물어본 그 곡들만 뺀다.
   const picked = new Set(selection.ids);
   if (!playlist || picked.size === 0) return;
-  if (!(await askConfirm({ message: `${picked.size}곡을 이 목록에서 뺄까요?`, action: '빼기' }))) return;
-  const current = viewedPlaylist();
-  if (!current || current.id !== playlist.id) return;
-  const ids = removeTracks(current.track_ids, picked);
-  model.playlists = model.playlists.map((p) => (p.id === current.id ? { ...p, track_ids: ids } : p));
-  syncLastIndex();
-  saves.update({ id: current.id, name: current.name, track_ids: ids });
+  const message = `${picked.size}곡을 이 목록에서 삭제할까요? 라이브러리에는 남아요.`;
+  if (!(await askConfirm({ message, action: '삭제' }))) return;
+  if (viewedPlaylist()?.id !== playlist.id) return;
+  setViewedIds(removeTracks(viewedIds(), picked));
   selection = { on: false, ids: new Set() };
+  render();
+}
+
+// 끌어서 순서 바꾸기. 고른 곡을 끌었으면 고른 곡 전체가 놓인 자리로 모인다.
+function onReorder(domIds, draggedId) {
+  const current = viewedIds();
+  const same = domIds.length === current.length && domIds.every((id) => current.includes(id));
+  if (same && viewedPlaylist()) {
+    const group = selection.on ? selection.ids : new Set();
+    setViewedIds(moveGroup(domIds, draggedId, group, current));
+  }
   render();
 }
 
@@ -365,6 +398,7 @@ function wireControls() {
   $('pick').addEventListener('click', onPick);
   $('select').addEventListener('click', () => setSelecting(true));
   $('bulk-done').addEventListener('click', () => setSelecting(false));
+  $('bulk-play').addEventListener('click', onBulkPlay);
   $('bulk-add').addEventListener('click', onBulkAdd);
   $('bulk-remove').addEventListener('click', onBulkRemove);
   document.addEventListener('keydown', onKey);
@@ -428,6 +462,7 @@ async function init() {
     onPlayRow,
     onRowMenu,
     onFrame: () => lyrics?.tick(player.position()),
+    onReorder,
   });
   lyrics = createPlayerLyrics({
     api,
