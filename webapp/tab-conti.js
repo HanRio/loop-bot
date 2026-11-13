@@ -1,4 +1,5 @@
 // 콘티 탭: 고른 목록의 곡 순서. 내 목록만 끌어서 순서를 바꾸고 곡을 뺀다. 글자는 모두 textContent로 넣는다.
+import { swipeable } from './swipe-row.js';
 import { moodFor } from './ui-logic.js';
 import { $ } from './dom.js';
 import { icon, iconButton, openMenu, pressable } from './menus.js';
@@ -93,7 +94,7 @@ export function createConti({ onPlay, onReorder, onRemove, onOpenLists, onListMe
       ]), 'more'));
     }
     li.addEventListener('click', () => onPlay(id));
-    return li;
+    return next.isOwn ? swipeable(li, { label: '빼기', onAction: () => onRemove(id) }) : li;
   }
 
   // 이전 인스턴스를 먼저 부순다. 내 목록이 아니거나 Sortable이 없으면 끌기는 켜지 않는다.

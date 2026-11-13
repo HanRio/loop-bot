@@ -8,6 +8,8 @@
   --sans: 'Noto Sans KR', -apple-system, 'Apple SD Gothic Neo', sans-serif;
   --spring: cubic-bezier(.34,1.4,.64,1);
   --danger: #B3261E;
+  /* 바탕: 그라데이션 없이 단색. --tint는 곡 색을 섞는 양 (0%면 아이폰 설정 앱 회백 그대로). */
+  --paper: #F2F2F7; --tint: 10%;
   /* 전체 화면에서 상태 표시줄과 텔레그램 닫기·메뉴 버튼 자리. 텔레그램 밖에서는 기기 안전 영역을 쓴다. */
   --inset-top: calc(var(--tg-safe-area-inset-top, env(safe-area-inset-top, 0px)) + var(--tg-content-safe-area-inset-top, 0px));
   --inset-bottom: calc(var(--tg-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)) + var(--tg-content-safe-area-inset-bottom, 0px));
@@ -40,7 +42,7 @@ svg.i {
 }
 .ambient {
   position: absolute; inset: 0; z-index: -1; pointer-events: none; transition: background 1.2s ease;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--m1) 22%, #F7F9FB) 0%, #F7F9FB 55%);
+  background: color-mix(in srgb, var(--m1) var(--tint, 10%), var(--paper));
 }
 
 /* 유리: 떠 있는 바와 카드에만 쓴다. 흐림을 지원하지 않으면 거의 불투명한 면으로 대신한다. */
@@ -271,7 +273,7 @@ body:has(textarea:focus, input:focus:not([type=range]):not([type=checkbox])) #do
   position: absolute; inset: 0; z-index: 10; display: flex; flex-direction: column; overflow: hidden;
   visibility: hidden; transform: translateY(100%);
   transition: transform .5s cubic-bezier(.2,.8,.2,1), visibility 0s linear .5s;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--m1) 40%, #F7F9FB) 0%, color-mix(in srgb, var(--m1) 14%, #F7F9FB) 55%, #F7F9FB 100%);
+  background: color-mix(in srgb, var(--m1) calc(var(--tint, 10%) * 1.6), var(--paper)); transition: transform .5s cubic-bezier(.2,.8,.2,1), visibility 0s linear .5s, background 1.2s ease;
 }
 .player.open { visibility: visible; transform: none; transition: transform .5s cubic-bezier(.2,.8,.2,1), visibility 0s; }
 .player .top {
@@ -537,3 +539,48 @@ button:active:not(:disabled) { transform: scale(.94); transition: transform 90ms
 .video-link .notice { flex-basis: 100%; }
 /* 가사 조절 접기 버튼: 작고 조용하게 */
 #player-hero .lyr-toggle { align-self: center; margin: 8px 0 0; height: 28px; padding: 0 12px; font-size: 12px; color: var(--muted); }
+
+/* ── 아이폰 손맛 ───────────────────────────────────────── */
+
+/* 시트 손잡이. 손잡이나 제목을 끌어내리면 닫힌다 (sheet-drag.js). */
+.grabber {
+  display: flex; justify-content: center; align-items: center; height: 22px; margin: -18px -14px 2px;
+  touch-action: none; cursor: grab;
+}
+.grabber::before { content: ''; width: 36px; height: 5px; border-radius: 3px; background: rgba(60,60,67,.3); }
+.menu > h2, .template-dialog > h2 { touch-action: none; }
+
+/* 밀어서 지우기 (swipe-row.js). 줄 내용만 --sx만큼 밀리고, 빨간 버튼은 오른쪽 뒤에 있다. */
+.row.swipe { position: relative; overflow: hidden; touch-action: pan-y; -webkit-user-select: none; user-select: none; }
+.row.swipe > :not(.swipe-act) { transform: translateX(var(--sx, 0px)); }
+.row.swipe.settling > :not(.swipe-act) { transition: transform .32s var(--spring); }
+.row.swipe .swipe-act {
+  position: absolute; top: 0; right: 0; bottom: 0; width: 88px; border: 0; border-radius: 0 14px 14px 0;
+  background: var(--danger); color: #fff; font: 600 15px var(--sans); cursor: pointer;
+  transform: translateX(calc(88px + var(--sx, 0px)));
+}
+.row.swipe.settling .swipe-act { transition: transform .32s var(--spring); }
+.row.swipe:active { transform: none; }
+
+/* 묶음 목록: 시트 안 연달아 놓인 줄 버튼을 아이폰 설정 앱처럼 하나의 둥근 묶음으로. */
+.menu > button { position: relative; margin-top: 0; border-radius: 0; box-shadow: none; background: rgba(255,255,255,.86); }
+.menu > button::before {
+  content: ''; position: absolute; top: 0; left: 16px; right: 0; height: 1px; background: var(--line);
+}
+.menu > button:first-child, .menu > .grabber + button, .menu > :not(button) + button {
+  margin-top: 8px; border-top-left-radius: 12px; border-top-right-radius: 12px;
+}
+.menu > button:first-child::before, .menu > .grabber + button::before, .menu > :not(button) + button::before { display: none; }
+.menu > button:has(+ :not(button)), .menu > button:has(+ button:last-child) {
+  border-bottom-left-radius: 12px; border-bottom-right-radius: 12px;
+}
+.menu > button:last-child::before { display: none; }
+.menu > button:last-child {
+  margin-top: 10px; border-radius: 12px; background: rgba(255,255,255,.86); color: var(--accent-ios, #007AFF); font-weight: 600;
+}
+.users-list { border-radius: 12px; background: rgba(255,255,255,.86); padding: 0 0 0 16px; }
+
+/* 확인 시트: 가운데 정렬 안내 + 빨간 지우기 + 따로 떨어진 취소 */
+.menu.confirm .confirm-text { margin: 6px 12px 4px; text-align: center; font-size: 13px; line-height: 1.5; }
+.menu.confirm > button { justify-content: center; font-size: 17px; }
+.menu.confirm > button.danger { font-weight: 400; }

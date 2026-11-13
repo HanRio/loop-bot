@@ -5,7 +5,9 @@ import { createPlayerLyrics } from './player-lyrics.js';
 import { COPY } from './copy.js';
 import { $ } from './dom.js';
 import { embedUrl, startPlaylistId, watchUrl } from './lyrics-logic.js';
-import { askName, openListPicker, openMenu } from './menus.js';
+import { haptic } from './haptic.js';
+import { askConfirm, askName, openListPicker, openMenu } from './menus.js';
+import { enableSheetDrag } from './sheet-drag.js';
 import { nextTrack, prevTrack } from './queue.js';
 import { createShell } from './shell.js';
 import { cleanName, cleanTitle, createActiveSender, createSaves, mergeOrder, readLocal, writeLocal } from './store.js';
@@ -18,6 +20,7 @@ import { createUsersAdmin } from './users-admin.js';
 import { initVolume } from './volume.js';
 import { attach as scrollTitle, initTitleScroll } from './title-scroll.js';
 
+const PLAYER_KEYS = '#mini-play, #play, #prev, #next, #repeat';
 const API_BASE = 'https://rrpmpqxoqxlwrmflpiyi.supabase.co/functions/v1/loopbot-api';
 const FILE_BASE = 'https://168-110-54-40.sslip.io';
 const IS_LOCAL = location.hostname === 'localhost';
@@ -136,6 +139,7 @@ function setNotice(id, text) {
 }
 
 function showSaveNotice(text) {
+  if (text) haptic.error();
   setNotice('save-notice', text);
 }
 
@@ -303,7 +307,7 @@ function onAddToQueue(id) {
 }
 
 async function onDeleteTrack(id) {
-  if (!confirm(model.isAdmin ? COPY.deleteTrackAdminConfirm : COPY.deleteTrackConfirm)) return;
+  if (!(await askConfirm({ message: model.isAdmin ? COPY.deleteTrackAdminConfirm : COPY.deleteTrackConfirm }))) return;
   try {
     await api.deleteTrack(id);
   } catch (err) {
@@ -423,7 +427,7 @@ async function onNewList() {
 }
 
 async function onDeletePlaylist() {
-  if (!confirm(COPY.deletePlaylistConfirm)) return;
+  if (!(await askConfirm({ message: COPY.deletePlaylistConfirm }))) return;
   const id = model.viewedId;
   deletingId = id;
   // 저장 대기 중인 편집은 삭제가 실패하면 되돌리려고 먼저 잡아 둔다.
@@ -769,7 +773,12 @@ async function init() {
     onListMenu,
     onSettings: () => $('settings-dialog').showModal(),
   });
-  library = createLibrary({ onPlay: onPlayRow, onOpenList, onNewList, onTrackMenu });
+  library = createLibrary({ onPlay: onPlayRow, onOpenList, onNewList, onTrackMenu, onDelete: onDeleteTrack });
+  enableSheetDrag();
+  // 재생 조작 버튼은 누르는 순간 가볍게 톡 울린다.
+  document.addEventListener('pointerdown', (event) => {
+    if (event.target.closest?.(PLAYER_KEYS)) haptic.tap();
+  });
   initTitleScroll($('pager'));
   scrollTitle($('mini-title'));
   scrollTitle($('player-title'));

@@ -1,4 +1,5 @@
 // 탭 넘김, 미니·전체 플레이어 열고 닫기. #pager는 overflow: hidden이라 밀어서는 탭이 바뀌지 않는다.
+import { haptic } from './haptic.js';
 import { $ } from './dom.js';
 import { moodFor, tabFromScroll, indicatorX } from './ui-logic.js';
 
@@ -56,6 +57,7 @@ export function createShell({ onTab = () => {} } = {}) {
 
   function goTab(i) {
     const at = Math.min(buttons.length - 1, Math.max(0, i));
+    if (at !== target) haptic.tick();
     target = at;
     moving = !reducedMotion() && Math.abs(pager.scrollLeft - at * pager.clientWidth) >= 1;
     pager.scrollTo({ left: at * pager.clientWidth, behavior: reducedMotion() ? 'auto' : 'smooth' });

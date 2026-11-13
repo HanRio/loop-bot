@@ -1,5 +1,7 @@
 // 대화창 도우미. dialog는 호출할 때마다 만들어 body에 붙이고, 닫히면 지운다. 글자는 모두 textContent로 넣는다.
-const SVG_NS = 'http://www.w3.org/2000/svg';
+import { haptic } from './haptic.js';
+
+const SVG_NS ='http://www.w3.org/2000/svg';
 const ICON_PATHS = {
   more: 'M5 12h.01M12 12h.01M19 12h.01',
   grip: 'M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01',
@@ -122,6 +124,24 @@ export function openMenu(items) {
   close.addEventListener('click', () => dialog.close());
   children.push(close);
   const dialog = makeDialog(children);
+}
+
+// 아이폰식 확인 시트. 지우기를 누르면 true, 취소하거나 닫으면 false를 준다.
+export function askConfirm({ message, action = '지우기' }) {
+  haptic.warning();
+  return new Promise((resolve) => {
+    let ok = false;
+    const confirmButton = textButton(action);
+    confirmButton.classList.add('danger');
+    confirmButton.addEventListener('click', () => {
+      ok = true;
+      dialog.close();
+    });
+    const cancel = textButton(LABEL.cancel);
+    cancel.addEventListener('click', () => dialog.close());
+    const dialog = makeDialog([el('p', 'confirm-text', message), confirmButton, cancel], () => resolve(ok), '확인');
+    dialog.classList.add('confirm');
+  });
 }
 
 // 이름 입력. 확인하면 다듬은 이름을, 취소하거나 닫으면 null을 준다. 빈 이름은 확인을 막는다.

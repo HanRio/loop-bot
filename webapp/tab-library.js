@@ -2,6 +2,7 @@
 import { moodFor } from './ui-logic.js';
 import { $ } from './dom.js';
 import { icon, iconButton, pressable } from './menus.js';
+import { swipeable } from './swipe-row.js';
 
 const NO_TRACK_TEXT = '아직 곡이 없어요.';
 const NO_MATCH_TEXT = '찾는 곡이 없어요.';
@@ -20,7 +21,7 @@ function el(tag, className, text) {
   return node;
 }
 
-export function createLibrary({ onPlay, onOpenList, onNewList, onTrackMenu }) {
+export function createLibrary({ onPlay, onOpenList, onNewList, onTrackMenu, onDelete }) {
   const pane = $('tab-library');
   let view = null;
   let query = '';
@@ -84,7 +85,7 @@ export function createLibrary({ onPlay, onOpenList, onNewList, onTrackMenu }) {
     pressable(text, `${track.title} 재생`);
     li.append(thumb, text, iconButton('more', '곡 메뉴', () => onTrackMenu(track.id), 'more'));
     li.addEventListener('click', () => onPlay(track.id));
-    return li;
+    return swipeable(li, { label: '지우기', onAction: () => onDelete(track.id) });
   }
 
   // 검색어로 곡 줄만 다시 거른다. 검색창은 그대로 둬서 입력 포커스가 유지된다.
