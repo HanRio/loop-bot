@@ -614,7 +614,7 @@ button:active:not(:disabled) { transform: scale(.94); transition: transform 90ms
 .chip.danger { color: var(--danger); }
 .chip.strong { background: var(--ink); color: var(--on-ink, #fff); border-color: var(--ink); }
 .row .check { width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--muted); display: grid; place-items: center; box-sizing: border-box; transition: background .15s, border-color .15s; }
-.row[aria-pressed="true"] { background: var(--hi-40, rgba(255,255,255,.4)); }
+.row[aria-pressed="true"], .row.picked { background: var(--hi-40, rgba(255,255,255,.4)); }
 .row[aria-pressed="true"] .check { background: var(--accent-ios, #0a84ff); border-color: var(--accent-ios, #0a84ff); }
 .row[aria-pressed="true"] .check::after { content: ""; width: 4px; height: 8px; margin-top: -2px; border: solid var(--paper, #fff); border-width: 0 2px 2px 0; transform: rotate(45deg); }
 .selecting .row.off { opacity: .7; }
@@ -623,3 +623,23 @@ button:active:not(:disabled) { transform: scale(.94); transition: transform 90ms
   position: absolute; top: 2px; left: 34px; min-width: 20px; height: 20px; padding: 0 6px; box-sizing: border-box; border-radius: 10px;
   background: var(--accent-ios, #0a84ff); color: var(--paper, #fff); font-size: 11px; font-weight: 700; display: grid; place-items: center;
 }
+
+/* 라이브러리 곡 메뉴 막대: 곡을 고르면 미니 플레이어 자리에 같은 크기로 들어선다 */
+.song-bar {
+  position: relative; height: 62px; border-radius: 31px; display: flex; align-items: center; gap: 2px;
+  padding: 0 6px 0 9px; overflow: hidden; animation: song-bar-in .28s var(--spring, cubic-bezier(.2,.8,.2,1));
+}
+.song-bar[hidden] { display: none; }
+.song-bar .art { width: 40px; height: 40px; border-radius: 20px; }
+.song-bar .sb-title { flex: 1; min-width: 0; margin: 0 6px 0 8px; font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.song-bar .sb {
+  flex: none; width: 58px; height: 52px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  padding: 0; border: 0; border-radius: 18px; background: none; color: var(--ink); font-size: 10.5px; font-weight: 500; white-space: nowrap; cursor: pointer;
+  transition: transform .15s var(--spring, ease), background .2s;
+}
+.song-bar .sb .i { width: 20px; height: 20px; }
+.song-bar .sb:active { transform: scale(.92); background: var(--hi-50, rgba(255,255,255,.5)); }
+.song-bar .sb:disabled { opacity: .35; cursor: default; }
+.song-bar .ib { width: 36px; height: 36px; color: var(--muted); }
+@keyframes song-bar-in { from { opacity: 0; transform: translateY(8px) scale(.97); } }
+@media (prefers-reduced-motion: reduce) { .song-bar { animation: none; } }

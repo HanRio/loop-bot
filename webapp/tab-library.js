@@ -21,7 +21,7 @@ function el(tag, className, text) {
   return node;
 }
 
-export function createLibrary({ onPlay, onOpenList, onNewList, onTrackMenu, onDelete }) {
+export function createLibrary({ onPick, onOpenList, onNewList, onTrackMenu, onDelete }) {
   const pane = $('tab-library');
   let view = null;
   let query = '';
@@ -68,13 +68,14 @@ export function createLibrary({ onPlay, onOpenList, onNewList, onTrackMenu, onDe
     return button;
   }
 
-  // 곡 줄. 줄을 누르면 재생하고, 끝의 ⋯은 곡 메뉴를 연다.
+  // 곡 줄. 줄을 누르면 재생하지 않고 골라서 아래 메뉴 막대를 띄운다. 끝의 ⋯은 곡 메뉴를 연다.
   function trackRow(track, next) {
     const li = el('li', 'row');
     li.dataset.id = String(track.id);
     li.classList.toggle('now', track.id === next.currentId);
     if (track.id === next.currentId) li.setAttribute('aria-current', 'true');
     li.classList.toggle('off', next.unplayable.has(track.id));
+    li.classList.toggle('picked', track.id === next.pickedId);
 
     const thumb = el('span', 'thumb');
     thumb.style.background = art(track.id);
@@ -82,9 +83,9 @@ export function createLibrary({ onPlay, onOpenList, onNewList, onTrackMenu, onDe
     text.append(el('b', null, track.title));
     if (next.unplayable.has(track.id)) text.append(el('span', null, UNPLAYABLE_TEXT));
 
-    pressable(text, `${track.title} 재생`);
+    pressable(text, `${track.title} 고르기`);
     li.append(thumb, text, iconButton('more', '곡 메뉴', () => onTrackMenu(track.id), 'more'));
-    li.addEventListener('click', () => onPlay(track.id));
+    li.addEventListener('click', () => onPick(track.id));
     return swipeable(li, { label: '지우기', onAction: () => onDelete(track.id) });
   }
 

@@ -8,10 +8,10 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&family=Noto+Sans+KR:wght@400;500;600;700&display=swap">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.6/Sortable.min.js"></script>
-<link rel="stylesheet" href="app.css?v=mwem6o9x">
-<link rel="stylesheet" href="noir.css?v=mwem6o9x">
-<link rel="stylesheet" href="player.css?v=mwem6o9x">
-<script type="importmap">{"imports":{"./api.js":"./api.js?v=mwem6o9x","./app.js":"./app.js?v=mwem6o9x","./audio.js":"./audio.js?v=mwem6o9x","./config.js":"./config.js?v=mwem6o9x","./copy.js":"./copy.js?v=mwem6o9x","./dom.js":"./dom.js?v=mwem6o9x","./fake-api.js":"./fake-api.js?v=mwem6o9x","./gesture-logic.js":"./gesture-logic.js?v=mwem6o9x","./haptic.js":"./haptic.js?v=mwem6o9x","./lrc.js":"./lrc.js?v=mwem6o9x","./lyrics-entry.js":"./lyrics-entry.js?v=mwem6o9x","./lyrics-logic.js":"./lyrics-logic.js?v=mwem6o9x","./menus.js":"./menus.js?v=mwem6o9x","./note-actions.js":"./note-actions.js?v=mwem6o9x","./note-export.js":"./note-export.js?v=mwem6o9x","./player-lyrics.js":"./player-lyrics.js?v=mwem6o9x","./player-view.js":"./player-view.js?v=mwem6o9x","./queue.js":"./queue.js?v=mwem6o9x","./saver.js":"./saver.js?v=mwem6o9x","./sheet-drag.js":"./sheet-drag.js?v=mwem6o9x","./shell.js":"./shell.js?v=mwem6o9x","./store.js":"./store.js?v=mwem6o9x","./swipe-row.js":"./swipe-row.js?v=mwem6o9x","./tab-conti.js":"./tab-conti.js?v=mwem6o9x","./tab-library.js":"./tab-library.js?v=mwem6o9x","./tab-meditate.js":"./tab-meditate.js?v=mwem6o9x","./tab-practice.js":"./tab-practice.js?v=mwem6o9x","./title-scroll.js":"./title-scroll.js?v=mwem6o9x","./ui-logic.js":"./ui-logic.js?v=mwem6o9x","./users-admin.js":"./users-admin.js?v=mwem6o9x","./users-logic.js":"./users-logic.js?v=mwem6o9x","./v2-logic.js":"./v2-logic.js?v=mwem6o9x","./volume.js":"./volume.js?v=mwem6o9x"}}</script>
+<link rel="stylesheet" href="app.css?v=mweoe2ze">
+<link rel="stylesheet" href="noir.css?v=mweoe2ze">
+<link rel="stylesheet" href="player.css?v=mweoe2ze">
+<script type="importmap">{"imports":{"./api.js":"./api.js?v=mweoe2ze","./app.js":"./app.js?v=mweoe2ze","./audio.js":"./audio.js?v=mweoe2ze","./config.js":"./config.js?v=mweoe2ze","./copy.js":"./copy.js?v=mweoe2ze","./dom.js":"./dom.js?v=mweoe2ze","./fake-api.js":"./fake-api.js?v=mweoe2ze","./gesture-logic.js":"./gesture-logic.js?v=mweoe2ze","./haptic.js":"./haptic.js?v=mweoe2ze","./lrc.js":"./lrc.js?v=mweoe2ze","./lyrics-entry.js":"./lyrics-entry.js?v=mweoe2ze","./lyrics-logic.js":"./lyrics-logic.js?v=mweoe2ze","./menus.js":"./menus.js?v=mweoe2ze","./note-actions.js":"./note-actions.js?v=mweoe2ze","./note-export.js":"./note-export.js?v=mweoe2ze","./player-lyrics.js":"./player-lyrics.js?v=mweoe2ze","./player-view.js":"./player-view.js?v=mweoe2ze","./queue.js":"./queue.js?v=mweoe2ze","./saver.js":"./saver.js?v=mweoe2ze","./sheet-drag.js":"./sheet-drag.js?v=mweoe2ze","./shell.js":"./shell.js?v=mweoe2ze","./store.js":"./store.js?v=mweoe2ze","./swipe-row.js":"./swipe-row.js?v=mweoe2ze","./tab-conti.js":"./tab-conti.js?v=mweoe2ze","./tab-library.js":"./tab-library.js?v=mweoe2ze","./tab-meditate.js":"./tab-meditate.js?v=mweoe2ze","./tab-practice.js":"./tab-practice.js?v=mweoe2ze","./title-scroll.js":"./title-scroll.js?v=mweoe2ze","./ui-logic.js":"./ui-logic.js?v=mweoe2ze","./users-admin.js":"./users-admin.js?v=mweoe2ze","./users-logic.js":"./users-logic.js?v=mweoe2ze","./v2-logic.js":"./v2-logic.js?v=mweoe2ze","./volume.js":"./volume.js?v=mweoe2ze"}}</script>
 </head>
 <body ontouchstart="">
 <p id="fatal" class="empty" hidden></p>
@@ -45,6 +45,14 @@
   </div>
 
   <div id="dock" class="dock">
+    <div id="song-bar" class="song-bar glass" role="toolbar" aria-label="곡 메뉴" hidden>
+      <span id="song-bar-art" class="art"></span>
+      <b id="song-bar-title" class="sb-title"></b>
+      <button id="song-now" class="sb" type="button"><svg class="i" aria-hidden="true"><use href="#i-play"/></svg>지금 듣기</button>
+      <button id="song-next" class="sb" type="button"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h12M4 12h12M4 18h7M15 15.5l5 3-5 3z"/></svg>다음에 듣기</button>
+      <button id="song-add" class="sb" type="button"><svg class="i" aria-hidden="true"><use href="#i-plus"/></svg>플리에 추가</button>
+      <button id="song-bar-close" class="ib" type="button" aria-label="곡 메뉴 닫기"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button>
+    </div>
     <div id="mini" class="mini glass">
       <button id="mini-open" class="open" type="button" aria-label="플레이어 펼치기">
         <span id="mini-art" class="art"></span>
@@ -154,6 +162,6 @@
   <p id="users-empty" class="empty" hidden></p>
   <div class="buttons"><button id="users-close" type="button"></button></div>
 </dialog>
-<script type="module" src="app.js?v=mwem6o9x"></script>
+<script type="module" src="app.js?v=mweoe2ze"></script>
 </body>
 </html>
