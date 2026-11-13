@@ -74,7 +74,7 @@ export interface Db {
   saveVideo(userId: number, id: number, videoId: string | null): Promise<boolean>;
   saveNote(userId: number, id: number, body: string): Promise<boolean>;
   lyrics(userId: number, id: number): Promise<LyricsView | null>;
-  saveLyrics(userId: number, id: number, sourceId: number, synced: string): Promise<boolean>;
+  saveLyrics(userId: number, id: number, source: "lrclib" | "manual", sourceId: number | null, synced: string): Promise<boolean>;
   saveLyricsOffset(userId: number, id: number, offsetMs: number): Promise<boolean>;
   trackTitle(userId: number, id: number): Promise<string | null>;
   claimUsername(username: string, userId: number, authDate: number): Promise<boolean>;
@@ -355,12 +355,12 @@ export function createDb(dsn: string, schema: string): Db {
         return row ?? { status: "unknown", synced: null, offset_ms: 0 };
       }),
 
-    saveLyrics: (userId, id, sourceId, synced) =>
+    saveLyrics: (userId, id, source, sourceId, synced) =>
       inSchema(async (tx) => {
         if (!(await ownsTrackIn(tx, userId, id))) return false;
         await tx`insert into track_lyrics (track_id, status, source, source_id, synced, offset_ms, searched_at)
-          values (${id}, 'found', 'lrclib', ${sourceId}, ${synced}, 0, now())
-          on conflict (track_id) do update set status = 'found', source = 'lrclib', source_id = excluded.source_id,
+          values (${id}, 'found', ${source}, ${sourceId}, ${synced}, 0, now())
+          on conflict (track_id) do update set status = 'found', source = excluded.source, source_id = excluded.source_id,
             synced = excluded.synced, offset_ms = 0, searched_at = now()`;
         return true;
       }),

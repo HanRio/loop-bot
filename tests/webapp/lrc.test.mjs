@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseLrc, lineAt } from '../../webapp/lrc.js';
+import { parseLrc, lineAt, plainLines, toLrc } from '../../webapp/lrc.js';
 
 test('parseLrc reads centisecond timestamps and text', () => {
   const lines = parseLrc('[00:12.50]가\n[00:15.00]나');
@@ -57,4 +57,20 @@ test('lineAt treats a positive offset as showing lyrics earlier', () => {
 
 test('lineAt returns -1 for an empty list', () => {
   assert.equal(lineAt([], 5, 0), -1);
+});
+
+test('plainLines keeps non-blank trimmed lines in order', () => {
+  assert.deepEqual(plainLines('  가 \r\n\n\n나\n  '), ['가', '나']);
+  assert.deepEqual(plainLines(''), []);
+});
+
+test('toLrc writes mm:ss.cc tags that parseLrc reads back', () => {
+  const lines = [{ t: 3.456, text: '가' }, { t: 75.1, text: '나' }, { t: 600, text: '' }];
+  const lrc = toLrc(lines);
+  assert.equal(lrc, '[00:03.46]가\n[01:15.10]나\n[10:00.00]');
+  assert.deepEqual(parseLrc(lrc), [{ t: 3.46, text: '가' }, { t: 75.1, text: '나' }, { t: 600, text: '' }]);
+});
+
+test('toLrc never writes a negative time', () => {
+  assert.equal(toLrc([{ t: -1, text: '가' }]), '[00:00.00]가');
 });
