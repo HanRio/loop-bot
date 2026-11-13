@@ -254,7 +254,8 @@ body:has(textarea:focus, input:focus:not([type=range]):not([type=checkbox])) #do
 }
 .ib:active { transform: scale(.9); }
 .mini .prog { position: absolute; left: 26px; right: 26px; bottom: 0; height: 2px; background: var(--line); border-radius: 1px; overflow: hidden; }
-.mini .prog i, .console .bar i { display: block; height: 100%; width: 0; background: var(--ink); border-radius: inherit; }
+.mini .prog i { display: block; height: 100%; width: 100%; transform: scaleX(0); transform-origin: left; background: var(--ink); border-radius: inherit; }
+.console .bar i { display: block; height: 100%; width: 0; background: var(--ink); border-radius: inherit; }
 .tabs { position: relative; height: 66px; border-radius: 33px; display: flex; align-items: center; padding: 0 6px; }
 .ind {
   position: absolute; top: 6px; left: 6px; height: 54px; border-radius: 27px; background: var(--hi-75, rgba(255,255,255,.75));

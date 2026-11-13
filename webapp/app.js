@@ -183,8 +183,8 @@ let progressFrame = 0;
 function paintProgress() {
   const position = player?.position() ?? 0;
   const duration = player?.duration() ?? 0;
-  const percent = `${duration > 0 ? (position / duration) * 100 : 0}%`;
-  $('mini-prog').firstElementChild.style.width = percent;
+  // 폭 대신 transform으로 늘린다. 매 프레임 레이아웃을 다시 계산하지 않는다.
+  $('mini-prog').firstElementChild.style.transform = `scaleX(${duration > 0 ? Math.min(position / duration, 1) : 0})`;
   lyrics?.tick(position);
 }
 

@@ -7,8 +7,9 @@
 
 /* 곡 커버가 뒤에서 흐리게 번진다 */
 .v2p .glow-clip { position: absolute; inset: 0; overflow: hidden; z-index: 0; pointer-events: none; }
-.v2p .glow { position: absolute; inset: -120px; background-size: cover; background-position: center; filter: blur(90px) saturate(1.2); opacity: .22; transition: background .8s ease; }
-.v2p .glow::after { content: ""; position: absolute; inset: 0; background: radial-gradient(circle at 50% 35%, transparent 0, var(--paper) 70%); }
+/* 큰 면을 크게 흐리면 폰에서 무겁다. 작은 면을 조금 흐린 뒤 크게 늘려 같은 번짐을 싸게 얻는다. */
+.v2p .glow { position: absolute; left: 50%; top: 30%; width: 120px; height: 120px; margin: -60px 0 0 -60px; background-size: cover; background-position: center; filter: blur(14px) saturate(1.2); opacity: .22; transform: scale(7); }
+.v2p .glow-clip::after { content: ""; position: absolute; inset: 0; background: radial-gradient(circle at 50% 35%, transparent 0, var(--paper) 70%); }
 .v2p .top { position: relative; z-index: 1; }
 .v2p .body {
   position: relative; z-index: 1; flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none;

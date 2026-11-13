@@ -208,19 +208,32 @@ export function createPlayerView({ position, duration, onSeek }) {
 
   for (const name of ['prev', 'next', 'shuffle', 'lyrics']) setIcon($(name), name);
 
-  // 재생 중이거나 스펙트럼이 아직 가라앉는 중일 때만 화면 새로 고침마다 칠한다.
+  // 플레이어가 펼쳐져 있고, 재생 중이거나 스펙트럼이 아직 가라앉는 중일 때만 화면 새로 고침마다 칠한다.
+  // 접혀 있으면 보이지 않으니 칠하지 않는다(폰에서 매 프레임 캔버스를 그리면 다른 화면이 버벅인다).
+  const isOpen = () => root.classList.contains('open') && !document.hidden;
   function tick(t) {
+    if (!isOpen()) {
+      frame = 0;
+      return;
+    }
     paintScrub();
     const active = drawSpectrum(playing, t);
-    frame = (playing || active) && !document.hidden ? requestAnimationFrame(tick) : 0;
+    frame = playing || active ? requestAnimationFrame(tick) : 0;
   }
   const wake = () => {
-    if (!frame) frame = requestAnimationFrame(tick);
+    if (!frame && isOpen()) frame = requestAnimationFrame(tick);
   };
   document.addEventListener('visibilitychange', wake);
+  // 펼치는 순간 다시 칠하기 시작한다.
+  new MutationObserver(wake).observe(root, { attributes: true, attributeFilter: ['class'] });
 
+  // 재생기는 1초에 4번쯤 다시 그리라고 한다. 바뀐 것이 없으면 버튼·아이콘을 새로 만들지 않는다.
+  let lastKey = '';
   function paint(s) {
     playing = s.playing;
+    const key = [s.id, s.playing, s.loading, s.repeat, s.shuffle, s.lyricsOn, s.loading ? '' : duration(), s.media?.[s.id]?.video_id ?? ''].join('|');
+    if (key === lastKey) return wake();
+    lastKey = key;
     root.classList.toggle('is-playing', s.playing);
     root.classList.toggle('is-loading', s.loading);
     $('dur').textContent = s.loading ? '받는 중…' : formatTime(duration());
