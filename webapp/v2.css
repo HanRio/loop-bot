@@ -125,6 +125,17 @@ kbd { font-family: "Geist Mono", monospace; font-size: 11px; padding: 1px 6px; b
 .pill { flex: none; height: 30px; padding: 0 12px; border: 1px solid var(--line); border-radius: 999px; font-size: 12px; letter-spacing: 0; text-transform: none; color: var(--text); transition: background .2s, transform .15s; }
 @media (hover: hover) { .pill:hover { background: rgba(237,235,230,.06); } }
 .pill:active { transform: scale(.95); }
+.queue h2 .tools { display: flex; gap: 6px; flex: none; }
+.pill.danger { color: var(--danger); }
+.pill.strong { background: var(--text); color: var(--bg); border-color: var(--text); }
+.pill:disabled { opacity: .35; cursor: default; }
+/* 여러 곡 선택: 번호 자리에 동그라미, 아래에 묶음 동작 줄 */
+.check { width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--muted); display: grid; place-items: center; }
+.item[aria-pressed=true] .check { background: var(--accent); border-color: var(--accent); }
+.item[aria-pressed=true] .check::after { content: ""; width: 5px; height: 9px; margin-top: -2px; border: solid var(--bg); border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.selecting .item .idx { align-items: center; }
+.bulk { position: sticky; bottom: calc(12px + var(--inset-bottom)); display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 10px; border: 1px solid var(--line); border-radius: 16px; background: rgba(24,24,27,.94); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); }
+.bulk #bulk-count { flex: 1; min-width: 60px; font-size: 13px; color: var(--muted); }
 .more { flex: none; width: 40px; height: 48px; display: grid; place-items: center; border-radius: 10px; color: var(--muted); }
 @media (hover: hover) { .more:hover { color: var(--text); } }
 .empty { padding: 18px 10px; font-size: 14px; color: var(--muted); text-align: center; }

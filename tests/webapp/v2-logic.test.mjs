@@ -1,6 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { coverUrl, pickNext, shuffleNext, waveform } from '../../webapp/v2-logic.js';
+import { addTracks, coverUrl, pickNext, removeTracks, shuffleNext, waveform } from '../../webapp/v2-logic.js';
+
+test('addTracks appends only tracks the list does not have yet, keeping the picked order', () => {
+  assert.deepEqual(addTracks([1, 2], [3, 2, 4]), [1, 2, 3, 4]);
+  assert.deepEqual(addTracks([], [5, 5]), [5]);
+});
+
+test('removeTracks drops every selected track', () => {
+  assert.deepEqual(removeTracks([1, 2, 3, 4], new Set([2, 4])), [1, 3]);
+  assert.deepEqual(removeTracks([1], new Set()), [1]);
+});
 
 const none = new Set();
 

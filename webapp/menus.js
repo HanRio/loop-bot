@@ -86,7 +86,7 @@ function textButton(text, className = 'btn', type = 'button') {
 }
 
 // 목록 고르기. 고른 목록의 id를 주고, 닫으면 null을 준다.
-export function openListPicker({ playlists, sharedPlaylists, currentId }) {
+export function openListPicker({ playlists, sharedPlaylists, currentId, title = LABEL.pickTitle }) {
   return new Promise((resolve) => {
     let chosen = null;
     const listButton = (playlist) => {
@@ -98,14 +98,14 @@ export function openListPicker({ playlists, sharedPlaylists, currentId }) {
       });
       return button;
     };
-    const children = [el('h2', null, LABEL.pickTitle), el('p', 'kicker', LABEL.myLists), ...playlists.map(listButton)];
+    const children = [el('h2', null, title), el('p', 'kicker', LABEL.myLists), ...playlists.map(listButton)];
     if (sharedPlaylists.length > 0) {
       children.push(el('p', 'kicker', LABEL.sharedLists), ...sharedPlaylists.map(listButton));
     }
     const close = textButton(LABEL.close);
     close.addEventListener('click', () => dialog.close());
     children.push(close);
-    const dialog = makeDialog(children, () => resolve(chosen), '목록 고르기');
+    const dialog = makeDialog(children, () => resolve(chosen), title);
   });
 }
 

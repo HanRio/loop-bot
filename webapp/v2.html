@@ -63,9 +63,15 @@
   </section>
 
   <aside class="queue card rise" style="animation-delay:.12s" aria-label="재생 목록">
-    <h2><span class="name"><span id="list-name"></span> <span class="mono" id="count"></span></span><button class="pill" id="pick" type="button">목록 바꾸기</button></h2>
+    <h2><span class="name"><span id="list-name"></span> <span class="mono" id="count"></span></span><span class="tools"><button class="pill" id="select" type="button">선택</button><button class="pill" id="pick" type="button">목록 바꾸기</button></span></h2>
     <ol id="list"></ol>
     <p class="empty" id="empty" hidden>이 목록엔 아직 곡이 없어요</p>
+    <div class="bulk" id="bulk" hidden>
+      <span class="mono" id="bulk-count" aria-live="polite"></span>
+      <button class="pill" id="bulk-add" type="button">목록에 담기</button>
+      <button class="pill danger" id="bulk-remove" type="button">빼기</button>
+      <button class="pill strong" id="bulk-done" type="button">완료</button>
+    </div>
     <p class="hint"><span class="keys"><kbd>Space</kbd> 재생/일시정지 &nbsp; <kbd>←</kbd><kbd>→</kbd> 5초 이동 &nbsp; <kbd>N</kbd><kbd>P</kbd> 다음/이전<br></span>곡은 봇 채팅에 유튜브 링크나 음원 파일을 보내면 들어와요.</p>
   </aside>
 </main>

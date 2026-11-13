@@ -196,7 +196,7 @@ function createSpectrum() {
   };
 }
 
-function trackRow({ id, index, title, current, playing, unplayable, media, hasMenu }) {
+function trackRow({ id, index, title, current, playing, unplayable, media, hasMenu, selecting, selected }) {
   const li = document.createElement('li');
   const item = document.createElement('button');
   item.type = 'button';
@@ -204,10 +204,15 @@ function trackRow({ id, index, title, current, playing, unplayable, media, hasMe
   item.dataset.id = String(id);
   item.dataset.act = 'play';
   item.setAttribute('aria-current', String(current));
-  item.disabled = unplayable;
+  item.disabled = unplayable && !selecting;
+  if (selecting) item.setAttribute('aria-pressed', String(selected));
   const idx = document.createElement('span');
   idx.className = 'idx mono';
-  if (current) {
+  if (selecting) {
+    const check = document.createElement('span');
+    check.className = 'check';
+    idx.append(check);
+  } else if (current) {
     const eq = document.createElement('span');
     eq.className = 'eq';
     eq.append(document.createElement('i'), document.createElement('i'), document.createElement('i'));
@@ -231,9 +236,10 @@ function trackRow({ id, index, title, current, playing, unplayable, media, hasMe
     txt.append(a);
   }
   item.append(idx, thumb, txt);
-  item.setAttribute('aria-label', `${title}${current ? (playing ? ', 재생 중' : ', 일시정지') : ''}`);
+  const state = selecting ? '' : current ? (playing ? ', 재생 중' : ', 일시정지') : '';
+  item.setAttribute('aria-label', `${title}${state}`);
   li.append(item);
-  if (hasMenu) {
+  if (hasMenu && !selecting) {
     const more = document.createElement('button');
     more.type = 'button';
     more.className = 'more';
@@ -314,7 +320,7 @@ export function createView({ position, duration, onSeek, onPlayRow, onRowMenu, o
   // 재생기는 1초에 몇 번씩 다시 그리라고 하므로, 목록은 바뀐 것이 있을 때만 새로 만든다.
   let listKey = '';
   function paintList(s) {
-    const key = [s.name, s.currentId, s.playing, [...s.unplayable].join(','),
+    const key = [s.name, s.currentId, s.playing, [...s.unplayable].join(','), s.selecting, [...s.selected].join(','),
       ...s.ids.map((id) => `${id}:${s.titles.get(id)}:${s.media[id]?.video_id ?? ''}:${s.hasMenu(id)}`)].join('\u0001');
     if (key === listKey) return;
     listKey = key;
@@ -324,7 +330,16 @@ export function createView({ position, duration, onSeek, onPlayRow, onRowMenu, o
     $('list').replaceChildren(...s.ids.map((id, index) => trackRow({
       id, index, title: s.titles.get(id) ?? '', current: id === s.currentId, playing: s.playing,
       unplayable: s.unplayable.has(id), media: s.media, hasMenu: s.hasMenu(id),
+      selecting: s.selecting, selected: s.selected.has(id),
     })));
+    $('list').closest('.queue').classList.toggle('selecting', s.selecting);
+    $('select').hidden = s.selecting || s.ids.length === 0;
+    $('pick').hidden = s.selecting;
+    $('bulk').hidden = !s.selecting;
+    $('bulk-count').textContent = `${s.selected.size}곡 선택`;
+    $('bulk-add').disabled = s.selected.size === 0 || !s.canAdd;
+    $('bulk-remove').hidden = !s.canRemove;
+    $('bulk-remove').disabled = s.selected.size === 0;
   }
 
   function paintVolume({ value, enabled }) {

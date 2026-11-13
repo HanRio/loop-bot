@@ -45,6 +45,13 @@ export function coverUrl(videoId) {
   return typeof videoId === 'string' && VIDEO_ID.test(videoId) ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : null;
 }
 
+// 여러 곡 담기: 목록에 없는 곡만 고른 순서대로 뒤에 붙인다.
+export function addTracks(targetIds, ids) {
+  return [...targetIds, ...new Set(ids.filter((id) => !targetIds.includes(id)))];
+}
+
+export const removeTracks = (trackIds, selected) => trackIds.filter((id) => !selected.has(id));
+
 export function formatTime(seconds) {
   const whole = Math.max(0, Math.floor(Number.isFinite(seconds) ? seconds : 0));
   return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;

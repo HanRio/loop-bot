@@ -6,12 +6,12 @@ import { COPY } from './copy.js';
 import { $ } from './dom.js';
 import { haptic } from './haptic.js';
 import { startPlaylistId } from './lyrics-logic.js';
-import { askName, openListPicker, openMenu } from './menus.js';
+import { askConfirm, askName, openListPicker, openMenu } from './menus.js';
 import { createPlayerLyrics } from './player-lyrics.js';
 import { prevTrack } from './queue.js';
 import { enableSheetDrag } from './sheet-drag.js';
 import { cleanTitle, createActiveSender, createSaves, readLocal, writeLocal } from './store.js';
-import { pickNext } from './v2-logic.js';
+import { addTracks, pickNext, removeTracks } from './v2-logic.js';
 import { createView } from './v2-view.js';
 import { KEY_VOLUME, readSaved as readSavedVolume } from './volume.js';
 
@@ -40,6 +40,8 @@ const playback = {
   currentId: null, title: '', loadedId: null, lastIndex: 0, failures: 0, unplayable: new Set(), played: new Set(),
   repeat: 'all', shuffle: readLocal(KEY_SHUFFLE) === '1', lyricsOn: readLocal(KEY_LYRICS) === '1',
 };
+// 여러 곡 선택. 켜져 있으면 줄을 눌러도 재생하지 않고 고르기만 한다.
+let selection = { on: false, ids: new Set() };
 let api;
 let player;
 let lyrics;
@@ -61,7 +63,11 @@ const notice = (text) => {
 };
 
 const saves = createSaves({
-  save: (value) => api.savePlaylist(value.id, value.name, value.track_ids),
+  save: async (value) => {
+    await api.savePlaylist(value.id, value.name, value.track_ids);
+    // 저장(PUT)은 그 목록을 활성으로 만든다. 내 다른 목록을 보고 있으면 활성을 그쪽으로 되돌린다 (app.js와 같다).
+    if (value.id !== model.viewedId && isOwnId(model.viewedId)) activeSender.request(model.viewedId);
+  },
   onError: (id, err) => {
     if (err.code === 'not_found') {
       saves.drop(id);
@@ -99,6 +105,10 @@ function render() {
     unplayable: playback.unplayable,
     media: model.media,
     hasMenu: (trackId) => Boolean(viewedPlaylist()) || model.library.some((t) => t.id === trackId),
+    selecting: selection.on,
+    selected: selection.ids,
+    canAdd: model.playlists.some((p) => p.id !== model.viewedId),
+    canRemove: Boolean(viewedPlaylist()),
   });
 }
 
@@ -180,6 +190,15 @@ function onPlayPause() {
 }
 
 function onPlayRow(id) {
+  if (selection.on) {
+    const ids = new Set(selection.ids);
+    if (ids.has(id)) ids.delete(id);
+    else ids.add(id);
+    selection = { on: true, ids };
+    haptic.tick();
+    render();
+    return;
+  }
   if (playback.unplayable.has(id)) return;
   if (id === playback.currentId && id === playback.loadedId) {
     player.toggle();
@@ -213,6 +232,7 @@ async function onPick() {
   const id = await openListPicker({ playlists: model.playlists, sharedPlaylists: model.sharedPlaylists, currentId: model.viewedId });
   if (id === null || id === model.viewedId) return;
   await saves.flushAll();
+  selection = { on: false, ids: new Set() };
   model.viewedId = id;
   writeLocal(KEY_PLAYLIST, String(id));
   // 지금 곡은 이어서 듣고, 다음 곡부터는 새 목록의 맨 위에서 시작한다.
@@ -254,6 +274,44 @@ async function renameTrack(id) {
   }
 }
 
+// ── 여러 곡 선택 ──
+function setSelecting(on) {
+  selection = { on, ids: new Set() };
+  render();
+}
+
+// 고른 곡을 내 다른 목록 뒤에 붙인다. 이미 있는 곡은 다시 넣지 않는다.
+async function onBulkAdd() {
+  const picked = viewedIds().filter((id) => selection.ids.has(id));
+  if (picked.length === 0) return;
+  const targets = model.playlists.filter((p) => p.id !== model.viewedId);
+  const targetId = await openListPicker({ playlists: targets, sharedPlaylists: [], currentId: null, title: '어느 목록에 담을까요' });
+  const target = model.playlists.find((p) => p.id === targetId);
+  if (!target) return;
+  const ids = addTracks(target.track_ids, picked);
+  model.playlists = model.playlists.map((p) => (p.id === target.id ? { ...p, track_ids: ids } : p));
+  saves.update({ id: target.id, name: target.name, track_ids: ids });
+  notice('');
+  selection = { on: false, ids: new Set() };
+  render();
+}
+
+async function onBulkRemove() {
+  const playlist = viewedPlaylist();
+  // 묻는 동안 선택이 바뀌어도 물어본 그 곡들만 뺀다.
+  const picked = new Set(selection.ids);
+  if (!playlist || picked.size === 0) return;
+  if (!(await askConfirm({ message: `${picked.size}곡을 이 목록에서 뺄까요?`, action: '빼기' }))) return;
+  const current = viewedPlaylist();
+  if (!current || current.id !== playlist.id) return;
+  const ids = removeTracks(current.track_ids, picked);
+  model.playlists = model.playlists.map((p) => (p.id === current.id ? { ...p, track_ids: ids } : p));
+  syncLastIndex();
+  saves.update({ id: current.id, name: current.name, track_ids: ids });
+  selection = { on: false, ids: new Set() };
+  render();
+}
+
 function onRowMenu(id) {
   const items = [];
   if (model.library.some((t) => t.id === id)) items.push({ label: TEXT.rename, run: () => renameTrack(id) });
@@ -285,7 +343,9 @@ function onKey(e) {
   if (e.isComposing || e.keyCode === 229 || document.querySelector('dialog[open]')) return;
   const tag = e.target.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-  if (e.code === 'Space' && tag !== 'BUTTON') {
+  if (e.key === 'Escape' && selection.on) {
+    setSelecting(false);
+  } else if (e.code === 'Space' && tag !== 'BUTTON') {
     e.preventDefault();
     onPlayPause();
   } else if (e.target !== $('scrub') && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
@@ -303,6 +363,10 @@ function wireControls() {
   $('shuffle').addEventListener('click', onShuffle);
   $('lyrics').addEventListener('click', onLyrics);
   $('pick').addEventListener('click', onPick);
+  $('select').addEventListener('click', () => setSelecting(true));
+  $('bulk-done').addEventListener('click', () => setSelecting(false));
+  $('bulk-add').addEventListener('click', onBulkAdd);
+  $('bulk-remove').addEventListener('click', onBulkRemove);
   document.addEventListener('keydown', onKey);
   document.addEventListener('pointerdown', (e) => {
     if (e.target.closest?.(CONTROL_KEYS)) haptic.tap();
