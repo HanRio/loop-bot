@@ -95,6 +95,7 @@ export function createApi(baseUrl, initData, fileBase = null) {
     lyrics: (id) => json('GET', `/tracks/${id}/lyrics`),
     lyricsCandidates: (id, q) => json('GET', `/tracks/${id}/lyrics/candidates${q === undefined ? '' : `?q=${encodeURIComponent(q)}`}`),
     chooseLyrics: (id, lrclibId) => json('PUT', `/tracks/${id}/lyrics`, { lrclib_id: lrclibId }),
+    saveLyricsText: (id, text) => json('PUT', `/tracks/${id}/lyrics`, { text }),
     saveLyricsOffset: (id, offsetMs) => json('PUT', `/tracks/${id}/lyrics/offset`, { offset_ms: offsetMs }),
     saveNote: async (id, body) => {
       await request('PUT', `/tracks/${id}/note`, { body });

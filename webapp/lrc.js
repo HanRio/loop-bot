@@ -33,3 +33,18 @@ export function lineAt(lines, position, offsetMs) {
   }
   return index;
 }
+
+// 붙여 넣은 가사를 빈 줄 없이 다듬은 줄 배열로.
+export function plainLines(text) {
+  return text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+}
+
+// [{t, text}]를 [mm:ss.cc]가사 형식으로. 탭으로 맞춘 싱크를 저장할 때 쓴다.
+export function toLrc(lines) {
+  return lines.map(({ t, text }) => {
+    const cs = Math.round(Math.max(0, t) * 100);
+    const mm = String(Math.floor(cs / 6000)).padStart(2, '0');
+    const ss = String(Math.floor(cs / 100) % 60).padStart(2, '0');
+    return `[${mm}:${ss}.${String(cs % 100).padStart(2, '0')}]${text}`;
+  }).join('\n');
+}

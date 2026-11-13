@@ -29,6 +29,7 @@ const YOUTUBE_PATH_PREFIXES = ["/shorts/", "/embed/", "/live/"];
 const YOUTUBE_ID_PATTERN = /^[A-Za-z0-9_-]{11}$/;
 const OFFSET_LIMIT_MS = 30_000;
 const QUERY_MAX_LENGTH = 100;
+const LYRICS_MAX_LENGTH = 20_000;
 const USERNAME_PATTERN = /^[a-z0-9_]{5,32}$/;
 
 class HttpError extends Error {
@@ -378,13 +379,22 @@ async function route(req: Request, deps: Deps, userId: number): Promise<Response
   }
   if (lyrics && req.method === "PUT") {
     await requireAdmin(deps, userId);
-    const { lrclib_id: lrclibId } = await readBody(req);
-    if (typeof lrclibId !== "number" || !Number.isSafeInteger(lrclibId) || lrclibId <= 0) throw badRequest();
+    const { lrclib_id: lrclibId, text } = await readBody(req);
     const id = idParam(lyrics[1]);
+    // Pasted by the owner: plain lines or LRC, stored as-is in the same column.
+    if (text !== undefined) {
+      if (lrclibId !== undefined || typeof text !== "string") throw badRequest();
+      const pasted = text.replace(/\r\n?/g, "\n").trim();
+      if (pasted === "" || [...pasted].length > LYRICS_MAX_LENGTH) throw badRequest();
+      if (!(await db.ownsTrack(userId, id))) throw notFound();
+      if (!(await db.saveLyrics(userId, id, "manual", null, pasted))) throw notFound();
+      return json({ status: "found", synced: pasted, offset_ms: 0 });
+    }
+    if (typeof lrclibId !== "number" || !Number.isSafeInteger(lrclibId) || lrclibId <= 0) throw badRequest();
     if (!(await db.ownsTrack(userId, id))) throw notFound();
     const synced = await getSynced(lrclibId, deps.fetch);
     if (synced === null) throw new HttpError(422, "no_synced");
-    if (!(await db.saveLyrics(userId, id, lrclibId, synced))) throw notFound();
+    if (!(await db.saveLyrics(userId, id, "lrclib", lrclibId, synced))) throw notFound();
     return json({ status: "found", synced, offset_ms: 0 });
   }
 

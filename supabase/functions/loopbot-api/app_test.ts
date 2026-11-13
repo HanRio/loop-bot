@@ -1365,3 +1365,17 @@ Deno.test("lyrics: offset rounds, clamps, rejects non-numbers, 404 without a row
   const gone = lyricsDeps({ saveLyricsOffset: async () => false });
   assertEquals((await lyricsCall(gone, "PUT", "/tracks/1/lyrics/offset", { offset_ms: 0 })).status, 404);
 });
+
+Deno.test("lyrics: PUT text saves pasted lyrics as manual, trims, rejects empty, too long or both fields", async () => {
+  const saved: unknown[][] = [];
+  const deps = lyricsDeps({ saveLyrics: async (...args: unknown[]) => (saved.push(args), true) } as Partial<Db>);
+  const ok = await lyricsCall(deps, "PUT", "/tracks/1/lyrics", { text: "  첫 줄\r\n둘째 줄  \n" });
+  assertEquals(ok.status, 200);
+  assertEquals(await ok.json(), { status: "found", synced: "첫 줄\n둘째 줄", offset_ms: 0 });
+  assertEquals(saved[0], [ALLOWED_USER, 1, "manual", null, "첫 줄\n둘째 줄"]);
+  for (const bad of [{ text: "" }, { text: "   \n " }, { text: 5 }, { text: "가".repeat(20_001) }, { text: "x", lrclib_id: 5 }]) {
+    assertEquals((await lyricsCall(deps, "PUT", "/tracks/1/lyrics", bad)).status, 400, JSON.stringify(bad).slice(0, 40));
+  }
+  assertEquals((await lyricsCall(lyricsDeps({ ownsTrack: async () => false }), "PUT", "/tracks/1/lyrics", { text: "x" })).status, 404);
+  assertEquals((await lyricsCall(lyricsDeps({}, unexpectedFetch, []), "PUT", "/tracks/1/lyrics", { text: "x" }, OTHER_USER)).status, 403);
+});

@@ -1,30 +1,27 @@
 // 플레이어의 실시간 가사. 글자는 모두 textContent로 넣는다.
-import { lineAt, parseLrc } from './lrc.js';
+import { lineAt, parseLrc, plainLines } from './lrc.js';
+import { el, openLyricsWriter, openTapSync, sheet } from './lyrics-entry.js';
 
 const STEP_MS = 500;
 const LIMIT_MS = 30000;
 const SAVE_DELAY_MS = 600;
 const REST = '♪';
 const LABEL = {
-  earlier: '−0.5초', later: '+0.5초', find: '다른 가사 찾기', findBare: '가사 찾기', more: '가사 조절', less: '접기', sheetTitle: '다른 가사 찾기', search: '곡명 검색',
+  earlier: '−0.5초', later: '+0.5초', find: '다른 가사 찾기', findBare: '가사 찾기', write: '직접 넣기', tap: '탭으로 싱크', more: '가사 조절', less: '접기', sheetTitle: '다른 가사 찾기', search: '곡명 검색',
   close: '닫기', none: '찾은 가사가 없어요', noSynced: '싱크가 있는 가사가 아니에요', failed: '불러오지 못했어요', loading: '찾는 중이에요',
 };
-
-function el(tag, className, text) {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  if (text !== undefined) node.textContent = text;
-  return node;
-}
 
 const clampOffset = (ms) => Math.max(-LIMIT_MS, Math.min(LIMIT_MS, ms));
 const syncText = (ms) => `싱크 ${(ms / 1000).toFixed(1)}초`;
 const clock = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
 
 // 서버 응답을 화면용 값으로. 줄이 없으면 가사 없는 곡으로 본다.
+// 시간이 없는 직접 넣은 가사는 plain: 흐르지 않고 글만 보여 준다.
 function toEntry(data) {
-  const lines = data.status === 'found' && data.synced ? parseLrc(data.synced) : [];
-  return { lines, offsetMs: data.offset_ms ?? 0 };
+  const text = data.status === 'found' ? data.synced ?? '' : '';
+  const synced = parseLrc(text);
+  if (synced.length > 0) return { lines: synced, offsetMs: data.offset_ms ?? 0, plain: false };
+  return { lines: plainLines(text).map((line) => ({ t: 0, text: line })), offsetMs: 0, plain: true };
 }
 
 export function createPlayerLyrics({ api, player, canEdit, onError }) {
@@ -45,8 +42,10 @@ export function createPlayerLyrics({ api, player, canEdit, onError }) {
   const earlier = el('button', 'chip', LABEL.earlier);
   const later = el('button', 'chip', LABEL.later);
   const find = el('button', 'chip', LABEL.find);
-  for (const b of [earlier, later, find]) b.type = 'button';
-  edit.append(earlier, offsetLabel, later, find);
+  const tap = el('button', 'chip', LABEL.tap);
+  for (const b of [earlier, later, find, tap]) b.type = 'button';
+  edit.append(earlier, offsetLabel, later, tap, find);
+  let openSheet = null; // 곡이 바뀌면 열린 시트를 닫는다.
   // 싱크·다른 가사 찾기는 평소엔 접어 두고, 작은 버튼을 눌러야 펼친다.
   const toggle = el('button', 'chip lyr-toggle', LABEL.more);
   toggle.type = 'button';
@@ -81,6 +80,7 @@ export function createPlayerLyrics({ api, player, canEdit, onError }) {
     toggle.setAttribute('aria-expanded', String(editOpen));
     toggle.textContent = editOpen ? LABEL.less : LABEL.more;
     edit.hidden = !canEdit() || !editOpen;
+    for (const node of [earlier, offsetLabel, later]) node.hidden = Boolean(active?.plain);
     offsetLabel.textContent = syncText(active?.offsetMs ?? 0);
   }
 
@@ -92,20 +92,21 @@ export function createPlayerLyrics({ api, player, canEdit, onError }) {
     }
     nodes = entry.lines.map((line) => {
       const p = el('p', null, line.text || REST);
-      p.addEventListener('click', () => player.seek(Math.max(0, line.t - active.offsetMs / 1000)));
+      if (!entry.plain) p.addEventListener('click', () => player.seek(Math.max(0, line.t - active.offsetMs / 1000)));
       return p;
     });
     list.replaceChildren(...nodes);
     list.scrollTop = 0;
     lastIndex = -2;
     findBare.hidden = true;
+    box.classList.toggle('plain', entry.plain);
     box.hidden = false;
     paintEdit();
     tick(player.position());
   }
 
   function tick(position) {
-    if (!active || box.hidden) return;
+    if (!active || active.plain || box.hidden) return;
     const index = lineAt(active.lines, position, active.offsetMs);
     if (index === lastIndex) return;
     lastIndex = index;
@@ -121,6 +122,7 @@ export function createPlayerLyrics({ api, player, canEdit, onError }) {
       return;
     }
     flush();
+    openSheet?.close();
     currentId = id;
     editOpen = false; // 곡이 바뀌면 다시 접는다.
     active = null;
@@ -159,8 +161,8 @@ export function createPlayerLyrics({ api, player, canEdit, onError }) {
   function openFinder() {
     const id = currentId;
     if (id === null) return;
-    const dialog = el('dialog', 'menu');
-    dialog.setAttribute('aria-label', LABEL.sheetTitle);
+    const dialog = sheet(LABEL.sheetTitle);
+    openSheet = dialog;
     const input = el('input');
     input.type = 'text';
     input.setAttribute('aria-label', LABEL.search);
@@ -172,13 +174,13 @@ export function createPlayerLyrics({ api, player, canEdit, onError }) {
     const close = el('button', null, LABEL.close);
     close.type = 'button';
     close.addEventListener('click', () => dialog.close());
-    dialog.append(el('h2', null, LABEL.sheetTitle), form, status, close);
-    dialog.addEventListener('click', (event) => {
-      if (event.target !== dialog) return;
-      const r = dialog.getBoundingClientRect();
-      if (event.clientX < r.left || event.clientX > r.right || event.clientY < r.top || event.clientY > r.bottom) dialog.close();
+    const write = el('button', 'lyr-write', LABEL.write);
+    write.type = 'button';
+    write.addEventListener('click', () => {
+      dialog.close();
+      openWriter(id);
     });
-    dialog.addEventListener('close', () => dialog.remove(), { once: true });
+    dialog.append(form, write, status, close);
 
     let rows = [];
     let seq = 0;
@@ -190,7 +192,7 @@ export function createPlayerLyrics({ api, player, canEdit, onError }) {
     async function choose(candidate) {
       try {
         const entry = toEntry(await api.chooseLyrics(id, candidate.id));
-        if (entry.lines.length === 0) throw new Error('no_synced');
+        if (entry.lines.length === 0 || entry.plain) throw new Error('no_synced');
         cache.set(id, entry);
         dialog.close();
         if (currentId === id) paint(entry);
@@ -226,7 +228,25 @@ export function createPlayerLyrics({ api, player, canEdit, onError }) {
     dialog.showModal();
     search(undefined);
   }
+
+  // 직접 넣은 가사(붙여 넣기·탭 싱크)를 저장하고, 아직 그 곡이면 바로 그린다.
+  async function saveText(id, text) {
+    const entry = toEntry(await api.saveLyricsText(id, text));
+    cache.set(id, entry);
+    if (currentId === id) paint(entry);
+  }
+  function startTap(id, lines) {
+    if (lines.length === 0 || currentId !== id) return;
+    openSheet = openTapSync({ lines, player, save: (lrc) => saveText(id, lrc) });
+  }
+  function openWriter(id) {
+    if (currentId !== id) return;
+    // 직접 넣은 글 가사만 채워 둔다. 시간 있는 가사를 그냥 저장하면 싱크가 사라지기 때문이다.
+    const initial = active?.plain ? active.lines.map((line) => line.text).join('\n') : '';
+    openSheet = openLyricsWriter({ initial, save: (text) => saveText(id, text), tap: (lines) => startTap(id, lines) });
+  }
   find.addEventListener('click', openFinder);
+  tap.addEventListener('click', () => startTap(currentId, active ? active.lines.map((line) => line.text).filter(Boolean) : []));
   findBare.addEventListener('click', openFinder);
 
   document.addEventListener('visibilitychange', () => { if (document.hidden) flush(); });

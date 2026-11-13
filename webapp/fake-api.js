@@ -204,6 +204,11 @@ export function createApi() {
       lyricsState = { ...lyricsState, [id]: { status: 'found', synced: FAKE_LRC, offset_ms: 0 } };
       return copy(lyricsState[id]);
     },
+    async saveLyricsText(id, text) {
+      adminOnly();
+      lyricsState = { ...lyricsState, [id]: { status: 'found', synced: text.replace(/\r\n?/g, '\n').trim(), offset_ms: 0 } };
+      return copy(lyricsState[id]);
+    },
     async saveLyricsOffset(id, offsetMs) {
       adminOnly();
       const offset = Math.max(-LYRICS_OFFSET_LIMIT, Math.min(LYRICS_OFFSET_LIMIT, offsetMs));
