@@ -1,13 +1,12 @@
 // 배포 전에 실행한다: node scripts/stamp_webapp.mjs
 // GitHub Pages와 텔레그램은 파일을 10분쯤 캐시해서, 새 JS와 옛 CSS가 섞여 화면이 깨질 수 있다.
-// 각 화면(index.html, v2.html)의 CSS·JS 주소와 모듈 import map에 같은 버전 꼬리표를 붙여, 한 번에 모두 새로 받거나 모두 옛것을 쓰게 한다.
+// 화면(index.html)의 CSS·JS 주소와 모듈 import map에 같은 버전 꼬리표를 붙여, 한 번에 모두 새로 받거나 모두 옛것을 쓰게 한다.
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const dir = join(import.meta.dirname, '..', 'webapp');
 const PAGES = [
-  { html: 'index.html', css: ['app.css', 'noir.css'], js: 'app.js' },
-  { html: 'v2.html', css: ['v2.css'], js: 'v2.js' },
+  { html: 'index.html', css: ['app.css', 'noir.css', 'player.css'], js: 'app.js' },
 ];
 const version = Date.now().toString(36);
 

@@ -1,6 +1,5 @@
-// v2 화면 그리기. 래퍼런스의 커버·스펙트럼·파형 시크바·재생 목록을 실제 곡 값으로 칠한다. 글자는 모두 textContent로 넣는다.
+// 전체 플레이어 그리기 (v2 Noir 모양). 커버·스펙트럼·파형 시크바·버튼·볼륨을 실제 곡 값으로 칠한다. 글자는 모두 textContent로 넣는다.
 import { $ } from './dom.js';
-import { haptic } from './haptic.js';
 import { moodFor } from './ui-logic.js';
 import { coverUrl, formatTime, waveform } from './v2-logic.js';
 
@@ -65,7 +64,7 @@ function paintArt(node, id, media) {
 
 function createCover() {
   const cover = $('cover');
-  const ambient = $('ambient');
+  const ambient = $('player-glow');
   let shown = null;
   return (id, media) => {
     const key = `${id}|${media[id]?.video_id ?? ''}`;
@@ -198,94 +197,20 @@ function createSpectrum() {
   };
 }
 
-function trackRow({ id, index, title, current, playing, unplayable, media, hasMenu, selecting, selected, canDrag, outside }) {
-  const li = document.createElement('li');
-  li.dataset.id = String(id);
-  const item = document.createElement('button');
-  item.type = 'button';
-  item.className = 'item';
-  item.dataset.id = String(id);
-  item.dataset.act = 'play';
-  item.setAttribute('aria-current', String(current));
-  item.disabled = unplayable && !selecting;
-  item.classList.toggle('outside', outside);
-  if (selecting) item.setAttribute('aria-pressed', String(selected));
-  const idx = document.createElement('span');
-  idx.className = 'idx mono';
-  if (selecting) {
-    const check = document.createElement('span');
-    check.className = 'check';
-    idx.append(check);
-  } else if (current) {
-    const eq = document.createElement('span');
-    eq.className = 'eq';
-    eq.append(document.createElement('i'), document.createElement('i'), document.createElement('i'));
-    idx.append(eq);
-  } else {
-    idx.textContent = String(index + 1);
-  }
-  const thumb = document.createElement('span');
-  thumb.className = 'thumb';
-  paintArt(thumb, id, media);
-  const txt = document.createElement('span');
-  txt.className = 'txt';
-  const t = document.createElement('span');
-  t.className = 't';
-  t.textContent = title;
-  txt.append(t);
-  if (unplayable) {
-    const a = document.createElement('span');
-    a.className = 'a';
-    a.textContent = '재생할 수 없는 곡';
-    txt.append(a);
-  }
-  item.append(idx, thumb, txt);
-  const state = selecting ? '' : current ? (playing ? ', 재생 중' : ', 일시정지') : '';
-  item.setAttribute('aria-label', `${title}${state}`);
-  li.append(item);
-  if (canDrag) {
-    const grip = document.createElement('span');
-    grip.className = 'grip';
-    grip.setAttribute('role', 'img');
-    grip.setAttribute('aria-label', '끌어서 순서 바꾸기');
-    grip.append(icon('grip'));
-    li.append(grip);
-  }
-  if (hasMenu && !selecting) {
-    const more = document.createElement('button');
-    more.type = 'button';
-    more.className = 'more';
-    more.dataset.id = String(id);
-    more.dataset.act = 'menu';
-    more.setAttribute('aria-label', `${title} 메뉴`);
-    more.append(icon('more'));
-    li.append(more);
-  }
-  return li;
-}
-
-export function createView({ position, duration, onSeek, onPlayRow, onRowMenu, onFrame, onReorder }) {
-  const app = $('app');
+export function createPlayerView({ position, duration, onSeek }) {
+  const root = $('player');
   const paintCover = createCover();
   const paintScrub = createScrub({ duration, position, onSeek });
   const drawSpectrum = createSpectrum();
-  let barsFor = undefined;
+  let barsFor;
   let playing = false;
   let frame = 0;
 
-  for (const [id, name] of [['prev', 'prev'], ['next', 'next'], ['shuffle', 'shuffle'], ['lyrics', 'lyrics']]) setIcon($(id), name);
+  for (const name of ['prev', 'next', 'shuffle', 'lyrics']) setIcon($(name), name);
 
-  $('list').addEventListener('click', (e) => {
-    const button = e.target.closest('button[data-act]');
-    if (!button) return;
-    const id = Number(button.dataset.id);
-    if (button.dataset.act === 'menu') onRowMenu(id);
-    else onPlayRow(id);
-  });
-
+  // 재생 중이거나 스펙트럼이 아직 가라앉는 중일 때만 화면 새로 고침마다 칠한다.
   function tick(t) {
     paintScrub();
-    onFrame();
     const active = drawSpectrum(playing, t);
     frame = (playing || active) && !document.hidden ? requestAnimationFrame(tick) : 0;
   }
@@ -294,14 +219,10 @@ export function createView({ position, duration, onSeek, onPlayRow, onRowMenu, o
   };
   document.addEventListener('visibilitychange', wake);
 
-  function paintPlayer(s) {
+  function paint(s) {
     playing = s.playing;
-    app.classList.toggle('is-playing', s.playing);
-    app.classList.toggle('paused', !s.playing);
-    app.classList.toggle('is-loading', s.loading);
-    if ($('title').textContent !== s.title) $('title').textContent = s.title;
-    $('player-sub').textContent = s.sub;
-    document.title = s.id === null ? '플레이리스트 v2' : `${s.title} — ${s.sub}`;
+    root.classList.toggle('is-playing', s.playing);
+    root.classList.toggle('is-loading', s.loading);
     $('dur').textContent = s.loading ? '받는 중…' : formatTime(duration());
     paintCover(s.id, s.media);
     if (barsFor !== s.id) {
@@ -329,101 +250,6 @@ export function createView({ position, duration, onSeek, onPlayRow, onRowMenu, o
     wake();
   }
 
-  // 재생기는 1초에 몇 번씩 다시 그리라고 하므로, 목록은 바뀐 것이 있을 때만 새로 만든다.
-  let listKey = '';
-  let selected = new Set();
-  let dragging = false;
-  let carried = false; // 묶음으로 끌었는지. 끈 줄이 제자리여도 묶음은 모인다.
-  const list = $('list');
-  const rowOf = (id) => list.querySelector(`li[data-id="${id}"]`);
-
-  // 같이 고른 다른 줄을 접어 끄는 줄에 싣는다. 높이를 숫자로 박아 두어야 0으로 줄어드는 게 보인다.
-  function liftRiders(li) {
-    const id = Number(li.dataset.id);
-    if (!selected.has(id) || selected.size < 2) return;
-    carried = true;
-    const badge = document.createElement('span');
-    badge.className = 'ride-count mono';
-    badge.textContent = String(selected.size);
-    li.append(badge);
-    for (const other of selected) {
-      const row = other === id ? null : rowOf(other);
-      if (!row) continue;
-      row.style.height = `${row.offsetHeight}px`;
-      void row.offsetHeight;
-      row.classList.add('riding');
-      row.style.height = '';
-    }
-  }
-  function dropRiders() {
-    list.querySelectorAll('.ride-count').forEach((n) => n.remove());
-    list.querySelectorAll('li.riding').forEach((row) => row.classList.remove('riding'));
-  }
-
-  // 손잡이로만 끈다. 손가락·마우스 모두 같은 방식(forceFallback)이라 떠오르는 모양과 비켜나는 움직임이 같다.
-  const sortable = window.Sortable?.create(list, {
-    handle: '.grip',
-    animation: 220,
-    easing: 'cubic-bezier(.2,.8,.2,1)',
-    forceFallback: true,
-    ghostClass: 'drag-ghost',
-    chosenClass: 'drag-chosen',
-    fallbackClass: 'drag-flying',
-    onChoose: (e) => {
-      dragging = true;
-      carried = false;
-      haptic.tap();
-      liftRiders(e.item);
-    },
-    onUnchoose: () => {
-      // 끌지 않고 놓았으면 접은 줄을 펴고 다시 그린다.
-      dragging = false;
-      dropRiders();
-      listKey = '';
-    },
-    onEnd: (e) => {
-      dragging = false;
-      listKey = '';
-      if (e.oldIndex === e.newIndex && !carried) return dropRiders();
-      haptic.tick();
-      const domIds = [...list.children].map((li) => Number(li.dataset.id));
-      dropRiders();
-      return onReorder(domIds, Number(e.item.dataset.id));
-    },
-  });
-
-  function paintList(s) {
-    selected = s.selected;
-    if (dragging) return;
-    sortable?.option('disabled', !s.canReorder);
-    const key = [s.name, s.currentId, s.playing, [...s.unplayable].join(','), s.selecting, [...s.selected].join(','),
-      s.canReorder, (s.queue ?? []).join(','),
-      ...s.ids.map((id) => `${id}:${s.titles.get(id)}:${s.media[id]?.video_id ?? ''}:${s.hasMenu(id)}`)].join('\u0001');
-    if (key === listKey) return;
-    listKey = key;
-    $('list-name').textContent = s.name;
-    $('count').textContent = String(s.ids.length).padStart(2, '0');
-    $('empty').hidden = s.ids.length > 0;
-    $('list').replaceChildren(...s.ids.map((id, index) => trackRow({
-      id, index, title: s.titles.get(id) ?? '', current: id === s.currentId, playing: s.playing,
-      unplayable: s.unplayable.has(id), media: s.media, hasMenu: s.hasMenu(id),
-      selecting: s.selecting, selected: s.selected.has(id),
-      canDrag: s.canReorder, outside: Boolean(s.queue) && !s.queue.includes(id),
-    })));
-    $('list').closest('.queue').classList.toggle('selecting', s.selecting);
-    $('select').hidden = s.selecting || s.ids.length === 0;
-    $('pick').hidden = s.selecting;
-    $('bulk').hidden = !s.selecting;
-    const none = s.selected.size === 0;
-    $('bulk-count').textContent = `${s.selected.size}곡`;
-    $('bulk-play').disabled = none;
-    // 내 목록이면 옮기기(여기서는 빠짐), 공유받은 목록이면 담기(여기는 그대로).
-    $('bulk-add').textContent = s.canRemove ? '옮기기' : '담기';
-    $('bulk-add').disabled = none || !s.canAdd;
-    $('bulk-remove').hidden = !s.canRemove;
-    $('bulk-remove').disabled = none;
-  }
-
   function paintVolume({ value, enabled }) {
     $('mute').hidden = !enabled;
     $('vol').hidden = !enabled;
@@ -433,5 +259,5 @@ export function createView({ position, duration, onSeek, onPlayRow, onRowMenu, o
     $('mute').setAttribute('aria-label', value === 0 ? '음소거 해제' : '음소거');
   }
 
-  return { paintPlayer, paintList, paintVolume };
+  return { paint, paintVolume };
 }

@@ -2,6 +2,7 @@
 import { createApi } from './api.js';
 import { createPlayer } from './audio.js';
 import { createPlayerLyrics } from './player-lyrics.js';
+import { createPlayerView } from './player-view.js';
 import { API_BASE, FILE_BASE, IS_LOCAL, KEY_PLAYLIST, KEY_REPEAT, REPEAT_ORDER } from './config.js';
 import { COPY } from './copy.js';
 import { $ } from './dom.js';
@@ -9,7 +10,8 @@ import { embedUrl, startPlaylistId, watchUrl } from './lyrics-logic.js';
 import { haptic } from './haptic.js';
 import { askConfirm, askName, openListPicker, openMenu } from './menus.js';
 import { enableSheetDrag } from './sheet-drag.js';
-import { nextTrack, prevTrack } from './queue.js';
+import { prevTrack } from './queue.js';
+import { pickNext } from './v2-logic.js';
 import { createShell } from './shell.js';
 import { cleanName, cleanTitle, createActiveSender, createSaves, mergeOrder, readLocal, writeLocal } from './store.js';
 import { createConti } from './tab-conti.js';
@@ -21,8 +23,11 @@ import { createUsersAdmin } from './users-admin.js';
 import { initVolume } from './volume.js';
 import { attach as scrollTitle, initTitleScroll } from './title-scroll.js';
 
-const PLAYER_KEYS = '#mini-play, #play, #prev, #next, #repeat';
-const REPEAT_LABEL = { all: '전체 반복', one: '한 곡 반복', off: '반복 끔' };
+const PLAYER_KEYS = '#mini-play, #play, #prev, #next, #repeat, #shuffle, #lyrics';
+const KEY_SHUFFLE = 'loopbot.player.shuffle';
+const KEY_LYRICS = 'loopbot.player.lyrics';
+// 이만큼 지난 뒤 ⏮는 처음으로 돌린다.
+const RESTART_AFTER = 3;
 const NAME_MAX = 20;
 const TRACK_NAME_MAX = 200;
 const SURFACE = '#0a0a0b'; // noir.css 바탕과 같은 색 (텔레그램 위쪽 줄)
@@ -75,9 +80,14 @@ const playback = {
   repeat: 'all',
   unplayable: new Set(),
   failures: 0,
+  shuffle: readLocal(KEY_SHUFFLE) === '1',
+  lyricsOn: readLocal(KEY_LYRICS) === '1',
+  // 섞어 듣기 + 반복 끔일 때 한 바퀴를 다 돌았는지 본다.
+  played: new Set(),
 };
 let api;
 let player;
+let playerView;
 let lyrics;
 let usersAdmin;
 let shell;
@@ -147,11 +157,6 @@ function showFatal(text) {
   $('fatal').hidden = false;
 }
 
-function formatTime(seconds) {
-  const whole = Math.floor(Number.isFinite(seconds) ? seconds : 0);
-  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;
-}
-
 // 미니·전체 플레이어. 재생기가 바뀔 때마다(시간 포함) 부른다.
 // 매 틱마다 같은 글자를 다시 넣으면 흐르던 제목이 끊기니, 바뀔 때만 넣는다.
 function setText(id, text) {
@@ -162,7 +167,6 @@ function setText(id, text) {
 }
 
 // 재생기는 위치를 1초에 4번쯤만 알려 줘서 막대가 툭툭 끊겨 보인다. 재생 중에는 화면 새로 고침마다 막대만 다시 칠한다.
-let seekDragging = false;
 let progressFrame = 0;
 
 function paintProgress() {
@@ -170,13 +174,7 @@ function paintProgress() {
   const duration = player?.duration() ?? 0;
   const percent = `${duration > 0 ? (position / duration) * 100 : 0}%`;
   $('mini-prog').firstElementChild.style.width = percent;
-  const seek = $('seek');
-  seek.max = String(duration);
   lyrics?.tick(position);
-  if (!seekDragging) seek.value = String(position);
-  seek.style.setProperty('--progress', percent);
-  const now = formatTime(position);
-  if ($('t-now').textContent !== now) $('t-now').textContent = now;
 }
 
 function progressLoop() {
@@ -186,7 +184,6 @@ function progressLoop() {
 
 function renderPlayer() {
   const id = playback.currentTrackId;
-  const duration = player?.duration() ?? 0;
   const playing = player?.isPlaying() ?? false;
   const loading = player?.isLoading?.() ?? false;
   const title = id === null ? TEXT.noTrack : playback.currentTitle;
@@ -201,19 +198,13 @@ function renderPlayer() {
 
   setText('player-title', title);
   $('player-sub').textContent = sub;
-  $('player-art').style.background = artOf(id);
   lyrics?.show(id);
-  $('t-all').textContent = loading ? COPY.downloading : formatTime(duration);
   paintProgress();
   if (playing && !progressFrame) progressFrame = requestAnimationFrame(progressLoop);
-  $('play-icon').setAttribute('d', playing ? ICON_PAUSE : ICON_PLAY);
-  const play = $('play');
-  play.setAttribute('aria-label', playLabel);
-  play.setAttribute('aria-busy', String(loading));
-  const repeat = $('repeat');
-  repeat.dataset.mode = playback.repeat;
-  repeat.setAttribute('aria-label', REPEAT_LABEL[playback.repeat]);
-  repeat.classList.toggle('on', playback.repeat !== 'off');
+  playerView?.paint({
+    id, playing, loading, media: model.media,
+    repeat: playback.repeat, shuffle: playback.shuffle, lyricsOn: playback.lyricsOn,
+  });
   // 악보 보기는 묵상 탭이 보여 주는 목록 안의 곡에만 있다.
   $('player-sheet').hidden = id === null || !viewedIds().includes(id) || !(model.media[id]?.sheet_count > 0);
   const media = id === null ? null : model.media[id];
@@ -468,12 +459,15 @@ function onTrackMenu(id) {
 
 // ⏭·⏮는 한 곡 반복이어도 전체 반복처럼 움직인다.
 const computeNext = (manual) =>
-  nextTrack({
+  pickNext({
     trackIds: playingIds(),
     currentId: playback.currentTrackId,
     lastIndex: playback.lastIndex,
-    repeat: manual && playback.repeat === 'one' ? 'all' : playback.repeat,
+    repeat: playback.repeat,
     unplayable: playback.unplayable,
+    shuffle: playback.shuffle,
+    manual,
+    played: playback.played,
   });
 
 const computePrev = () =>
@@ -498,7 +492,8 @@ async function playCurrent() {
     playback.failures = 0;
     playback.loadedId = id;
     setNotice('play-notice', '');
-    const nextId = computeNext(false);
+    // 섞어 듣기면 다음 곡을 미리 알 수 없으니 받아 두지 않는다.
+    const nextId = playback.shuffle ? null : computeNext(false);
     if (nextId !== null && nextId !== id) player.prefetch(nextId);
   }
   renderAll();
@@ -509,6 +504,7 @@ function moveTo(id) {
   playback.playingPlaylistId ??= model.viewedId;
   playback.currentTrackId = id;
   playback.currentTitle = titleOf(id);
+  playback.played = new Set([...playback.played, id]);
   syncLastIndex();
   shell.setMood(id);
   renderAll();
@@ -546,7 +542,10 @@ function onPlayRow(id) {
   if (playback.unplayable.has(id)) return;
   // 영상이 열려 있으면 닫고 그 곡을 튼다.
   closeVideo();
-  playback.playingPlaylistId = viewedIds().includes(id) ? model.viewedId : LIBRARY_QUEUE;
+  const listId = viewedIds().includes(id) ? model.viewedId : LIBRARY_QUEUE;
+  // 다른 목록으로 넘어가면 섞어 듣기 한 바퀴를 새로 센다.
+  if (listId !== playback.playingPlaylistId) playback.played = new Set();
+  playback.playingPlaylistId = listId;
   userMove(id);
 }
 
@@ -556,6 +555,25 @@ function onPlayPause() {
   if (playback.currentTrackId !== playback.loadedId) return userMove(playback.currentTrackId);
   player.toggle();
   return undefined;
+}
+
+// 3초 넘게 들었으면 처음으로, 아니면 이전 곡으로.
+function onPrev() {
+  if ((player.position() ?? 0) > RESTART_AFTER) return player.seek(0);
+  return userMove(computePrev());
+}
+
+function onShuffle() {
+  playback.shuffle = !playback.shuffle;
+  playback.played = new Set(playback.currentTrackId === null ? [] : [playback.currentTrackId]);
+  writeLocal(KEY_SHUFFLE, playback.shuffle ? '1' : '0');
+  renderPlayer();
+}
+
+function onLyrics() {
+  playback.lyricsOn = !playback.lyricsOn;
+  writeLocal(KEY_LYRICS, playback.lyricsOn ? '1' : '0');
+  renderPlayer();
 }
 
 function onRepeat() {
@@ -711,7 +729,6 @@ function wireSettings() {
   // 사용자 관리 창은 users-admin.js가 연다. 설정 창은 겹치지 않게 닫는다.
   $('settings-users').addEventListener('click', () => dialog.close());
   // 같은 웹뷰 안에서 옮겨 가므로 텔레그램 로그인 정보(sessionStorage)가 그대로 따라간다.
-  $('settings-v2').addEventListener('click', () => { location.href = 'v2.html'; });
   dialog.addEventListener('click', (event) => {
     if (event.target === dialog) dialog.close();
   });
@@ -720,16 +737,12 @@ function wireSettings() {
 function wireControls() {
   $('mini-play').addEventListener('click', onPlayPause);
   $('mini-next').addEventListener('click', () => userMove(computeNext(true)));
-  $('prev').addEventListener('click', () => userMove(computePrev()));
+  $('prev').addEventListener('click', onPrev);
   $('play').addEventListener('click', onPlayPause);
   $('next').addEventListener('click', () => userMove(computeNext(true)));
   $('repeat').addEventListener('click', onRepeat);
-  $('seek').addEventListener('input', (e) => {
-    seekDragging = true;
-    player.seek(Number(e.target.value));
-  });
-  $('seek').addEventListener('change', () => { seekDragging = false; });
-  $('seek').addEventListener('pointerup', () => { seekDragging = false; });
+  $('shuffle').addEventListener('click', onShuffle);
+  $('lyrics').addEventListener('click', onLyrics);
   $('player-sheet').addEventListener('click', onOpenSheet);
   $('video-open').addEventListener('click', openVideo);
   $('video-close').addEventListener('click', closeVideo);
@@ -751,7 +764,7 @@ async function init() {
     onChange: renderPlayer,
     onTrackEnd: onTrackEnded,
     onError: onTrackFailed,
-    onSkip: (dir) => (dir === 'next' ? userMove(computeNext(true)) : userMove(computePrev())),
+    onSkip: (dir) => (dir === 'next' ? userMove(computeNext(true)) : onPrev()),
   });
   lyrics = createPlayerLyrics({
     api,
@@ -759,7 +772,12 @@ async function init() {
     canEdit: () => model.isAdmin && model.library.some((t) => t.id === playback.currentTrackId),
     onError: reportError,
   });
-  initVolume(player);
+  playerView = createPlayerView({
+    position: () => player.position(),
+    duration: () => player.duration(),
+    onSeek: (sec) => player.seek(sec),
+  });
+  initVolume(player, playerView);
   usersAdmin = createUsersAdmin({ api });
   shell = createShell();
   conti = createConti({
