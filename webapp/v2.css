@@ -35,12 +35,7 @@ svg { display: block; }
 .player { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 22px; padding: 22px; }
 @media (min-width: 880px) { .player { padding: 28px; } }
 
-.topbar { display: flex; justify-content: space-between; align-items: center; font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
-.live { display: flex; align-items: center; gap: 8px; }
-.live i { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); transition: background .3s; }
-.is-playing .live i { background: var(--accent); box-shadow: 0 0 10px var(--accent); }
-.is-loading .live i { animation: blink 1s ease-in-out infinite; }
-@keyframes blink { 50% { opacity: .25; } }
+.topbar { display: flex; justify-content: flex-end; align-items: center; font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
 .back { color: var(--muted); text-decoration: none; letter-spacing: .08em; padding: 6px 2px; }
 .back:hover { color: var(--text); }
 

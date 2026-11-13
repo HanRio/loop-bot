@@ -281,7 +281,6 @@ export function createView({ position, duration, onSeek, onPlayRow, onRowMenu, o
     app.classList.toggle('is-playing', s.playing);
     app.classList.toggle('paused', !s.playing);
     app.classList.toggle('is-loading', s.loading);
-    $('status').textContent = s.loading ? '받는 중' : s.id === null ? '대기 중' : s.playing ? '재생 중' : '일시정지';
     if ($('title').textContent !== s.title) $('title').textContent = s.title;
     $('player-sub').textContent = s.sub;
     document.title = s.id === null ? '플레이리스트 v2' : `${s.title} — ${s.sub}`;
