@@ -57,7 +57,7 @@ function podium(items, top) {
     col.classList.toggle('me', item.is_me);
     const c = el('span', 'c');
     countUp(c, item.count);
-    const pillar = el('div', 'pillar glass');
+    const pillar = el('div', 'pillar');
     pillar.style.setProperty('--h', String(Math.max(0.45, item.count / top)));
     pillar.append(el('span', 'n', String(i + 1)));
     col.append(el('b', null, item.name), c, pillar);
