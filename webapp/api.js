@@ -100,6 +100,10 @@ export function createApi(baseUrl, initData, fileBase = null) {
     saveNote: async (id, body) => {
       await request('PUT', `/tracks/${id}/note`, { body });
     },
+    // 끝까지 들은 재생 1회. 같은 키는 서버가 한 번만 센다. 응답은 {track_id, count}.
+    recordPlay: (trackId, playKey) => json('POST', '/plays', { track_id: trackId, play_key: playKey }),
+    // period는 'week' 또는 'month'. 응답은 {mine, tracks, users}.
+    ranking: (period) => json('GET', `/ranking?period=${period}`),
     // 관리자만 쓴다. 텔레그램 아이디 목록.
     listUsernames: () => json('GET', '/admin/usernames'),
     addUsername: (username) => json('POST', '/admin/usernames', { username }),

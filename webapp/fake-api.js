@@ -84,9 +84,38 @@ export function createApi() {
     if (MEMBER) throw new ApiError('forbidden', 403);
   };
 
+  // 끝까지 들은 재생. 시험용으로 미리 몇 개 넣어 둔다. ?plays=0 이면 비어서 시작한다.
+  const DAY_MS = 86400000;
+  let plays = params.get('plays') === '0' ? [] : [
+    { id: 1, key: 's1', at: Date.now() - DAY_MS }, { id: 1, key: 's2', at: Date.now() - 2 * DAY_MS },
+    { id: 3, key: 's3', at: Date.now() - 20 * DAY_MS },
+  ];
+  const others = params.get('plays') === '0' ? [] : [{ name: '다윗', week: 9, month: 31 }, { name: '요셉', week: 2, month: 3 }];
+  const countOf = (id) => plays.filter((p) => p.id === id).length;
+  const topTracks = (rows) => {
+    const counts = new Map();
+    for (const row of rows) counts.set(row.id, (counts.get(row.id) ?? 0) + 1);
+    return [...counts].sort((a, b) => b[1] - a[1]).slice(0, 10)
+      .map(([id, count]) => ({ track_id: id, title: library.find((t) => t.id === id)?.title ?? '', count }));
+  };
+
   return {
+    async recordPlay(trackId, playKey) {
+      if (!plays.some((p) => p.key === playKey)) plays = [...plays, { id: trackId, key: playKey, at: Date.now() }];
+      return { track_id: trackId, count: countOf(trackId) };
+    },
+    async ranking(period) {
+      const since = Date.now() - (period === 'week' ? 7 : 31) * DAY_MS;
+      const recent = plays.filter((p) => p.at >= since);
+      const sharedIds = new Set(playlists.filter((p) => p.shared).flatMap((p) => p.track_ids));
+      const users = [...others.map((o) => ({ name: o.name, count: o[period], is_me: false })),
+        ...(recent.length ? [{ name: '한리오', count: recent.length, is_me: true }] : [])]
+        .filter((u) => u.count > 0).sort((a, b) => b.count - a.count);
+      return { period, mine: topTracks(recent), tracks: topTracks(recent.filter((p) => sharedIds.has(p.id))), users };
+    },
     async state() {
       return copy({
+        play_counts: Object.fromEntries(library.map((t) => [t.id, countOf(t.id)]).filter(([, n]) => n > 0)),
         library,
         playlists,
         active_id: activeId,

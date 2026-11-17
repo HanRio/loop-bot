@@ -657,3 +657,11 @@ button:active:not(:disabled) { transform: scale(.94); transition: transform 90ms
 @keyframes row-eq { 0%, 100% { transform: scaleY(.3); } 50% { transform: scaleY(1); } }
 /* 탭 바는 좌우로 밀어서 고를 수 있다. 브라우저가 그 손짓을 스크롤로 가져가지 않게 한다. */
 .tabs { touch-action: none; }
+
+/* 랭킹 탭: 순위 번호는 콘티 줄 번호와 같은 글꼴, 오른쪽에 횟수 */
+#tab-ranking .seg { margin: 4px 0 6px; }
+#tab-ranking .row { cursor: default; }
+#tab-ranking .row:active { transform: none; background: none; }
+#tab-ranking .row .n { width: 22px; flex: none; text-align: center; font-family: "Geist Mono", ui-monospace, monospace; font-size: 12px; }
+#tab-ranking .row .c { flex: none; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+#tab-ranking .row.me .t b { font-weight: 700; }

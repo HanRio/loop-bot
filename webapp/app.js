@@ -18,6 +18,8 @@ import { createConti } from './tab-conti.js';
 import { createLibrary } from './tab-library.js';
 import { createMeditate } from './tab-meditate.js';
 import { createPractice } from './tab-practice.js';
+import { createRanking } from './tab-ranking.js';
+import { createPlayCounter } from './play-count.js';
 import { moodFor } from './ui-logic.js';
 import { createUsersAdmin } from './users-admin.js';
 import { initVolume } from './volume.js';
@@ -69,6 +71,8 @@ const model = {
   sharedTracks: [],
   media: {},
   notes: {},
+  // 내가 곡별로 끝까지 들은 횟수(서버 기준 + 보내는 중인 것).
+  playCounts: {},
   isAdmin: false,
 };
 const playback = {
@@ -106,6 +110,8 @@ let conti;
 let library;
 let meditate;
 let practice;
+let ranking;
+let playCounter;
 // 지우는 중인 플레이리스트는 편집을 받지 않는다.
 let deletingId = null;
 let refreshSeq = 0;
@@ -210,7 +216,8 @@ function renderPlayer() {
   $('app').classList.toggle('is-playing', playing);
 
   setText('player-title', title);
-  $('player-sub').textContent = sub;
+  const plays = id === null ? 0 : model.playCounts[id] ?? 0;
+  $('player-sub').textContent = plays > 0 ? `${sub} · ▶ ${plays}회` : sub;
   lyrics?.show(id);
   paintProgress();
   if (playing && !progressFrame) progressFrame = requestAnimationFrame(progressLoop);
@@ -630,6 +637,8 @@ function stopPlayback(message) {
 
 async function playCurrent() {
   const id = playback.currentTrackId;
+  // 반복이나 다시 누르기로 처음부터 트는 것도 새 재생 1회다.
+  playCounter.restart();
   const started = await player.play({ id, title: playback.currentTitle });
   if (started) {
     playback.failures = 0;
@@ -843,6 +852,7 @@ function applyState(state) {
   model.sharedTracks = state.shared_tracks;
   model.media = state.media;
   model.notes = state.notes;
+  model.playCounts = { ...(state.play_counts ?? {}) };
   model.isAdmin = state.is_admin;
   usersAdmin.setVisible(state.is_admin, state.is_owner);
 }
@@ -909,6 +919,57 @@ function wireControls() {
   });
 }
 
+// 재생 횟수: 실제로 들은 시간을 재고, 99%에 닿으면 서버에 1회를 보낸다.
+// 보내기 전에 localStorage에 적어 둬서, 실패하거나 앱을 닫아도 다음에 다시 보낸다. 같은 키는 서버가 한 번만 센다.
+const RANKING_TAB = 4;
+const KEY_PENDING_PLAYS = 'loopbot.plays.pending';
+
+function samplePlay() {
+  const id = playback.loadedId;
+  if (!playCounter || id === null || id === undefined) return;
+  if (player.isPlaying() && !player.isLoading?.()) playCounter.sample(id, player.position(), player.duration(), performance.now());
+  else playCounter.pause();
+}
+
+function pendingPlays() {
+  try {
+    const list = JSON.parse(readLocal(KEY_PENDING_PLAYS) ?? '[]');
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
+
+function onPlayCounted(trackId) {
+  const key = crypto.randomUUID();
+  writeLocal(KEY_PENDING_PLAYS, JSON.stringify([...pendingPlays(), { track_id: trackId, play_key: key }]));
+  // 서버 답을 기다리지 않고 바로 올린다.
+  model.playCounts = { ...model.playCounts, [trackId]: (model.playCounts[trackId] ?? 0) + 1 };
+  renderPlayer();
+  sendPendingPlays();
+}
+
+let sendingPlays = false;
+async function sendPendingPlays() {
+  if (sendingPlays) return;
+  sendingPlays = true;
+  try {
+    for (const play of pendingPlays()) {
+      try {
+        const { count } = await api.recordPlay(play.track_id, play.play_key);
+        model.playCounts = { ...model.playCounts, [play.track_id]: count };
+      } catch (err) {
+        // 4xx(지운 곡, 잘못된 값)는 다시 보내도 같다. 버린다. 나머지는 다음에 다시.
+        if (!(err.status >= 400 && err.status < 500) || err.code === 'expired') break;
+      }
+      writeLocal(KEY_PENDING_PLAYS, JSON.stringify(pendingPlays().filter((p) => p.play_key !== play.play_key)));
+    }
+  } finally {
+    sendingPlays = false;
+  }
+  renderPlayer();
+}
+
 async function init() {
   const initData = tg?.initData ?? '';
   if (!IS_LOCAL && !initData) return showFatal(COPY.openFromMenu);
@@ -917,7 +978,10 @@ async function init() {
   api = makeApi(API_BASE, initData, FILE_BASE);
   player = createPlayer({
     api,
-    onChange: renderPlayer,
+    onChange: () => {
+      samplePlay();
+      renderPlayer();
+    },
     onTrackEnd: onTrackEnded,
     onError: onTrackFailed,
     onSkip: (dir) => (dir === 'next' ? userMove(computeNext(true)) : onPrev()),
@@ -936,7 +1000,12 @@ async function init() {
   initVolume(player, playerView);
   usersAdmin = createUsersAdmin({ api });
   // 다른 탭으로 가면 라이브러리 곡 메뉴는 닫는다.
-  shell = createShell({ onTab: (at) => { if (at !== 1) closeSongBar(); } });
+  shell = createShell({
+    onTab: (at) => {
+      if (at !== 1) closeSongBar();
+      if (at === RANKING_TAB) ranking.load();
+    },
+  });
   conti = createConti({
     // 선택 중이면 누른 곡을 고르거나 푼다.
     onPlay: (id) => (selection.on ? toggleSelected(id) : onPlayRow(id)),
@@ -961,6 +1030,8 @@ async function init() {
   scrollTitle($('player-title'));
   meditate = createMeditate({ api, onError: reportError, onMediaChange });
   practice = createPractice({ player });
+  ranking = createRanking({ api });
+  playCounter = createPlayCounter({ onCount: onPlayCounted });
   buildVideoForm();
 
   let state;
@@ -985,6 +1056,7 @@ async function init() {
   $('app').hidden = false;
   shell.setMood(viewedIds()[0] ?? 0);
   renderAll();
+  sendPendingPlays();
   wireSettings();
   wireControls();
   return undefined;

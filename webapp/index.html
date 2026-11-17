@@ -8,10 +8,10 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&family=Noto+Sans+KR:wght@400;500;600;700&display=swap">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.6/Sortable.min.js"></script>
-<link rel="stylesheet" href="app.css?v=mwepp0s4">
-<link rel="stylesheet" href="noir.css?v=mwepp0s4">
-<link rel="stylesheet" href="player.css?v=mwepp0s4">
-<script type="importmap">{"imports":{"./api.js":"./api.js?v=mwepp0s4","./app.js":"./app.js?v=mwepp0s4","./audio.js":"./audio.js?v=mwepp0s4","./config.js":"./config.js?v=mwepp0s4","./copy.js":"./copy.js?v=mwepp0s4","./dom.js":"./dom.js?v=mwepp0s4","./fake-api.js":"./fake-api.js?v=mwepp0s4","./gesture-logic.js":"./gesture-logic.js?v=mwepp0s4","./haptic.js":"./haptic.js?v=mwepp0s4","./lrc.js":"./lrc.js?v=mwepp0s4","./lyrics-entry.js":"./lyrics-entry.js?v=mwepp0s4","./lyrics-logic.js":"./lyrics-logic.js?v=mwepp0s4","./menus.js":"./menus.js?v=mwepp0s4","./note-actions.js":"./note-actions.js?v=mwepp0s4","./note-export.js":"./note-export.js?v=mwepp0s4","./player-lyrics.js":"./player-lyrics.js?v=mwepp0s4","./player-view.js":"./player-view.js?v=mwepp0s4","./queue.js":"./queue.js?v=mwepp0s4","./saver.js":"./saver.js?v=mwepp0s4","./sheet-drag.js":"./sheet-drag.js?v=mwepp0s4","./shell.js":"./shell.js?v=mwepp0s4","./store.js":"./store.js?v=mwepp0s4","./swipe-row.js":"./swipe-row.js?v=mwepp0s4","./tab-conti.js":"./tab-conti.js?v=mwepp0s4","./tab-library.js":"./tab-library.js?v=mwepp0s4","./tab-meditate.js":"./tab-meditate.js?v=mwepp0s4","./tab-practice.js":"./tab-practice.js?v=mwepp0s4","./title-scroll.js":"./title-scroll.js?v=mwepp0s4","./ui-logic.js":"./ui-logic.js?v=mwepp0s4","./users-admin.js":"./users-admin.js?v=mwepp0s4","./users-logic.js":"./users-logic.js?v=mwepp0s4","./v2-logic.js":"./v2-logic.js?v=mwepp0s4","./volume.js":"./volume.js?v=mwepp0s4"}}</script>
+<link rel="stylesheet" href="app.css?v=mwkdy2iv">
+<link rel="stylesheet" href="noir.css?v=mwkdy2iv">
+<link rel="stylesheet" href="player.css?v=mwkdy2iv">
+<script type="importmap">{"imports":{"./api.js":"./api.js?v=mwkdy2iv","./app.js":"./app.js?v=mwkdy2iv","./audio.js":"./audio.js?v=mwkdy2iv","./config.js":"./config.js?v=mwkdy2iv","./copy.js":"./copy.js?v=mwkdy2iv","./dom.js":"./dom.js?v=mwkdy2iv","./fake-api.js":"./fake-api.js?v=mwkdy2iv","./gesture-logic.js":"./gesture-logic.js?v=mwkdy2iv","./haptic.js":"./haptic.js?v=mwkdy2iv","./lrc.js":"./lrc.js?v=mwkdy2iv","./lyrics-entry.js":"./lyrics-entry.js?v=mwkdy2iv","./lyrics-logic.js":"./lyrics-logic.js?v=mwkdy2iv","./menus.js":"./menus.js?v=mwkdy2iv","./note-actions.js":"./note-actions.js?v=mwkdy2iv","./note-export.js":"./note-export.js?v=mwkdy2iv","./play-count.js":"./play-count.js?v=mwkdy2iv","./player-lyrics.js":"./player-lyrics.js?v=mwkdy2iv","./player-view.js":"./player-view.js?v=mwkdy2iv","./queue.js":"./queue.js?v=mwkdy2iv","./saver.js":"./saver.js?v=mwkdy2iv","./sheet-drag.js":"./sheet-drag.js?v=mwkdy2iv","./shell.js":"./shell.js?v=mwkdy2iv","./store.js":"./store.js?v=mwkdy2iv","./swipe-row.js":"./swipe-row.js?v=mwkdy2iv","./tab-conti.js":"./tab-conti.js?v=mwkdy2iv","./tab-library.js":"./tab-library.js?v=mwkdy2iv","./tab-meditate.js":"./tab-meditate.js?v=mwkdy2iv","./tab-practice.js":"./tab-practice.js?v=mwkdy2iv","./tab-ranking.js":"./tab-ranking.js?v=mwkdy2iv","./title-scroll.js":"./title-scroll.js?v=mwkdy2iv","./ui-logic.js":"./ui-logic.js?v=mwkdy2iv","./users-admin.js":"./users-admin.js?v=mwkdy2iv","./users-logic.js":"./users-logic.js?v=mwkdy2iv","./v2-logic.js":"./v2-logic.js?v=mwkdy2iv","./volume.js":"./volume.js?v=mwkdy2iv"}}</script>
 </head>
 <body ontouchstart="">
 <p id="fatal" class="empty" hidden></p>
@@ -42,6 +42,7 @@
     <section class="pane" id="tab-library" aria-label="라이브러리"></section>
     <section class="pane" id="tab-meditate" aria-label="묵상"></section>
     <section class="pane" id="tab-practice" aria-label="연습"></section>
+    <section class="pane" id="tab-ranking" aria-label="랭킹"></section>
   </div>
 
   <div id="dock" class="dock">
@@ -68,6 +69,7 @@
       <button class="tab" type="button" data-tab="1"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4v16M9 4v16M13 5l5 14"/></svg>라이브러리</button>
       <button class="tab" type="button" data-tab="2"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6c-2-1.5-5-2-8-1.5v14c3-.5 6 0 8 1.5 2-1.5 5-2 8-1.5v-14c-3-.5-6 0-8 1.5zM12 6v14"/></svg>묵상</button>
       <button class="tab" type="button" data-tab="3"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4a8 8 0 100 16 8 8 0 000-16zM12 9a3 3 0 100 6 3 3 0 000-6z"/></svg>연습</button>
+      <button class="tab" type="button" data-tab="4"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20v-6M12 20V5M19 20v-9"/></svg>랭킹</button>
     </nav>
   </div>
 
@@ -162,6 +164,6 @@
   <p id="users-empty" class="empty" hidden></p>
   <div class="buttons"><button id="users-close" type="button"></button></div>
 </dialog>
-<script type="module" src="app.js?v=mwepp0s4"></script>
+<script type="module" src="app.js?v=mwkdy2iv"></script>
 </body>
 </html>
