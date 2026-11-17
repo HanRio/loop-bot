@@ -665,3 +665,7 @@ button:active:not(:disabled) { transform: scale(.94); transition: transform 90ms
 #tab-ranking .row .n { width: 22px; flex: none; text-align: center; font-family: "Geist Mono", ui-monospace, monospace; font-size: 12px; }
 #tab-ranking .row .c { flex: none; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
 #tab-ranking .row.me .t b { font-weight: 700; }
+
+/* 연습 탭 속도: 제목 오른쪽에 지금 속도 */
+.speed-head { display: flex; align-items: baseline; justify-content: space-between; }
+.speed-value { font-family: "Geist Mono", ui-monospace, monospace; font-size: 13px; font-weight: 500; }

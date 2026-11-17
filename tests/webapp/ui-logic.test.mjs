@@ -7,7 +7,7 @@ import {
   indicatorX,
   loopCheck,
   meditateTrack,
-  SPEEDS,
+  SPEED,
 } from '../../webapp/ui-logic.js';
 
 test('MOOD_PALETTES has five palettes of three colors copied from the prototype', () => {
@@ -85,6 +85,6 @@ test('meditateTrack returns null for an empty list', () => {
   assert.equal(meditateTrack({ chosenId: 1, currentId: 1, trackIds: [] }), null);
 });
 
-test('SPEEDS lists the four playback speeds', () => {
-  assert.deepEqual(SPEEDS, [0.75, 0.9, 1, 1.1]);
+test('SPEED slider runs from 0.5x to 1.2x', () => {
+  assert.deepEqual(SPEED, { min: 0.5, max: 1.2, step: 0.05 });
 });

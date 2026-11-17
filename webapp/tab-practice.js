@@ -1,6 +1,6 @@
 // 연습 탭: 재생 속도와 구간 반복(A·B). 재생기는 위치 변화 이벤트를 밖으로 내주지 않아 주기적으로 위치를 본다.
 import { $ } from './dom.js';
-import { SPEEDS, loopCheck } from './ui-logic.js';
+import { SPEED, loopCheck } from './ui-logic.js';
 
 const KICKER = '곡의 어려운 부분을 나눠 익혀요';
 // 재생기의 timeupdate와 비슷한 간격. 구간 끝에서 조금 늦게 돌아갈 수 있다.
@@ -11,7 +11,7 @@ const mmss = (sec) => {
   const s = Math.floor(sec);
   return `${pad(Math.floor(s / 60))}:${pad(s % 60)}`;
 };
-const speedLabel = (speed) => (speed === 1 ? '1.0x' : `${speed}x`);
+const speedLabel = (speed) => `${speed.toFixed(2)}x`;
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -33,17 +33,26 @@ export function createPractice({ player }) {
   let loop = { a: null, b: null };
   let trackId;
 
-  const speedButtons = SPEEDS.map((speed) => button(speedLabel(speed), () => {
-    player.setRate(speed);
+  // 속도 막대. 구간 막대와 같은 모양이고, 진한 부분이 지금 속도다.
+  const speedBar = el('input', 'loopbar');
+  speedBar.type = 'range';
+  speedBar.min = String(SPEED.min);
+  speedBar.max = String(SPEED.max);
+  speedBar.step = String(SPEED.step);
+  speedBar.setAttribute('aria-label', '재생 속도');
+  const speedValue = el('b', 'speed-value');
+  speedBar.addEventListener('input', () => {
+    player.setRate(Number(speedBar.value));
     paintSpeed();
-  }));
+  });
   const status = el('p', 'note');
 
   function paintSpeed() {
-    const current = player.rate();
-    speedButtons.forEach((node, i) => {
-      node.setAttribute('aria-pressed', String(Math.abs(SPEEDS[i] - current) < 0.001));
-    });
+    const current = Math.min(SPEED.max, Math.max(SPEED.min, player.rate()));
+    speedBar.value = String(current);
+    speedBar.setAttribute('aria-valuetext', speedLabel(current));
+    speedBar.style.setProperty('--progress', `${((current - SPEED.min) / (SPEED.max - SPEED.min)) * 100}%`);
+    speedValue.textContent = speedLabel(current);
   }
 
   function paintStatus(position) {
@@ -98,15 +107,13 @@ export function createPractice({ player }) {
     paintStatus(back);
   }
 
-  const speedRow = el('div', 'seg speed');
-  speedRow.setAttribute('role', 'group');
-  speedRow.setAttribute('aria-label', '재생 속도');
-  speedRow.append(...speedButtons);
+  const speedHead = el('div', 'speed-head');
+  speedHead.append(el('h2', '', '속도'), speedValue);
   const speedPanel = el('section', 'panel glass');
   speedPanel.append(
-    el('h2', '', '속도'),
+    speedHead,
     el('p', '', '느리게 들으며 박자와 가사를 익혀요.'),
-    speedRow,
+    speedBar,
   );
 
   const loopPanel = el('section', 'panel glass');

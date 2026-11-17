@@ -1,5 +1,4 @@
 // 라이브러리 탭: 검색, 내 목록과 공유받은 목록 칸, 모든 곡 줄. 글자는 모두 textContent로 넣는다.
-import { moodFor } from './ui-logic.js';
 import { $ } from './dom.js';
 import { icon, iconButton, pressable } from './menus.js';
 import { swipeable } from './swipe-row.js';
@@ -7,12 +6,6 @@ import { swipeable } from './swipe-row.js';
 const NO_TRACK_TEXT = '아직 곡이 없어요.';
 const NO_MATCH_TEXT = '찾는 곡이 없어요.';
 const UNPLAYABLE_TEXT = '채팅 재생만 가능';
-
-// 목록 칸과 곡 줄의 색. conti 탭과 같은 규칙이다.
-const art = (id) => {
-  const [first, , third] = moodFor(id);
-  return `linear-gradient(150deg, ${first}, ${third})`;
-};
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -69,8 +62,9 @@ export function createLibrary({ onPick, onOpenList, onNewList, onTrackMenu, onDe
   function playlistCard(playlist) {
     const button = el('button', 'new');
     button.type = 'button';
-    const cover = el('span', 'cv');
-    cover.style.background = art(playlist.id);
+    // 곡 색 대신 새 목록 칸과 같은 유리 칸에 음표만 둔다.
+    const cover = el('span', 'cv glass');
+    cover.append(icon('note'));
     button.append(cover, playlist.name, document.createElement('br'), el('small', null, `${playlist.track_ids.length}곡`));
     button.addEventListener('click', () => onOpenList(playlist.id));
     return button;

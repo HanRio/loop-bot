@@ -9,7 +9,8 @@ export const MOOD_PALETTES = [
   ['#C3BDEB', '#E2DEF5', '#A9C4EE'],
 ];
 
-export const SPEEDS = [0.75, 0.9, 1, 1.1];
+// 연습 탭 속도 막대의 범위와 칸.
+export const SPEED = { min: 0.5, max: 1.2, step: 0.05 };
 
 export function moodFor(trackId) {
   return MOOD_PALETTES[Math.abs(trackId) % MOOD_PALETTES.length];
