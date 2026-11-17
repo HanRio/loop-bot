@@ -47,8 +47,10 @@ function rankRow(rank, title, count, top, isMe = false) {
   return li;
 }
 
-// 1~3위 시상대. 2위-1위-3위 순서로 세우고, 기둥 높이는 1위 대비 비율이다.
-function podium(items, top) {
+// 1~3위 시상대. 2위-1위-3위 순서로 세우고, 기둥 높이는 순위마다 한 단씩 낮다(횟수가 같아도 단은 다르다).
+const PODIUM_HEIGHTS = [1, 0.74, 0.54];
+
+function podium(items) {
   const box = el('li', 'podium');
   const order = [1, 0, 2].filter((i) => i < items.length);
   box.append(...order.map((i) => {
@@ -58,7 +60,7 @@ function podium(items, top) {
     const c = el('span', 'c');
     countUp(c, item.count);
     const pillar = el('div', 'pillar');
-    pillar.style.setProperty('--h', String(Math.max(0.45, item.count / top)));
+    pillar.style.setProperty('--h', String(PODIUM_HEIGHTS[i]));
     pillar.append(el('span', 'n', String(i + 1)));
     col.append(el('b', null, item.name), c, pillar);
     return col;
@@ -106,7 +108,7 @@ export function createRanking({ api }) {
       const top = items[0]?.count ?? 1;
       if (s.key === 'users') {
         const named = items.map((u) => ({ ...u, name: u.is_me ? `${u.name} (나)` : u.name }));
-        s.list.replaceChildren(...(named.length ? [podium(named.slice(0, 3), top)] : []),
+        s.list.replaceChildren(...(named.length ? [podium(named.slice(0, 3))] : []),
           ...named.slice(3).map((u, i) => rankRow(i + 4, u.name, u.count, top, u.is_me)));
       } else {
         s.list.replaceChildren(...items.map((item, i) => rankRow(i + 1, item.title, item.count, top)));
