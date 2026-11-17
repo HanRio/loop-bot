@@ -43,20 +43,20 @@ Deno.test("returns the signed auth_date with the user", async () => {
 Deno.test("returns the username when the signed user has one", async () => {
   const initData = await sign(fieldsFor({ id: USER_ID, username: "Some_User" }, NOW - 60));
 
-  assertEquals(await verifyInitData(initData, BOT_TOKEN, NOW), { id: USER_ID, username: "Some_User", authDate: NOW - 60 });
+  assertEquals(await verifyInitData(initData, BOT_TOKEN, NOW), { id: USER_ID, username: "Some_User", name: null, authDate: NOW - 60 });
 });
 
 Deno.test("returns a null username when the user has none", async () => {
   const initData = await sign(fieldsFor({ id: USER_ID }, NOW - 60));
 
-  assertEquals(await verifyInitData(initData, BOT_TOKEN, NOW), { id: USER_ID, username: null, authDate: NOW - 60 });
+  assertEquals(await verifyInitData(initData, BOT_TOKEN, NOW), { id: USER_ID, username: null, name: null, authDate: NOW - 60 });
 });
 
 Deno.test("treats a non-string or empty username as absent", async () => {
   for (const username of [123, "", null]) {
     const initData = await sign(fieldsFor({ id: USER_ID, username }, NOW - 60));
 
-    assertEquals(await verifyInitData(initData, BOT_TOKEN, NOW), { id: USER_ID, username: null, authDate: NOW - 60 });
+    assertEquals(await verifyInitData(initData, BOT_TOKEN, NOW), { id: USER_ID, username: null, name: null, authDate: NOW - 60 });
   }
 });
 
@@ -122,4 +122,14 @@ Deno.test("accepts the published Telegram docs sample", async () => {
     "query_id=AAHdF6IQAAAAAN0XohDhrOrc&user=%7B%22id%22%3A279058397%2C%22first_name%22%3A%22Vladislav%22%2C%22last_name%22%3A%22Kibenko%22%2C%22username%22%3A%22vdkfrost%22%2C%22language_code%22%3A%22ru%22%2C%22is_premium%22%3Atrue%7D&auth_date=1662771648&hash=c501b71e775f74ce10e377dea85a7ea24ecd640b223ea86dfe453e0eaed2e2b2";
 
   assertEquals((await verifyInitData(initData, token, 1662771700))?.id, 279058397);
+});
+
+Deno.test("returns the Telegram profile name, first and last joined, capped at 32 characters", async () => {
+  const user = { id: USER_ID, first_name: "  한리오", last_name: "김 " };
+  const initData = await sign([["auth_date", String(NOW - 60)], ["user", JSON.stringify(user)]]);
+  assertEquals((await verifyInitData(initData, BOT_TOKEN, NOW))?.name, "한리오 김");
+
+  const long = { id: USER_ID, first_name: "가".repeat(40) };
+  const longData = await sign([["auth_date", String(NOW - 60)], ["user", JSON.stringify(long)]]);
+  assertEquals((await verifyInitData(longData, BOT_TOKEN, NOW))?.name, "가".repeat(32));
 });

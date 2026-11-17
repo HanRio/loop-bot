@@ -1,5 +1,6 @@
 import { verifyInitData } from "./auth.ts";
 import type { Db } from "./db.ts";
+import { isPeriod, periodStart, RANKING_LIMIT } from "./ranking.ts";
 import { cleanTitle, getSynced, searchCandidates } from "./lrclib.ts";
 
 export interface Deps {
@@ -165,17 +166,22 @@ function playlistFields(body: Record<string, unknown>): { name: string; trackIds
 }
 
 // Recording the id happens before the env list check, so ids are kept even while ALLOWED_USERNAMES still holds the name.
-async function authenticate(req: Request, deps: Deps): Promise<number> {
+interface Caller {
+  id: number;
+  name: string | null;
+}
+
+async function authenticate(req: Request, deps: Deps): Promise<Caller> {
   const user = await verifyInitData(req.headers.get("x-telegram-init-data") ?? "", deps.botToken, deps.now());
   if (user === null) throw new HttpError(401, "expired");
   const username = user.username === null ? null : user.username.toLowerCase();
   if (deps.allowed.has(user.id) || deps.admins.has(user.id)) {
     if (username !== null) await deps.db.claimUsername(username, user.id, user.authDate);
-    return user.id;
+    return { id: user.id, name: user.name };
   }
   if (username === null) throw new HttpError(403, "forbidden");
-  if (await deps.db.claimUsername(username, user.id, user.authDate)) return user.id;
-  if (deps.allowedUsernames.has(username)) return user.id;
+  if (await deps.db.claimUsername(username, user.id, user.authDate)) return { id: user.id, name: user.name };
+  if (deps.allowedUsernames.has(username)) return { id: user.id, name: user.name };
   throw new HttpError(403, "forbidden");
 }
 
@@ -283,7 +289,9 @@ async function addSheet(req: Request, userId: number, id: number, deps: Deps): P
   return json(saved);
 }
 
-async function route(req: Request, deps: Deps, userId: number): Promise<Response> {
+const PLAY_KEY_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+async function route(req: Request, deps: Deps, userId: number, userName: string | null): Promise<Response> {
   const path = new URL(req.url).pathname.replace(FUNCTION_PREFIX, "");
   const { db } = deps;
 
@@ -293,6 +301,23 @@ async function route(req: Request, deps: Deps, userId: number): Promise<Response
       is_admin: await isAdmin(deps, userId),
       is_owner: deps.admins.has(userId),
     });
+  }
+
+  // The client decides when a play counts (99% really heard); the key makes a retried send count once.
+  // ponytail: trusts the client, fine for an invite-only group; add a per-track rate check if counts get gamed.
+  if (req.method === "POST" && path === "/plays") {
+    const { track_id: trackId, play_key: playKey } = await readBody(req);
+    if (!isTrackId(trackId) || typeof playKey !== "string" || !PLAY_KEY_PATTERN.test(playKey)) throw badRequest();
+    const count = await db.recordPlay(userId, trackId, playKey, userName);
+    if (count === null) throw notFound();
+    return json({ track_id: trackId, count });
+  }
+
+  if (req.method === "GET" && path === "/ranking") {
+    const period = new URL(req.url).searchParams.get("period");
+    if (!isPeriod(period)) throw badRequest();
+    const since = periodStart(period, deps.now());
+    return json({ period, since: since.toISOString(), ...(await db.ranking(userId, since, RANKING_LIMIT)) });
   }
 
   if (req.method === "POST" && path === "/playlists") {
@@ -484,8 +509,8 @@ async function route(req: Request, deps: Deps, userId: number): Promise<Response
 export async function handle(req: Request, deps: Deps): Promise<Response> {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_HEADERS });
   try {
-    const userId = await authenticate(req, deps);
-    return await route(req, deps, userId);
+    const user = await authenticate(req, deps);
+    return await route(req, deps, user.id, user.name);
   } catch (err) {
     if (err instanceof HttpError) return json({ error: err.code }, err.status);
     // Telegram URLs carry the bot token, so scrub it before the message reaches the logs.

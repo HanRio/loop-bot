@@ -41,6 +41,27 @@ export interface State {
   shared_tracks: LibraryTrack[];
   media: Record<string, TrackMedia>;
   notes: Record<string, string>;
+  // My counted plays per track, all time.
+  play_counts: Record<string, number>;
+}
+
+export interface RankedTrack {
+  track_id: number;
+  title: string;
+  count: number;
+}
+
+export interface RankedUser {
+  name: string;
+  count: number;
+  is_me: boolean;
+}
+
+// mine: my own plays. tracks: everyone's plays, only of tracks on a shared playlist. users: everyone's play totals.
+export interface Ranking {
+  mine: RankedTrack[];
+  tracks: RankedTrack[];
+  users: RankedUser[];
 }
 
 export interface AllowedUsername {
@@ -77,6 +98,9 @@ export interface Db {
   saveLyrics(userId: number, id: number, source: "lrclib" | "manual", sourceId: number | null, synced: string): Promise<boolean>;
   saveLyricsOffset(userId: number, id: number, offsetMs: number): Promise<boolean>;
   trackTitle(userId: number, id: number): Promise<string | null>;
+  // My new play count for the track, or null when the track is not readable.
+  recordPlay(userId: number, trackId: number, playKey: string, name: string | null): Promise<number | null>;
+  ranking(userId: number, since: Date, limit: number): Promise<Ranking>;
   claimUsername(username: string, userId: number, authDate: number): Promise<boolean>;
   listUsernames(): Promise<AllowedUsername[]>;
   isAdminUser(userId: number): Promise<boolean>;
@@ -228,7 +252,12 @@ export function createDb(dsn: string, schema: string): Db {
           where n.user_id = ${userId} and ${readableFilter(tx, userId)}`;
         const notes = Object.fromEntries(noteRows.map((n) => [n.track_id, n.body]));
 
+        const countRows = await tx<{ track_id: number; count: number }[]>`
+          select track_id, count(*)::int as count from play_events where user_id = ${userId} group by track_id`;
+        const play_counts = Object.fromEntries(countRows.map((c) => [c.track_id, c.count]));
+
         return {
+          play_counts,
           library: [...library],
           playlists,
           active_id,
@@ -376,6 +405,47 @@ export function createDb(dsn: string, schema: string): Db {
       inSchema(async (tx) => {
         const [row] = await tx<{ title: string }[]>`select title from tracks where id = ${id} and user_id = ${userId}`;
         return row?.title ?? null;
+      }),
+
+    recordPlay: (userId, trackId, playKey, name) =>
+      inSchema(async (tx) => {
+        const readable = await tx`select 1 from tracks t where t.id = ${trackId} and ${readableFilter(tx, userId)}`;
+        if (readable.length === 0) return null;
+        await tx`insert into play_events (user_id, track_id, play_key) values (${userId}, ${trackId}, ${playKey})
+          on conflict (user_id, play_key) do nothing`;
+        if (name !== null) {
+          await tx`insert into display_names (user_id, name) values (${userId}, ${name})
+            on conflict (user_id) do update set name = excluded.name, updated_at = now()
+            where display_names.name <> excluded.name`;
+        }
+        const [row] = await tx<{ count: number }[]>`
+          select count(*)::int as count from play_events where user_id = ${userId} and track_id = ${trackId}`;
+        return row.count;
+      }),
+
+    ranking: (userId, since, limit) =>
+      inSchema(async (tx) => {
+        const mine = await tx<RankedTrack[]>`
+          select t.id as track_id, t.title, count(*)::int as count
+          from play_events e join tracks t on t.id = e.track_id
+          where e.user_id = ${userId} and e.played_at >= ${since} and ${readableFilter(tx, userId)}
+          group by t.id, t.title order by count desc, max(e.played_at) desc limit ${limit}`;
+        // Only shared tracks, so nobody sees the title of someone else's private track.
+        const tracks = await tx<RankedTrack[]>`
+          select t.id as track_id, t.title, count(*)::int as count
+          from play_events e join tracks t on t.id = e.track_id
+          where e.played_at >= ${since} and exists (
+            select 1 from playlist_tracks pt join playlists p on p.id = pt.playlist_id
+            where pt.track_id = t.id and p.shared = true)
+          group by t.id, t.title order by count desc, max(e.played_at) desc limit ${limit}`;
+        // Names only; user ids and usernames stay on the server.
+        const userRows = await tx<{ user_id: number; name: string | null; count: number }[]>`
+          select e.user_id, n.name, count(*)::int as count
+          from play_events e left join display_names n on n.user_id = e.user_id
+          where e.played_at >= ${since}
+          group by e.user_id, n.name order by count desc, max(e.played_at) desc limit ${limit}`;
+        const users = userRows.map((u) => ({ name: u.name ?? "이름 없음", count: u.count, is_me: u.user_id === userId }));
+        return { mine: [...mine], tracks: [...tracks], users };
       }),
 
     saveNote: (userId, id, body) =>

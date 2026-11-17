@@ -68,6 +68,7 @@ function dbTest(name: string, fn: (ctx: Ctx) => Promise<void>): void {
         await sql`delete from loopbot_test.tracks where user_id in ${sql(TEST_USERS)}`;
         await sql`delete from loopbot_test.allowed_usernames`;
         await sql`delete from loopbot_test.admin_users`;
+        await sql`delete from loopbot_test.display_names where user_id in ${sql(TEST_USERS)}`;
         await fn({ db, sql, deps: depsWith(db) });
       } finally {
         await db.close();
@@ -1378,4 +1379,69 @@ Deno.test("lyrics: PUT text saves pasted lyrics as manual, trims, rejects empty,
   }
   assertEquals((await lyricsCall(lyricsDeps({ ownsTrack: async () => false }), "PUT", "/tracks/1/lyrics", { text: "x" })).status, 404);
   assertEquals((await lyricsCall(lyricsDeps({}, unexpectedFetch, []), "PUT", "/tracks/1/lyrics", { text: "x" }, OTHER_USER)).status, 403);
+});
+
+// ---- plays and ranking ----
+
+const KEY_A = "00000000-0000-4000-8000-00000000000a";
+const KEY_B = "00000000-0000-4000-8000-00000000000b";
+
+Deno.test("GET /ranking refuses an unknown period before touching the DB", async () => {
+  const req = new Request(`${ORIGIN}/loopbot-api/ranking?period=year`, {
+    headers: { "x-telegram-init-data": await signFor(ALLOWED_USER) },
+  });
+  assertEquals((await handle(req, authOnlyDeps())).status, 400);
+});
+
+Deno.test("POST /plays refuses a malformed play key before touching the DB", async () => {
+  const req = new Request(`${ORIGIN}/loopbot-api/plays`, {
+    method: "POST",
+    headers: { "x-telegram-init-data": await signFor(ALLOWED_USER), "content-type": "application/json" },
+    body: JSON.stringify({ track_id: 1, play_key: "not-a-uuid" }),
+  });
+  assertEquals((await handle(req, authOnlyDeps())).status, 400);
+});
+
+dbTest("POST /plays counts each play once per key and shows in /state", async (ctx) => {
+  const id = await insertTrack(ctx, ALLOWED_USER, "곡");
+  const first = await call(ctx, "POST", "/plays", { body: { track_id: id, play_key: KEY_A } });
+  assertEquals(await first.json(), { track_id: id, count: 1 });
+  // A retried send with the same key is not a new play.
+  const retry = await call(ctx, "POST", "/plays", { body: { track_id: id, play_key: KEY_A } });
+  assertEquals((await retry.json()).count, 1);
+  const second = await call(ctx, "POST", "/plays", { body: { track_id: id, play_key: KEY_B } });
+  assertEquals((await second.json()).count, 2);
+
+  const state = await (await call(ctx, "GET", "/state")).json();
+  assertEquals(state.play_counts, { [id]: 2 });
+});
+
+dbTest("POST /plays answers 404 for someone else's private track", async (ctx) => {
+  const id = await insertTrack(ctx, OTHER_USER, "남의 곡");
+  const res = await call(ctx, "POST", "/plays", { body: { track_id: id, play_key: KEY_A } });
+  assertEquals(res.status, 404);
+});
+
+dbTest("GET /ranking: mine has my tracks, tracks only shared ones, users only names", async (ctx) => {
+  const sharedId = await insertTrack(ctx, ALLOWED_USER, "공유 곡");
+  const privateId = await insertTrack(ctx, OTHER_USER, "비공개 곡");
+  const listId = await createPlaylistVia(ctx, "공유", [sharedId]);
+  await call(ctx, "PUT", `/playlists/${listId}/shared`, { body: { shared: true } });
+
+  await call(ctx, "POST", "/plays", { body: { track_id: sharedId, play_key: KEY_A } });
+  await call(ctx, "POST", "/plays", { body: { track_id: privateId, play_key: KEY_A }, userId: OTHER_USER });
+  await call(ctx, "POST", "/plays", { body: { track_id: privateId, play_key: KEY_B }, userId: OTHER_USER });
+
+  // Rows carry the DB's real time, so this read uses the real clock instead of NOW.
+  const realNow = Math.floor(Date.now() / 1000);
+  const body = await (await call(ctx, "GET", "/ranking?period=week", {
+    initData: await signFor(ALLOWED_USER, undefined, realNow),
+    deps: depsWith(ctx.db, { now: () => realNow }),
+  })).json();
+  assertEquals(body.period, "week");
+  assertEquals(body.mine, [{ track_id: sharedId, title: "공유 곡", count: 1 }]);
+  assertEquals(body.tracks, [{ track_id: sharedId, title: "공유 곡", count: 1 }]);
+  // OTHER_USER played more; no ids or usernames leave the server.
+  assertEquals(body.users.map((u: { count: number; is_me: boolean }) => [u.count, u.is_me]), [[2, false], [1, true]]);
+  for (const user of body.users) assertEquals(Object.keys(user).sort(), ["count", "is_me", "name"]);
 });

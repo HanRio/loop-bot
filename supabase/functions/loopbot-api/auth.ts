@@ -22,7 +22,17 @@ function dataCheckString(params: URLSearchParams): string {
 export interface VerifiedUser {
   id: number;
   username: string | null;
+  // Telegram profile name (first + last), shown on the user ranking. Null when blank.
+  name: string | null;
   authDate: number;
+}
+
+const NAME_MAX_LENGTH = 32;
+
+function nameOf(first: unknown, last: unknown): string | null {
+  const parts = [first, last].filter((part): part is string => typeof part === "string");
+  const name = [...parts.join(" ").trim()].slice(0, NAME_MAX_LENGTH).join("");
+  return name === "" ? null : name;
 }
 
 function userOf(user: string | null, authDate: number): VerifiedUser | null {
@@ -31,7 +41,7 @@ function userOf(user: string | null, authDate: number): VerifiedUser | null {
     const id = parsed?.id;
     if (!Number.isSafeInteger(id)) return null;
     const username = typeof parsed.username === "string" && parsed.username !== "" ? parsed.username : null;
-    return { id, username, authDate };
+    return { id, username, name: nameOf(parsed.first_name, parsed.last_name), authDate };
   } catch {
     return null;
   }
