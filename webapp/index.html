@@ -8,10 +8,10 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&family=Noto+Sans+KR:wght@400;500;600;700&display=swap">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.6/Sortable.min.js"></script>
-<link rel="stylesheet" href="app.css?v=mwkdy2iv">
-<link rel="stylesheet" href="noir.css?v=mwkdy2iv">
-<link rel="stylesheet" href="player.css?v=mwkdy2iv">
-<script type="importmap">{"imports":{"./api.js":"./api.js?v=mwkdy2iv","./app.js":"./app.js?v=mwkdy2iv","./audio.js":"./audio.js?v=mwkdy2iv","./config.js":"./config.js?v=mwkdy2iv","./copy.js":"./copy.js?v=mwkdy2iv","./dom.js":"./dom.js?v=mwkdy2iv","./fake-api.js":"./fake-api.js?v=mwkdy2iv","./gesture-logic.js":"./gesture-logic.js?v=mwkdy2iv","./haptic.js":"./haptic.js?v=mwkdy2iv","./lrc.js":"./lrc.js?v=mwkdy2iv","./lyrics-entry.js":"./lyrics-entry.js?v=mwkdy2iv","./lyrics-logic.js":"./lyrics-logic.js?v=mwkdy2iv","./menus.js":"./menus.js?v=mwkdy2iv","./note-actions.js":"./note-actions.js?v=mwkdy2iv","./note-export.js":"./note-export.js?v=mwkdy2iv","./play-count.js":"./play-count.js?v=mwkdy2iv","./player-lyrics.js":"./player-lyrics.js?v=mwkdy2iv","./player-view.js":"./player-view.js?v=mwkdy2iv","./queue.js":"./queue.js?v=mwkdy2iv","./saver.js":"./saver.js?v=mwkdy2iv","./sheet-drag.js":"./sheet-drag.js?v=mwkdy2iv","./shell.js":"./shell.js?v=mwkdy2iv","./store.js":"./store.js?v=mwkdy2iv","./swipe-row.js":"./swipe-row.js?v=mwkdy2iv","./tab-conti.js":"./tab-conti.js?v=mwkdy2iv","./tab-library.js":"./tab-library.js?v=mwkdy2iv","./tab-meditate.js":"./tab-meditate.js?v=mwkdy2iv","./tab-practice.js":"./tab-practice.js?v=mwkdy2iv","./tab-ranking.js":"./tab-ranking.js?v=mwkdy2iv","./title-scroll.js":"./title-scroll.js?v=mwkdy2iv","./ui-logic.js":"./ui-logic.js?v=mwkdy2iv","./users-admin.js":"./users-admin.js?v=mwkdy2iv","./users-logic.js":"./users-logic.js?v=mwkdy2iv","./v2-logic.js":"./v2-logic.js?v=mwkdy2iv","./volume.js":"./volume.js?v=mwkdy2iv"}}</script>
+<link rel="stylesheet" href="app.css?v=mwkdzh6i">
+<link rel="stylesheet" href="noir.css?v=mwkdzh6i">
+<link rel="stylesheet" href="player.css?v=mwkdzh6i">
+<script type="importmap">{"imports":{"./api.js":"./api.js?v=mwkdzh6i","./app.js":"./app.js?v=mwkdzh6i","./audio.js":"./audio.js?v=mwkdzh6i","./config.js":"./config.js?v=mwkdzh6i","./copy.js":"./copy.js?v=mwkdzh6i","./dom.js":"./dom.js?v=mwkdzh6i","./fake-api.js":"./fake-api.js?v=mwkdzh6i","./gesture-logic.js":"./gesture-logic.js?v=mwkdzh6i","./haptic.js":"./haptic.js?v=mwkdzh6i","./lrc.js":"./lrc.js?v=mwkdzh6i","./lyrics-entry.js":"./lyrics-entry.js?v=mwkdzh6i","./lyrics-logic.js":"./lyrics-logic.js?v=mwkdzh6i","./menus.js":"./menus.js?v=mwkdzh6i","./note-actions.js":"./note-actions.js?v=mwkdzh6i","./note-export.js":"./note-export.js?v=mwkdzh6i","./play-count.js":"./play-count.js?v=mwkdzh6i","./player-lyrics.js":"./player-lyrics.js?v=mwkdzh6i","./player-view.js":"./player-view.js?v=mwkdzh6i","./queue.js":"./queue.js?v=mwkdzh6i","./saver.js":"./saver.js?v=mwkdzh6i","./sheet-drag.js":"./sheet-drag.js?v=mwkdzh6i","./shell.js":"./shell.js?v=mwkdzh6i","./store.js":"./store.js?v=mwkdzh6i","./swipe-row.js":"./swipe-row.js?v=mwkdzh6i","./tab-conti.js":"./tab-conti.js?v=mwkdzh6i","./tab-library.js":"./tab-library.js?v=mwkdzh6i","./tab-meditate.js":"./tab-meditate.js?v=mwkdzh6i","./tab-practice.js":"./tab-practice.js?v=mwkdzh6i","./tab-ranking.js":"./tab-ranking.js?v=mwkdzh6i","./title-scroll.js":"./title-scroll.js?v=mwkdzh6i","./ui-logic.js":"./ui-logic.js?v=mwkdzh6i","./users-admin.js":"./users-admin.js?v=mwkdzh6i","./users-logic.js":"./users-logic.js?v=mwkdzh6i","./v2-logic.js":"./v2-logic.js?v=mwkdzh6i","./volume.js":"./volume.js?v=mwkdzh6i"}}</script>
 </head>
 <body ontouchstart="">
 <p id="fatal" class="empty" hidden></p>
@@ -56,7 +56,6 @@
     </div>
     <div id="mini" class="mini glass">
       <button id="mini-open" class="open" type="button" aria-label="플레이어 펼치기">
-        <span id="mini-art" class="art"></span>
         <span class="tt"><b id="mini-title"></b><span id="mini-sub"></span></span>
       </button>
       <button id="mini-play" class="ib" type="button" aria-label="재생"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path id="mini-play-icon" d="M8 5l11 7-11 7z"/></svg></button>
@@ -164,6 +163,6 @@
   <p id="users-empty" class="empty" hidden></p>
   <div class="buttons"><button id="users-close" type="button"></button></div>
 </dialog>
-<script type="module" src="app.js?v=mwkdy2iv"></script>
+<script type="module" src="app.js?v=mwkdzh6i"></script>
 </body>
 </html>

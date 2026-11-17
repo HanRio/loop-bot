@@ -209,7 +209,6 @@ function renderPlayer() {
 
   setText('mini-title', title);
   $('mini-sub').textContent = playback.upNext === null ? sub : `다음 곡 · ${titleOf(playback.upNext)}`;
-  $('mini-art').style.background = artOf(id);
   $('mini-play-icon').setAttribute('d', playing ? ICON_PAUSE : ICON_PLAY);
   $('mini-play').setAttribute('aria-label', playLabel);
   // 목록의 재생 중 막대는 이 class로 움직이고 멈춘다.
