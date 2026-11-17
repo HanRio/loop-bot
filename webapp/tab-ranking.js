@@ -13,14 +13,57 @@ function el(tag, className, text) {
   return node;
 }
 
-function rankRow(rank, title, count, isMe = false) {
+const COUNT_UP_MS = 700;
+const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// 숫자가 0에서 목표까지 올라간다. 움직임 줄이기 설정이면 바로 보여 준다.
+function countUp(node, to) {
+  const label = (n) => `${n}회`;
+  if (reducedMotion()) {
+    node.textContent = label(to);
+    return;
+  }
+  const start = performance.now();
+  const step = (now) => {
+    const t = Math.min(1, (now - start) / COUNT_UP_MS);
+    node.textContent = label(Math.round(to * (1 - (1 - t) ** 3)));
+    if (t < 1 && node.isConnected) requestAnimationFrame(step);
+  };
+  node.textContent = label(0);
+  requestAnimationFrame(step);
+}
+
+// 줄 뒤에 1위 대비 비율만큼 옅은 막대가 깔린다.
+function rankRow(rank, title, count, top, isMe = false) {
   const li = el('li', 'row rank');
   li.classList.toggle('me', isMe);
+  li.style.setProperty('--w', String(count / top));
   li.append(el('span', 'n', String(rank).padStart(2, '0')));
   const text = el('span', 't');
   text.append(el('b', null, title));
-  li.append(text, el('span', 'c', `${count}회`));
+  const c = el('span', 'c');
+  countUp(c, count);
+  li.append(text, c);
   return li;
+}
+
+// 1~3위 시상대. 2위-1위-3위 순서로 세우고, 기둥 높이는 1위 대비 비율이다.
+function podium(items, top) {
+  const box = el('li', 'podium');
+  const order = [1, 0, 2].filter((i) => i < items.length);
+  box.append(...order.map((i) => {
+    const item = items[i];
+    const col = el('div', 'pod');
+    col.classList.toggle('me', item.is_me);
+    const c = el('span', 'c');
+    countUp(c, item.count);
+    const pillar = el('div', 'pillar glass');
+    pillar.style.setProperty('--h', String(Math.max(0.45, item.count / top)));
+    pillar.append(el('span', 'n', String(i + 1)));
+    col.append(el('b', null, item.name), c, pillar);
+    return col;
+  }));
+  return box;
 }
 
 export function createRanking({ api }) {
@@ -60,10 +103,14 @@ export function createRanking({ api }) {
     notice.hidden = data !== null;
     for (const s of sections) {
       const items = data?.[s.key] ?? [];
-      s.list.replaceChildren(...items.map((item, i) => (
-        s.key === 'users' ? rankRow(i + 1, item.is_me ? `${item.name} (나)` : item.name, item.count, item.is_me)
-          : rankRow(i + 1, item.title, item.count)
-      )));
+      const top = items[0]?.count ?? 1;
+      if (s.key === 'users') {
+        const named = items.map((u) => ({ ...u, name: u.is_me ? `${u.name} (나)` : u.name }));
+        s.list.replaceChildren(...(named.length ? [podium(named.slice(0, 3), top)] : []),
+          ...named.slice(3).map((u, i) => rankRow(i + 4, u.name, u.count, top, u.is_me)));
+      } else {
+        s.list.replaceChildren(...items.map((item, i) => rankRow(i + 1, item.title, item.count, top)));
+      }
       s.empty.hidden = data === null || items.length > 0;
       s.heading.hidden = data === null;
     }

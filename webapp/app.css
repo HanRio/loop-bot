@@ -669,3 +669,28 @@ button:active:not(:disabled) { transform: scale(.94); transition: transform 90ms
 /* 연습 탭 속도: 제목 오른쪽에 지금 속도 */
 .speed-head { display: flex; align-items: baseline; justify-content: space-between; }
 .speed-value { font-family: "Geist Mono", ui-monospace, monospace; font-size: 13px; font-weight: 500; }
+
+/* 랭킹 막대: 줄 뒤에 1위 대비 비율만큼 깔리고, 열 때 왼쪽에서 차오른다 */
+#tab-ranking .row.rank { position: relative; isolation: isolate; border-bottom-color: transparent; margin: 0 -6px 4px; }
+#tab-ranking .row.rank::before {
+  content: ""; position: absolute; inset: 0; z-index: -1; border-radius: 12px;
+  background: var(--hi-10, rgba(255,255,255,.08)); transform-origin: left; transform: scaleX(var(--w, 0));
+  animation: rank-fill .7s cubic-bezier(.2,.8,.2,1) both;
+}
+#tab-ranking .row.rank:first-child::before { background: var(--hi-20, rgba(255,255,255,.14)); }
+#tab-ranking .row.rank.me::before { background: color-mix(in srgb, var(--accent-ios, #0a84ff) 28%, transparent); }
+@keyframes rank-fill { from { transform: scaleX(0); } }
+
+/* 시상대: 2위-1위-3위 */
+#tab-ranking .podium { display: flex; align-items: flex-end; justify-content: center; gap: 10px; height: 190px; margin: 8px 0 14px; }
+#tab-ranking .pod { flex: 1; max-width: 104px; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 2px; min-width: 0; }
+#tab-ranking .pod > b { max-width: 100%; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#tab-ranking .pod .c { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; margin-bottom: 4px; }
+#tab-ranking .pillar {
+  width: 100%; height: calc(110px * var(--h, 1)); border-radius: 14px 14px 6px 6px; display: grid; place-items: start center; padding-top: 8px;
+  transform-origin: bottom; animation: pod-rise .7s cubic-bezier(.2,.8,.2,1) both;
+}
+#tab-ranking .pillar .n { font-family: "Geist Mono", ui-monospace, monospace; font-size: 20px; font-weight: 500; }
+#tab-ranking .pod.me .pillar { box-shadow: inset 0 0 0 1.5px var(--accent-ios, #0a84ff); }
+@keyframes pod-rise { from { transform: scaleY(0); } }
+@media (prefers-reduced-motion: reduce) { #tab-ranking .row.rank::before, #tab-ranking .pillar { animation: none; } }
