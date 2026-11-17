@@ -64,10 +64,9 @@ export function createConti({ onPlay, onReorder, onRemove, onOpenLists, onListMe
   selectButton.addEventListener('click', () => onSelecting(true));
   const actions = el('div', 'acts');
   actions.append(selectButton, openListsButton, listMenuButton, settingsButton);
-  const titleBox = el('div');
-  titleBox.append(kicker, title);
-  const head = el('div', 'head');
-  head.append(titleBox, actions);
+  // 버튼 줄과 제목을 나눈다. 한 줄에 두면 좁은 화면에서 제목이 두어 글자씩 밀려 내려간다.
+  const head = el('div', 'head conti-head');
+  head.append(kicker, actions);
   const count = el('h2');
   const list = el('ol', 'rows');
   const empty = el('p', 'empty', NO_TRACK_TEXT);
@@ -88,7 +87,7 @@ export function createConti({ onPlay, onReorder, onRemove, onOpenLists, onListMe
   const bulk = el('div', 'bulk glass');
   bulk.append(bulkCount, playButton, moveButton, removeButton, doneButton);
 
-  pane.replaceChildren(head, count, bulk, list, empty);
+  pane.replaceChildren(head, title, count, bulk, list, empty);
 
   // 줄 하나. 내 목록이면 끌기 손잡이와 ⋯(목록에서 빼기)를 붙인다. 공유 목록은 읽기만 한다.
   function trackRow(id, index, next) {

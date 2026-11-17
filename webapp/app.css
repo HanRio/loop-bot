@@ -699,3 +699,7 @@ button:active:not(:disabled) { transform: scale(.94); transition: transform 90ms
 #tab-ranking .pod.me .pillar { background: linear-gradient(to bottom, color-mix(in srgb, var(--accent-ios, #0a84ff) 35%, transparent), transparent 92%); }
 @keyframes pod-rise { from { transform: scaleY(0); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { #tab-ranking .row.rank::before, #tab-ranking .pillar { animation: none; } }
+
+/* 콘티 머리: 위 줄은 '내 목록'과 버튼, 아래 줄은 목록 이름이 화면 너비를 다 쓴다 */
+.head.conti-head { align-items: center; }
+#tab-conti > h1 { margin-top: 4px; overflow-wrap: anywhere; }
