@@ -8,6 +8,8 @@ import {
   loopCheck,
   meditateTrack,
   SPEED,
+  togglePick,
+  queueUpNext,
 } from '../../webapp/ui-logic.js';
 
 test('MOOD_PALETTES has five palettes of three colors copied from the prototype', () => {
