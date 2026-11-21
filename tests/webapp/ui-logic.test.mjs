@@ -88,3 +88,14 @@ test('meditateTrack returns null for an empty list', () => {
 test('SPEED slider runs from 0.5x to 1.2x', () => {
   assert.deepEqual(SPEED, { min: 0.5, max: 1.2, step: 0.05 });
 });
+
+test('togglePick keeps pick order and removes on second tap', async () => {
+  const { togglePick } = await import('../../webapp/ui-logic.js');
+  assert.deepEqual(togglePick(togglePick([], 3), 1), [3, 1]);
+  assert.deepEqual(togglePick([3, 1], 3), [1]);
+});
+
+test('queueUpNext appends picks in order, skipping queued and current songs', async () => {
+  const { queueUpNext } = await import('../../webapp/ui-logic.js');
+  assert.deepEqual(queueUpNext([5], [2, 5, 9, 7], 9), [5, 2, 7]);
+});

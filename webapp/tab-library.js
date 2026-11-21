@@ -70,20 +70,22 @@ export function createLibrary({ onPick, onOpenList, onNewList, onTrackMenu, onDe
     return button;
   }
 
-  // 곡 줄. 줄을 누르면 재생하지 않고 골라서 아래 메뉴 막대를 띄운다. 끝의 ⋯은 곡 메뉴를 연다.
+  // 곡 줄. 줄을 누르면 재생하지 않고 고른 곡에 넣고 빼며, 아래 메뉴 막대를 띄운다. 여러 곡을 함께 고를 수 있다. 끝의 ⋯은 곡 메뉴를 연다.
   function trackRow(track, next) {
     const li = el('li', 'row');
     li.dataset.id = String(track.id);
     li.classList.toggle('now', track.id === next.currentId);
     if (track.id === next.currentId) li.setAttribute('aria-current', 'true');
     li.classList.toggle('off', next.unplayable.has(track.id));
-    li.classList.toggle('picked', next.pickedIds.includes(track.id));
+    const picked = next.picked.has(track.id);
+    li.classList.toggle('picked', picked);
 
     const text = el('span', 't');
     text.append(el('b', null, track.title));
     if (next.unplayable.has(track.id)) text.append(el('span', null, UNPLAYABLE_TEXT));
 
     pressable(text, `${track.title} 고르기`);
+    text.setAttribute('aria-pressed', String(picked));
     li.append(text);
     // 재생 중인 곡은 제목 끝에 작은 막대가 움직인다. 제목 줄이 밀리지 않게 오른쪽에 둔다.
     if (track.id === next.currentId) li.append(nowMark());

@@ -20,14 +20,13 @@ import { createMeditate } from './tab-meditate.js';
 import { createPractice } from './tab-practice.js';
 import { createRanking } from './tab-ranking.js';
 import { createPlayCounter } from './play-count.js';
-import { moodFor } from './ui-logic.js';
+import { moodFor, togglePick, queueUpNext } from './ui-logic.js';
 import { createUsersAdmin } from './users-admin.js';
 import { initVolume } from './volume.js';
 import { attach as scrollTitle, initTitleScroll } from './title-scroll.js';
 
 const PLAYER_KEYS = '#mini-play, #play, #prev, #next, #repeat, #shuffle, #lyrics';
 const KEY_SHUFFLE = 'loopbot.player.shuffle';
-const KEY_LYRICS = 'loopbot.player.lyrics';
 // 이만큼 지난 뒤 ⏮는 처음으로 돌린다.
 const RESTART_AFTER = 3;
 const NAME_MAX = 20;
@@ -85,18 +84,16 @@ const playback = {
   unplayable: new Set(),
   failures: 0,
   shuffle: readLocal(KEY_SHUFFLE) === '1',
-  lyricsOn: readLocal(KEY_LYRICS) === '1',
   // 섞어 듣기 + 반복 끔일 때 한 바퀴를 다 돌았는지 본다.
   played: new Set(),
   // 고른 곡만 재생할 때의 순서. 다른 곡을 누르면 풀린다.
   queue: null,
   // 라이브러리에서 '이어서 듣기'로 끼운 곡. 그 곡이 끝나면 원래 목록의 다음 자리로 돌아간다.
-  // '이어서 듣기'로 끼운 곡들. 앞에서부터 하나씩 꺼내 튼다.
+  // 이어서 듣기로 끼운 곡들. 앞에서부터 하나씩 꺼내 듣는다.
   upNext: [],
   detour: false,
 };
-// 라이브러리 탭에서 눌러 고른 곡. 고르면 미니 플레이어 자리에 곡 메뉴가 뜬다.
-// 라이브러리에서 고른 곡들(고른 순서).
+// 라이브러리 탭에서 눌러 고른 곡들(고른 순서). 하나라도 고르면 미니 플레이어 자리에 곡 메뉴가 뜬다.
 let pickedIds = [];
 // 끼운 곡을 듣는 동안 다음 곡을 셀 때 쓰는 자리표. 어느 목록에도 없어서 lastIndex 자리부터 센다.
 const DETOUR = Symbol('detour');
@@ -210,9 +207,9 @@ function renderPlayer() {
   const playLabel = playing ? '일시정지' : '재생';
 
   setText('mini-title', title);
-  const up = nextUp();
-  const more = playback.upNext.length - 1;
-  $('mini-sub').textContent = up === null ? sub : `다음 곡 · ${titleOf(up)}${more > 0 ? ` 외 ${more}곡` : ''}`;
+  const nextUp = playback.upNext;
+  const nextText = nextUp.length > 1 ? `${titleOf(nextUp[0])} 외 ${nextUp.length - 1}곡` : titleOf(nextUp[0]);
+  $('mini-sub').textContent = nextUp.length === 0 ? sub : `다음 곡 · ${nextText}`;
   $('mini-play-icon').setAttribute('d', playing ? ICON_PAUSE : ICON_PLAY);
   $('mini-play').setAttribute('aria-label', playLabel);
   // 목록의 재생 중 막대는 이 class로 움직이고 멈춘다.
@@ -226,7 +223,7 @@ function renderPlayer() {
   if (playing && !progressFrame) progressFrame = requestAnimationFrame(progressLoop);
   playerView?.paint({
     id, playing, loading, media: model.media,
-    repeat: playback.repeat, shuffle: playback.shuffle, lyricsOn: playback.lyricsOn,
+    repeat: playback.repeat, shuffle: playback.shuffle,
   });
   // 악보 보기는 묵상 탭이 보여 주는 목록 안의 곡에만 있다.
   $('player-sheet').hidden = id === null || !viewedIds().includes(id) || !(model.media[id]?.sheet_count > 0);
@@ -255,7 +252,7 @@ function renderAll() {
   }
   renderSongBar();
   library.render({
-    pickedIds,
+    picked: new Set(pickedIds),
     library: model.library,
     playlists: model.playlists,
     sharedPlaylists: model.sharedPlaylists,
@@ -315,21 +312,24 @@ function onReorder(domIds, draggedId) {
 
 // ── 라이브러리 곡 메뉴 막대 ──
 function renderSongBar() {
+  // 지워진 곡은 고른 목록에서 뺀다.
+  const inLibrary = new Set(model.library.map((t) => t.id));
+  pickedIds = pickedIds.filter((id) => inLibrary.has(id));
   const open = pickedIds.length > 0;
   $('song-bar').hidden = !open;
   $('mini').hidden = open;
   if (!open) return;
   const [first] = pickedIds;
-  setText('song-bar-title', pickedIds.length === 1 ? titleOf(first) : `${pickedIds.length}곡 선택`);
+  setText('song-bar-title', pickedIds.length === 1 ? titleOf(first) : `${pickedIds.length}곡 고름`);
   $('song-bar-art').style.background = artOf(first);
   const blocked = pickedIds.every((id) => playback.unplayable.has(id));
   $('song-now').disabled = blocked;
   $('song-next').disabled = blocked;
 }
 
-// 누를 때마다 고르거나 푼다. 여러 곡을 함께 고를 수 있다.
+// 누를 때마다 고른 곡에 넣고 뺀다. 여러 곡을 함께 고를 수 있다.
 function onPickTrack(id) {
-  pickedIds = pickedIds.includes(id) ? pickedIds.filter((p) => p !== id) : [...pickedIds, id];
+  pickedIds = togglePick(pickedIds, id);
   haptic.tick();
   renderAll();
 }
@@ -340,16 +340,10 @@ function closeSongBar() {
   renderAll();
 }
 
-// 고른 곡을 꺼내고 메뉴를 닫는다. 재생할 수 없는 곡은 뺀다.
-function takePicked() {
+// 한 곡이면 그 곡을 튼다. 여러 곡이면 고른 순서대로 그 곡들만 돈다.
+function onSongNow() {
   const ids = pickedIds.filter((id) => !playback.unplayable.has(id));
   pickedIds = [];
-  return ids;
-}
-
-// 한 곡이면 그 곡을 틀고, 여러 곡이면 고른 곡만 고른 순서로 듣는다.
-function onSongNow() {
-  const ids = takePicked();
   if (ids.length === 0) return renderAll();
   if (ids.length === 1) return onPlayRow(ids[0]);
   closeVideo();
@@ -360,16 +354,18 @@ function onSongNow() {
   return userMove(ids[0]);
 }
 
-// 지금 곡이 끝나면 고른 곡들을 차례로 끼워 듣는다. 듣던 곡이 없으면 바로 튼다.
+// 고른 순서대로 다음 곡 줄에 붙인다. 듣던 곡이 없으면 바로 튼다.
 function onSongNext() {
-  const ids = takePicked();
+  const ids = pickedIds.filter((id) => !playback.unplayable.has(id));
+  pickedIds = [];
   if (ids.length === 0) return renderAll();
   if (playback.currentTrackId === null) {
-    playback.upNext = ids.slice(1);
-    return onPlayRow(ids[0]);
+    const [head, ...rest] = ids;
+    playback.upNext = queueUpNext(playback.upNext, rest, head);
+    return onPlayRow(head);
   }
-  playback.upNext = [...playback.upNext, ...ids.filter((id) => !playback.upNext.includes(id))];
-  if (!playback.shuffle) player.prefetch(nextUp() ?? ids[0]);
+  playback.upNext = queueUpNext(playback.upNext, ids, playback.currentTrackId);
+  if (!playback.shuffle && playback.upNext.length > 0) player.prefetch(playback.upNext[0]);
   haptic.tick();
   renderAll();
   return undefined;
@@ -377,14 +373,16 @@ function onSongNext() {
 
 async function onSongAdd() {
   const ids = [...pickedIds];
-  const targetId = await openListPicker({ playlists: model.playlists, sharedPlaylists: [], currentId: null, title: '어느 플리에 추가할까요' });
+  const title = ids.length === 1 ? '어느 플리에 추가할까요' : `${ids.length}곡을 어느 플리에 추가할까요`;
+  const targetId = await openListPicker({ playlists: model.playlists, sharedPlaylists: [], currentId: null, title });
   const target = model.playlists.find((p) => p.id === targetId);
   if (!target) return;
-  const trackIds = addTracks(target.track_ids, ids);
-  model.playlists = model.playlists.map((p) => (p.id === target.id ? { ...p, track_ids: trackIds } : p));
-  saves.update({ id: target.id, name: target.name, track_ids: trackIds });
+  const next = addTracks(target.track_ids, ids);
+  model.playlists = model.playlists.map((p) => (p.id === target.id ? { ...p, track_ids: next } : p));
+  saves.update({ id: target.id, name: target.name, track_ids: next });
   haptic.tick();
-  pickedIds = pickedIds.filter((id) => !ids.includes(id));
+  // 고르는 사이 고른 곡이 바뀌지 않았을 때만 닫는다.
+  if (ids.length === pickedIds.length && ids.every((id) => pickedIds.includes(id))) pickedIds = [];
   renderAll();
 }
 
@@ -627,12 +625,10 @@ function onTrackMenu(id) {
 }
 
 // ⏭·⏮는 한 곡 반복이어도 전체 반복처럼 움직인다.
-// 끼운 곡 중 다음에 틀 곡. 재생할 수 없거나 지금 곡이면 건너뛴다.
-function nextUp() {
-  return playback.upNext.find((id) => !playback.unplayable.has(id) && id !== playback.currentTrackId) ?? null;
-}
+// 끼운 곡 줄에서 들을 수 있는 첫 곡.
+const upNextId = () => playback.upNext.find((id) => !playback.unplayable.has(id) && id !== playback.currentTrackId) ?? null;
 
-const computeNext = (manual) => (nextUp() ?? pickNext({
+const computeNext = (manual) => (upNextId() ?? pickNext({
     trackIds: playingIds(),
     currentId: playback.detour ? DETOUR : playback.currentTrackId,
     lastIndex: playback.lastIndex,
@@ -687,6 +683,7 @@ function moveTo(id) {
   // 끼운 곡이 여러 개면 처음 벗어날 때의 자리만 기억한다.
   if (isDetour) {
     if (from !== -1 && !playback.detour) playback.lastIndex = from + 1;
+    // 들은 곡과 그 앞에서 건너뛴(못 듣는) 곡을 줄에서 뺀다.
     playback.upNext = playback.upNext.slice(playback.upNext.indexOf(id) + 1);
   }
   playback.detour = isDetour;
@@ -755,10 +752,21 @@ function onShuffle() {
   renderPlayer();
 }
 
+// 가사는 플레이어 아래 칸에 있다. 버튼은 그 칸으로 내려가고, 이미 보고 있으면 플레이어로 올라온다.
 function onLyrics() {
-  playback.lyricsOn = !playback.lyricsOn;
-  writeLocal(KEY_LYRICS, playback.lyricsOn ? '1' : '0');
-  renderPlayer();
+  const body = $('player-body');
+  const sheet = $('lyr-sheet');
+  const atLyrics = body.scrollTop > sheet.offsetTop / 2;
+  const behavior = matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+  body.scrollTo({ top: atLyrics ? 0 : sheet.offsetTop, behavior });
+}
+
+// 가사 칸이 절반 넘게 보이면 가사 버튼을 켜진 상태로 보여 준다.
+function watchLyricsSheet() {
+  const sheetWatcher = new IntersectionObserver(([entry]) => {
+    $('lyrics').setAttribute('aria-pressed', String(entry.isIntersecting));
+  }, { root: $('player-body'), threshold: 0.5 });
+  sheetWatcher.observe($('lyr-sheet'));
 }
 
 function onRepeat() {
@@ -933,6 +941,7 @@ function wireControls() {
   $('repeat').addEventListener('click', onRepeat);
   $('shuffle').addEventListener('click', onShuffle);
   $('lyrics').addEventListener('click', onLyrics);
+  watchLyricsSheet();
   $('player-sheet').addEventListener('click', onOpenSheet);
   $('video-open').addEventListener('click', openVideo);
   $('video-close').addEventListener('click', closeVideo);
