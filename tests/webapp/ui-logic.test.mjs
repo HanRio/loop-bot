@@ -8,6 +8,8 @@ import {
   loopCheck,
   meditateTrack,
   SPEED,
+  togglePick,
+  queueUpNext,
 } from '../../webapp/ui-logic.js';
 
 test('MOOD_PALETTES has five palettes of three colors copied from the prototype', () => {
@@ -87,4 +89,15 @@ test('meditateTrack returns null for an empty list', () => {
 
 test('SPEED slider runs from 0.5x to 1.2x', () => {
   assert.deepEqual(SPEED, { min: 0.5, max: 1.2, step: 0.05 });
+});
+
+test('togglePick adds in pick order and removes on second tap', () => {
+  assert.deepEqual(togglePick([], 3), [3]);
+  assert.deepEqual(togglePick([3], 1), [3, 1]);
+  assert.deepEqual(togglePick([3, 1, 2], 1), [3, 2]);
+});
+
+test('queueUpNext appends in order, skipping duplicates and the current track', () => {
+  assert.deepEqual(queueUpNext([], [4, 5], null), [4, 5]);
+  assert.deepEqual(queueUpNext([4], [5, 4, 6], 6), [4, 5]);
 });

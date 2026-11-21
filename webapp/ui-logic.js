@@ -39,3 +39,15 @@ export function meditateTrack({ chosenId, currentId, trackIds }) {
   if (trackIds.includes(currentId)) return currentId;
   return trackIds[0] ?? null;
 }
+
+// 라이브러리 곡 고르기: 고른 순서를 지킨다. 이미 고른 곡을 다시 누르면 뺀다.
+export function togglePick(pickedIds, id) {
+  return pickedIds.includes(id) ? pickedIds.filter((x) => x !== id) : [...pickedIds, id];
+}
+
+// 다음에 들을 곡 줄에 고른 곡들을 순서대로 붙인다. 이미 줄에 있거나 지금 곡이면 건너뛴다.
+export function queueUpNext(upNext, ids, currentId) {
+  const out = [...upNext];
+  for (const id of ids) if (id !== currentId && !out.includes(id)) out.push(id);
+  return out;
+}
