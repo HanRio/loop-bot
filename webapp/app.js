@@ -91,11 +91,13 @@ const playback = {
   // 고른 곡만 재생할 때의 순서. 다른 곡을 누르면 풀린다.
   queue: null,
   // 라이브러리에서 '이어서 듣기'로 끼운 곡. 그 곡이 끝나면 원래 목록의 다음 자리로 돌아간다.
-  upNext: null,
+  // '이어서 듣기'로 끼운 곡들. 앞에서부터 하나씩 꺼내 튼다.
+  upNext: [],
   detour: false,
 };
 // 라이브러리 탭에서 눌러 고른 곡. 고르면 미니 플레이어 자리에 곡 메뉴가 뜬다.
-let pickedId = null;
+// 라이브러리에서 고른 곡들(고른 순서).
+let pickedIds = [];
 // 끼운 곡을 듣는 동안 다음 곡을 셀 때 쓰는 자리표. 어느 목록에도 없어서 lastIndex 자리부터 센다.
 const DETOUR = Symbol('detour');
 // 콘티 탭의 여러 곡 선택.
@@ -208,7 +210,9 @@ function renderPlayer() {
   const playLabel = playing ? '일시정지' : '재생';
 
   setText('mini-title', title);
-  $('mini-sub').textContent = playback.upNext === null ? sub : `다음 곡 · ${titleOf(playback.upNext)}`;
+  const up = nextUp();
+  const more = playback.upNext.length - 1;
+  $('mini-sub').textContent = up === null ? sub : `다음 곡 · ${titleOf(up)}${more > 0 ? ` 외 ${more}곡` : ''}`;
   $('mini-play-icon').setAttribute('d', playing ? ICON_PAUSE : ICON_PLAY);
   $('mini-play').setAttribute('aria-label', playLabel);
   // 목록의 재생 중 막대는 이 class로 움직이고 멈춘다.
@@ -251,7 +255,7 @@ function renderAll() {
   }
   renderSongBar();
   library.render({
-    pickedId,
+    pickedIds,
     library: model.library,
     playlists: model.playlists,
     sharedPlaylists: model.sharedPlaylists,
@@ -311,58 +315,76 @@ function onReorder(domIds, draggedId) {
 
 // ── 라이브러리 곡 메뉴 막대 ──
 function renderSongBar() {
-  const open = pickedId !== null;
+  const open = pickedIds.length > 0;
   $('song-bar').hidden = !open;
   $('mini').hidden = open;
   if (!open) return;
-  setText('song-bar-title', titleOf(pickedId));
-  $('song-bar-art').style.background = artOf(pickedId);
-  const blocked = playback.unplayable.has(pickedId);
+  const [first] = pickedIds;
+  setText('song-bar-title', pickedIds.length === 1 ? titleOf(first) : `${pickedIds.length}곡 선택`);
+  $('song-bar-art').style.background = artOf(first);
+  const blocked = pickedIds.every((id) => playback.unplayable.has(id));
   $('song-now').disabled = blocked;
   $('song-next').disabled = blocked;
 }
 
-// 같은 곡을 다시 누르면 닫고, 다른 곡을 누르면 그 곡으로 바로 바뀐다.
+// 누를 때마다 고르거나 푼다. 여러 곡을 함께 고를 수 있다.
 function onPickTrack(id) {
-  pickedId = pickedId === id ? null : id;
+  pickedIds = pickedIds.includes(id) ? pickedIds.filter((p) => p !== id) : [...pickedIds, id];
   haptic.tick();
   renderAll();
 }
 
 function closeSongBar() {
-  if (pickedId === null) return;
-  pickedId = null;
+  if (pickedIds.length === 0) return;
+  pickedIds = [];
   renderAll();
 }
 
-function onSongNow() {
-  const id = pickedId;
-  pickedId = null;
-  onPlayRow(id);
+// 고른 곡을 꺼내고 메뉴를 닫는다. 재생할 수 없는 곡은 뺀다.
+function takePicked() {
+  const ids = pickedIds.filter((id) => !playback.unplayable.has(id));
+  pickedIds = [];
+  return ids;
 }
 
-// 듣던 곡이 없으면 바로 튼다.
+// 한 곡이면 그 곡을 틀고, 여러 곡이면 고른 곡만 고른 순서로 듣는다.
+function onSongNow() {
+  const ids = takePicked();
+  if (ids.length === 0) return renderAll();
+  if (ids.length === 1) return onPlayRow(ids[0]);
+  closeVideo();
+  playback.playingPlaylistId = LIBRARY_QUEUE;
+  playback.queue = ids;
+  playback.lastIndex = 0;
+  playback.played = new Set();
+  return userMove(ids[0]);
+}
+
+// 지금 곡이 끝나면 고른 곡들을 차례로 끼워 듣는다. 듣던 곡이 없으면 바로 튼다.
 function onSongNext() {
-  const id = pickedId;
-  pickedId = null;
-  if (playback.currentTrackId === null) return onPlayRow(id);
-  playback.upNext = id;
-  if (!playback.shuffle) player.prefetch(id);
+  const ids = takePicked();
+  if (ids.length === 0) return renderAll();
+  if (playback.currentTrackId === null) {
+    playback.upNext = ids.slice(1);
+    return onPlayRow(ids[0]);
+  }
+  playback.upNext = [...playback.upNext, ...ids.filter((id) => !playback.upNext.includes(id))];
+  if (!playback.shuffle) player.prefetch(nextUp() ?? ids[0]);
   haptic.tick();
   renderAll();
   return undefined;
 }
 
 async function onSongAdd() {
-  const id = pickedId;
+  const ids = [...pickedIds];
   const targetId = await openListPicker({ playlists: model.playlists, sharedPlaylists: [], currentId: null, title: '어느 플리에 추가할까요' });
   const target = model.playlists.find((p) => p.id === targetId);
   if (!target) return;
-  const ids = addTracks(target.track_ids, [id]);
-  model.playlists = model.playlists.map((p) => (p.id === target.id ? { ...p, track_ids: ids } : p));
-  saves.update({ id: target.id, name: target.name, track_ids: ids });
+  const trackIds = addTracks(target.track_ids, ids);
+  model.playlists = model.playlists.map((p) => (p.id === target.id ? { ...p, track_ids: trackIds } : p));
+  saves.update({ id: target.id, name: target.name, track_ids: trackIds });
   haptic.tick();
-  if (pickedId === id) pickedId = null;
+  pickedIds = pickedIds.filter((id) => !ids.includes(id));
   renderAll();
 }
 
@@ -605,10 +627,12 @@ function onTrackMenu(id) {
 }
 
 // ⏭·⏮는 한 곡 반복이어도 전체 반복처럼 움직인다.
-const upNextReady = () => playback.upNext !== null && !playback.unplayable.has(playback.upNext)
-  && playback.upNext !== playback.currentTrackId;
+// 끼운 곡 중 다음에 틀 곡. 재생할 수 없거나 지금 곡이면 건너뛴다.
+function nextUp() {
+  return playback.upNext.find((id) => !playback.unplayable.has(id) && id !== playback.currentTrackId) ?? null;
+}
 
-const computeNext = (manual) => (upNextReady() ? playback.upNext : pickNext({
+const computeNext = (manual) => (nextUp() ?? pickNext({
     trackIds: playingIds(),
     currentId: playback.detour ? DETOUR : playback.currentTrackId,
     lastIndex: playback.lastIndex,
@@ -656,13 +680,14 @@ function moveTo(id) {
   const from = playingIds().indexOf(playback.currentTrackId);
   playback.currentTrackId = id;
   playback.currentTitle = titleOf(id);
-  const isDetour = id === playback.upNext;
+  const isDetour = playback.upNext.includes(id);
   playback.played = new Set([...playback.played, id]);
   syncLastIndex();
   // 끼운 곡으로 넘어가면 원래 곡 다음 자리를 기억해 둔다. 다른 곡으로 가면 끼우기는 끝난다.
+  // 끼운 곡이 여러 개면 처음 벗어날 때의 자리만 기억한다.
   if (isDetour) {
-    if (from !== -1) playback.lastIndex = from + 1;
-    playback.upNext = null;
+    if (from !== -1 && !playback.detour) playback.lastIndex = from + 1;
+    playback.upNext = playback.upNext.slice(playback.upNext.indexOf(id) + 1);
   }
   playback.detour = isDetour;
   shell.setMood(id);

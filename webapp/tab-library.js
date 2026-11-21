@@ -77,7 +77,7 @@ export function createLibrary({ onPick, onOpenList, onNewList, onTrackMenu, onDe
     li.classList.toggle('now', track.id === next.currentId);
     if (track.id === next.currentId) li.setAttribute('aria-current', 'true');
     li.classList.toggle('off', next.unplayable.has(track.id));
-    li.classList.toggle('picked', track.id === next.pickedId);
+    li.classList.toggle('picked', next.pickedIds.includes(track.id));
 
     const text = el('span', 't');
     text.append(el('b', null, track.title));
