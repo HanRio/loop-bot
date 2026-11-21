@@ -25,3 +25,12 @@ export function swipeSettle({ x, velocity, width }) {
   if (velocity > SWIPE_FLICK) return 0;
   return -x > width / 2 ? -width : 0;
 }
+
+// 가사 집중 화면 넘김. dy는 내용을 내리는 양(손가락을 위로 밀거나 휠을 아래로 굴리면 +).
+// 살짝만 밀어도 넘어가고, 돌아올 때는 가사가 맨 위일 때만 돌아온다(가사를 거슬러 읽는 중이면 가사만 움직인다).
+const FOCUS_SWIPE = 24;
+export function focusSwipe({ dy, focused, linesAtTop }) {
+  if (!focused && dy >= FOCUS_SWIPE) return true;
+  if (focused && dy <= -FOCUS_SWIPE && linesAtTop) return false;
+  return null;
+}

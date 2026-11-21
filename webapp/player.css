@@ -12,18 +12,16 @@
 .v2p .glow-clip::after { content: ""; position: absolute; inset: 0; background: radial-gradient(circle at 50% 35%, transparent 0, var(--paper) 70%); }
 .v2p .top { position: relative; z-index: 1; }
 .v2p .body {
-  position: relative; z-index: 1; flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none;
-  overscroll-behavior: contain; scroll-snap-type: y proximity;
+  position: relative; z-index: 1; flex: 1; min-height: 0; overflow: hidden;
   display: flex; flex-direction: column;
   width: 100%; max-width: 460px; margin: 0 auto;
-  padding: 4px max(20px, var(--inset-right)) calc(20px + var(--inset-bottom)) max(20px, var(--inset-left));
+  padding: 4px max(20px, var(--inset-right)) calc(8px + var(--inset-bottom)) max(20px, var(--inset-left));
 }
-/* 첫 화면: 플레이어 조작부 전체. 아래 가사 칸의 윗단(lip)만 살짝 보인다. */
+/* 두 상태만 있다. 첫 화면: 조작부 전체 + 아래 가사 손잡이. 가사 집중(.lyr-focus, lyrics-focus.js): 가사 칸 + 아래 작은 조작 줄. */
 .v2p .deck {
-  flex: none; min-height: calc(100% - 40px); scroll-snap-align: start;
+  flex: 1 1 auto; min-height: 0;
   display: flex; flex-direction: column; justify-content: safe center; gap: 14px;
 }
-.v2p .body::-webkit-scrollbar { display: none; }
 
 /* 커버: 화면 높이에 맞춰 줄어 조작부가 한 화면에 들어온다 */
 .v2p .stage { display: flex; flex-direction: column; align-items: center; }
@@ -85,14 +83,13 @@
 .v2p .notice { margin: -6px 0 0; font-size: var(--fs-2); color: var(--danger); text-align: center; }
 .v2p .notice:empty { display: none; }
 
-/* 가사: 플레이어 아래에 이어지는 칸. 스크롤을 내리면 올라와 화면을 채운다. 가사 버튼은 이 칸으로 내려가고 올라온다. */
+/* 가사: 첫 화면에서는 아래에 손잡이만 보인다. 살짝 내리거나 가사 버튼을 누르면 가사 집중 화면이 된다. */
 .v2p .lyr-sheet {
-  flex: none; height: calc(100% - 8px); margin-top: 8px; scroll-snap-align: start;
+  flex: 0 0 40px; min-height: 0; overflow: hidden; margin-top: 8px; cursor: pointer;
   display: flex; flex-direction: column; padding: 10px 4px 0;
   border-radius: var(--r-lg) var(--r-lg) 0 0; background: rgba(237,235,230,.04); box-shadow: inset 0 1px 0 var(--line);
 }
 .v2p .body:has(#lyrics:disabled) .lyr-sheet { display: none; }
-.v2p .body:has(#lyrics:disabled) .deck { min-height: 100%; }
 .v2p .lyr-lip { align-self: center; display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: var(--fs-2); color: var(--muted); }
 .v2p .lyr-lip::before { content: ""; width: 36px; height: 4px; border-radius: 999px; background: var(--grabber, rgba(237,235,230,.22)); }
 .v2p .lyr-pane { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
@@ -110,10 +107,22 @@
 .v2p .lyr-sync { font-size: var(--fs-2); color: var(--muted); font-variant-numeric: tabular-nums; }
 .v2p .lyr-toggle { align-self: center; margin-top: 8px; height: 28px; color: var(--muted); }
 
-/* 가사 칸이 올라오는 만큼 위 플레이어가 물러난다(지원하는 브라우저만). */
-@supports (animation-timeline: scroll()) {
-  .v2p .deck { animation: v2p-recede linear both; animation-timeline: scroll(nearest block); animation-range: 0 60%; }
-  @keyframes v2p-recede { to { opacity: .25; transform: scale(.96); } }
-}
+/* 가사 집중: 가사 칸이 위를 채우고, 조작부는 제목 + 이전·재생·다음 + 가사 버튼만 남은 한 줄이 된다. */
+.v2p.lyr-focus .lyr-sheet { order: -1; flex: 1 1 auto; margin: 0 0 8px; cursor: auto; }
+.v2p.lyr-focus .deck { flex: none; flex-flow: row wrap; align-items: center; gap: 0 4px; padding-bottom: 6px; }
+.v2p.lyr-focus :is(.stage, .scrub-wrap, .foot, #shuffle, #repeat, #mute, #vol) { display: none; }
+.v2p.lyr-focus .meta { flex: 1; min-width: 0; align-items: flex-start; gap: 2px; text-align: left; }
+.v2p.lyr-focus .meta > :not(h1, p) { display: none; }
+.v2p.lyr-focus .meta :is(h1, p) { width: 100%; font-size: var(--fs-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.v2p.lyr-focus .meta p { font-size: var(--fs-2); }
+.v2p.lyr-focus .controls { gap: 0; }
+.v2p.lyr-focus .play { width: 48px; height: 48px; }
+.v2p.lyr-focus .volume { width: auto; max-width: none; margin: 0; gap: 0; }
+.v2p.lyr-focus .notice { flex-basis: 100%; margin: 4px 0 0; }
+/* 넘어갈 때 탁 맞춰 들어온다. 중간 상태는 없다. */
+.v2p.lyr-focus :is(.lyr-sheet, .deck) { animation: v2p-focus-in .32s var(--ease-out, ease-out) both; }
+.v2p:not(.lyr-focus) .deck { animation: v2p-focus-out .32s var(--ease-out, ease-out) both; }
+@keyframes v2p-focus-in { from { opacity: 0; transform: translateY(28px); } }
+@keyframes v2p-focus-out { from { opacity: 0; transform: translateY(-28px); } }
 
 @media (prefers-reduced-motion: reduce) { .v2p *, .v2p *::before, .v2p *::after { animation: none !important; transition-property: color, background-color, border-color, opacity !important; } }

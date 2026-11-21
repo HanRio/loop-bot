@@ -2,6 +2,7 @@
 import { createApi } from './api.js';
 import { createPlayer } from './audio.js';
 import { createPlayerLyrics } from './player-lyrics.js';
+import { createLyricsFocus } from './lyrics-focus.js';
 import { createPlayerView } from './player-view.js';
 import { API_BASE, FILE_BASE, IS_LOCAL, KEY_PLAYLIST, KEY_REPEAT, REPEAT_ORDER } from './config.js';
 import { COPY } from './copy.js';
@@ -752,23 +753,6 @@ function onShuffle() {
   renderPlayer();
 }
 
-// 가사는 플레이어 아래 칸에 있다. 버튼은 그 칸으로 내려가고, 이미 보고 있으면 플레이어로 올라온다.
-function onLyrics() {
-  const body = $('player-body');
-  const sheet = $('lyr-sheet');
-  const atLyrics = body.scrollTop > sheet.offsetTop / 2;
-  const behavior = matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
-  body.scrollTo({ top: atLyrics ? 0 : sheet.offsetTop, behavior });
-}
-
-// 가사 칸이 절반 넘게 보이면 가사 버튼을 켜진 상태로 보여 준다.
-function watchLyricsSheet() {
-  const sheetWatcher = new IntersectionObserver(([entry]) => {
-    $('lyrics').setAttribute('aria-pressed', String(entry.isIntersecting));
-  }, { root: $('player-body'), threshold: 0.5 });
-  sheetWatcher.observe($('lyr-sheet'));
-}
-
 function onRepeat() {
   playback.repeat = REPEAT_ORDER[(REPEAT_ORDER.indexOf(playback.repeat) + 1) % REPEAT_ORDER.length];
   writeLocal(KEY_REPEAT, playback.repeat);
@@ -940,8 +924,8 @@ function wireControls() {
   $('next').addEventListener('click', () => userMove(computeNext(true)));
   $('repeat').addEventListener('click', onRepeat);
   $('shuffle').addEventListener('click', onShuffle);
-  $('lyrics').addEventListener('click', onLyrics);
-  watchLyricsSheet();
+  const lyricsFocus = createLyricsFocus();
+  $('lyrics').addEventListener('click', () => lyricsFocus.toggle());
   $('player-sheet').addEventListener('click', onOpenSheet);
   $('video-open').addEventListener('click', openVideo);
   $('video-close').addEventListener('click', closeVideo);
