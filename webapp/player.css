@@ -119,6 +119,8 @@
 .v2p.lyr-focus .play { width: 48px; height: 48px; }
 .v2p.lyr-focus .volume { width: auto; max-width: none; margin: 0; gap: 0; }
 .v2p.lyr-focus .notice { flex-basis: 100%; margin: 4px 0 0; }
+/* 예전 커버 자리 가사처럼 지금 줄이 늘 가운데로 흘러오도록, 위아래에 칸 높이 절반만큼 여백을 둔다. */
+.v2p.lyr-focus .lyr-lines { padding-block: 38vh; }
 /* 넘어갈 때 탁 맞춰 들어온다. 중간 상태는 없다. */
 .v2p.lyr-focus :is(.lyr-sheet, .deck) { animation: v2p-focus-in .32s var(--ease-out, ease-out) both; }
 .v2p:not(.lyr-focus) .deck { animation: v2p-focus-out .32s var(--ease-out, ease-out) both; }
