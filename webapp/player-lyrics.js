@@ -29,8 +29,6 @@ export function createPlayerLyrics({ api, player, canEdit, onError }) {
   const sub = document.getElementById('player-sub');
   const list = box.querySelector('.lyr-lines');
   const edit = box.querySelector('.lyr-edit');
-  // 가사 칸 크기가 바뀌면(가사 집중 화면) 지금 줄을 다시 가운데로 맞춘다.
-  new ResizeObserver(() => { lastIndex = -2; tick(player.position()); }).observe(list);
   const reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
   const cache = new Map();
   let currentId = null;

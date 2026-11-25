@@ -28,13 +28,3 @@ test('swipeSettle opens past half the width or on a left flick, else closes', ()
   assert.equal(swipeSettle({ x: -20, velocity: -0.6, width: 88 }), -88);
   assert.equal(swipeSettle({ x: -70, velocity: 0.6, width: 88 }), 0);
 });
-
-test('focusSwipe: small push down enters lyrics focus, small push up returns only at lyrics top', async () => {
-  const { focusSwipe } = await import('../../webapp/gesture-logic.js');
-  assert.equal(focusSwipe({ dy: 10, focused: false, linesAtTop: true }), null);
-  assert.equal(focusSwipe({ dy: 30, focused: false, linesAtTop: true }), true);
-  assert.equal(focusSwipe({ dy: -30, focused: false, linesAtTop: true }), null);
-  assert.equal(focusSwipe({ dy: -30, focused: true, linesAtTop: true }), false);
-  assert.equal(focusSwipe({ dy: -30, focused: true, linesAtTop: false }), null);
-  assert.equal(focusSwipe({ dy: 30, focused: true, linesAtTop: true }), null);
-});

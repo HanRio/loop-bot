@@ -231,7 +231,7 @@ export function createPlayerView({ position, duration, onSeek }) {
   let lastKey = '';
   function paint(s) {
     playing = s.playing;
-    const key = [s.id, s.playing, s.loading, s.repeat, s.shuffle, s.loading ? '' : duration(), s.media?.[s.id]?.video_id ?? ''].join('|');
+    const key = [s.id, s.playing, s.loading, s.repeat, s.shuffle, s.lyricsOn, s.loading ? '' : duration(), s.media?.[s.id]?.video_id ?? ''].join('|');
     if (key === lastKey) return wake();
     lastKey = key;
     root.classList.toggle('is-playing', s.playing);
@@ -257,6 +257,8 @@ export function createPlayerView({ position, duration, onSeek }) {
       repeat.append(badge);
     }
     $('lyrics').disabled = s.id === null;
+    $('lyrics').setAttribute('aria-pressed', String(s.lyricsOn));
+    $('stage').classList.toggle('lyrics', s.lyricsOn && s.id !== null);
     paintScrub();
     wake();
   }

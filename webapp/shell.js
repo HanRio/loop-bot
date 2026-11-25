@@ -121,9 +121,7 @@ export function createShell({ onTab = () => {} } = {}) {
     app.style.setProperty('--m3', m3);
   }
 
-  // 열 때는 늘 플레이어 조작부부터 보여 준다. 가사는 스크롤을 내리면 올라온다.
   function openPlayer() {
-    player.querySelector('.body').scrollTop = 0;
     player.classList.add('open');
     player.setAttribute('aria-hidden', 'false');
   }
