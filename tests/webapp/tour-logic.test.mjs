@@ -21,10 +21,10 @@ test('bubbleTop clamps into the margins when neither side fits', () => {
   assert.equal(bubbleTop({ top: 50, bottom: 100 }, 300, 200), 88);
 });
 
-test('every tour step has text and waitClick steps name a target', () => {
+test('every tour step has text and steps that wait on the user name a target', () => {
   assert.ok(TOUR_STEPS.length > 0);
   for (const step of TOUR_STEPS) {
     assert.ok(typeof step.text === 'string' && step.text.length > 0);
-    if (step.waitClick) assert.ok(step.target);
+    if (step.waitClick || step.waitClose) assert.ok(step.target);
   }
 });
