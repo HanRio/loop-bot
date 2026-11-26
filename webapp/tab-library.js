@@ -59,13 +59,14 @@ export function createLibrary({ onPick, onOpenList, onNewList, onTrackMenu, onDe
 
   pane.replaceChildren(kicker, title, search, myHeading, myLists, sharedHeading, sharedLists, allHeading, trackList, empty);
 
-  function playlistCard(playlist) {
+  function playlistCard(playlist, isShared) {
     const button = el('button', 'new');
     button.type = 'button';
     // 곡 색 대신 새 목록 칸과 같은 유리 칸에 음표만 둔다.
     const cover = el('span', 'cv glass');
     cover.append(icon('note'));
     button.append(cover, playlist.name, document.createElement('br'), el('small', null, `${playlist.track_ids.length}곡`));
+    if (isShared) button.append(el('small', 'shared-tag', '공유 중'));
     button.addEventListener('click', () => onOpenList(playlist.id));
     return button;
   }
@@ -104,11 +105,11 @@ export function createLibrary({ onPick, onOpenList, onNewList, onTrackMenu, onDe
   function render(next) {
     view = next;
     kicker.textContent = `모든 곡 ${next.library.length} · 내 목록 ${next.playlists.length}`;
-    myLists.replaceChildren(newButton, ...next.playlists.map(playlistCard));
+    myLists.replaceChildren(newButton, ...next.playlists.map((p) => playlistCard(p, Boolean(p.shared))));
     const hasShared = next.sharedPlaylists.length > 0;
     sharedHeading.hidden = !hasShared;
     sharedLists.hidden = !hasShared;
-    sharedLists.replaceChildren(...next.sharedPlaylists.map(playlistCard));
+    sharedLists.replaceChildren(...next.sharedPlaylists.map((p) => playlistCard(p, true)));
     renderTracks();
   }
 

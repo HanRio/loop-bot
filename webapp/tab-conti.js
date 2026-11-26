@@ -178,7 +178,9 @@ export function createConti({ onPlay, onReorder, onRemove, onOpenLists, onListMe
   function render(next) {
     view = next;
     kicker.textContent = next.isOwn ? '내 목록' : '공유받은 목록';
+    // 모두에게 보이는 목록이면 이름 옆에 '공유 중'을 붙인다.
     title.textContent = next.listName;
+    if (!next.isOwn || next.shared) title.append(' ', el('span', 'shared-tag', '공유 중'));
     listMenuButton.hidden = !next.isOwn || next.selecting;
     selectButton.hidden = next.selecting || next.trackIds.length === 0;
     openListsButton.hidden = next.selecting;

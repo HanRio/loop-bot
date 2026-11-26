@@ -21,6 +21,8 @@ import { createPractice } from './tab-practice.js';
 import { createRanking } from './tab-ranking.js';
 import { createPlayCounter } from './play-count.js';
 import { moodFor } from './ui-logic.js';
+import { TOUR_DONE_KEY } from './tour-logic.js';
+import { createTour } from './tour.js';
 import { createUsersAdmin } from './users-admin.js';
 import { initVolume } from './volume.js';
 import { attach as scrollTitle, initTitleScroll } from './title-scroll.js';
@@ -114,6 +116,7 @@ let meditate;
 let practice;
 let ranking;
 let playCounter;
+let tour;
 // 지우는 중인 플레이리스트는 편집을 받지 않는다.
 let deletingId = null;
 let refreshSeq = 0;
@@ -914,6 +917,10 @@ function wireSettings() {
   $('settings-close').addEventListener('click', () => dialog.close());
   // 사용자 관리 창은 users-admin.js가 연다. 설정 창은 겹치지 않게 닫는다.
   $('settings-users').addEventListener('click', () => dialog.close());
+  $('settings-tour').addEventListener('click', () => {
+    dialog.close();
+    tour.start();
+  });
   // 같은 웹뷰 안에서 옮겨 가므로 텔레그램 로그인 정보(sessionStorage)가 그대로 따라간다.
   dialog.addEventListener('click', (event) => {
     if (event.target === dialog) dialog.close();
@@ -1083,6 +1090,8 @@ async function init() {
   sendPendingPlays();
   wireSettings();
   wireControls();
+  tour = createTour({ goTab: (i) => shell.goTab(i) });
+  if (!readLocal(TOUR_DONE_KEY)) tour.start();
   return undefined;
 }
 

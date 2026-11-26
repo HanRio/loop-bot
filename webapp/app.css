@@ -703,3 +703,19 @@ button:active:not(:disabled) { transform: scale(.94); transition: transform 90ms
 /* 콘티 머리: 위 줄은 '내 목록'과 버튼, 아래 줄은 목록 이름이 화면 너비를 다 쓴다 */
 .head.conti-head { align-items: center; }
 #tab-conti > h1 { margin-top: 4px; overflow-wrap: anywhere; }
+
+/* 공유 중 표시: 목록 칸 아래에 작은 알약으로 붙인다 */
+.shared-tag { display: block; width: max-content; margin-top: 4px; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 600; color: var(--ink); background: var(--hi-50, rgba(255,255,255,.5)); box-shadow: inset 0 0 0 1px var(--line); }
+
+/* 첫 방문 안내: 대상만 밝히고 말풍선을 붙인다 */
+.tour { position: fixed; inset: 0; z-index: 1000; pointer-events: none; }
+.tour[hidden] { display: none; }
+.tour-ring { position: fixed; border-radius: 16px; box-shadow: 0 0 0 9999px rgba(0,0,0,.55); pointer-events: none; transition: top .25s, left .25s, width .25s, height .25s; }
+.tour-ring.full { inset: 0; border-radius: 0; background: rgba(0,0,0,.55); box-shadow: none; transition: none; }
+@media (prefers-reduced-motion: reduce) { .tour-ring { transition: none; } }
+.tour-bubble { position: fixed; left: 16px; right: 16px; max-width: 420px; margin: 0 auto; padding: 16px; box-sizing: border-box; border-radius: 18px; background: var(--hi-96, rgba(255,255,255,.96)); color: var(--ink); box-shadow: 0 16px 36px var(--lo-18, rgba(20,32,43,.18)); pointer-events: auto; }
+.tour-count { margin: 0 0 4px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tour-text { margin: 0; font-size: 15px; line-height: 1.55; color: var(--ink); }
+.tour-buttons { display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin-top: 12px; }
+.tour-next { min-height: 40px; padding: 0 18px; border: 0; border-radius: 999px; background: var(--ink); color: var(--on-ink, #fff); font-weight: 600; cursor: pointer; }
+h1 .shared-tag { vertical-align: middle; margin-top: 0; }
