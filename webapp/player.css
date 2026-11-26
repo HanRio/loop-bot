@@ -13,27 +13,28 @@
 .v2p .top { position: relative; z-index: 1; }
 .v2p .body {
   position: relative; z-index: 1; flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none;
-  display: flex; flex-direction: column; justify-content: safe center; gap: 18px;
+  display: flex; flex-direction: column; justify-content: safe center; gap: clamp(10px, 2.2svh, 18px);
   width: 100%; max-width: 460px; margin: 0 auto;
   padding: 4px max(20px, var(--inset-right)) calc(20px + var(--inset-bottom)) max(20px, var(--inset-left));
 }
 .v2p .body::-webkit-scrollbar { display: none; }
 
-/* 커버: 화면 높이에 맞춰 줄어 조작부가 한 화면에 들어온다 */
-.v2p .stage { display: flex; flex-direction: column; align-items: center; }
-.v2p .cover, .v2p .lyr-pane { position: relative; aspect-ratio: 1; width: min(100%, 42vh); max-width: 100%; }
+/* 커버: 조작부가 먼저 자리를 잡고, 남은 높이(stage)에 맞춰 정사각형으로 줄어든다. 그래서 작은 폰에서도 스크롤 없이 한 화면에 들어온다. */
+.v2p { --spec-h: clamp(28px, 5svh, 48px); }
+.v2p .stage { flex: 1 1 0; min-height: 0; container-type: size; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.v2p .cover, .v2p .lyr-pane { position: relative; flex: none; aspect-ratio: 1; min-height: 0; width: clamp(120px, min(100cqw, 100cqh - var(--spec-h)), 42svh); max-width: 100%; }
 .v2p .cover { border-radius: 14px; overflow: hidden; background: var(--surface); box-shadow: 0 30px 80px -20px rgba(0,0,0,.9); }
 .v2p .cover .layer { position: absolute; inset: 0; background-size: cover; background-position: center; opacity: 0; transition: opacity .6s ease, transform 8s ease; }
 .v2p .cover .layer.on { opacity: 1; }
 .v2p.is-playing .cover .layer.on { transform: scale(1.04); }
-.v2p canvas.spectrum { display: block; width: min(100%, 42vh); max-width: 100%; height: 48px; }
+.v2p canvas.spectrum { display: block; flex: none; width: clamp(120px, min(100cqw, 100cqh - var(--spec-h)), 42svh); max-width: 100%; height: var(--spec-h); }
 
 .v2p .meta { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
 .v2p .meta h1 { max-width: 100%; margin: 0; font-size: clamp(21px, 4vw, 26px); font-weight: 600; letter-spacing: -.02em; line-height: 1.25; text-wrap: balance; overflow-wrap: anywhere; white-space: normal; }
 .v2p .meta p { margin: 0; color: var(--muted); font-size: 14px; }
 
-.v2p .scrub-wrap { display: flex; flex-direction: column; gap: 10px; }
-.v2p .scrub { position: relative; height: 40px; cursor: pointer; touch-action: none; border-radius: 8px; }
+.v2p .scrub-wrap { display: flex; flex-direction: column; gap: clamp(6px, 1.2svh, 10px); }
+.v2p .scrub { position: relative; height: clamp(32px, 5svh, 40px); cursor: pointer; touch-action: none; border-radius: 8px; }
 .v2p .bars { position: absolute; inset: 0; display: flex; align-items: center; gap: 2px; pointer-events: none; }
 .v2p .bars span { flex: 1; border-radius: 2px; background: rgba(237,235,230,.16); }
 .v2p .bars.fill { clip-path: inset(0 calc(100% - var(--p, 0%)) 0 0); }
